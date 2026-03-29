@@ -1,6 +1,6 @@
 class AppConfig {
   static const String appName = 'Wasel';
-  static const String apiBaseUrl = 'https://api.wasel.app/api/v1';
+  static const String apiBaseUrl = 'https://api.wa-sel.com/api/v1';
   static const String devApiBaseUrl = 'http://10.0.2.2:3000/api/v1';
 
   static const Duration connectTimeout = Duration(seconds: 15);

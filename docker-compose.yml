@@ -25,7 +25,7 @@ services:
     environment:
       POSTGRES_DB: wasel
       POSTGRES_USER: wasel
-      POSTGRES_PASSWORD: changeme
+      POSTGRES_PASSWORD: 53094ff06b673713c6392c1573f2ef2fc35fcb6563a55dd2d9eca5ee52e3ec8d
     ports:
       - '5432:5432'
     volumes:
@@ -62,7 +62,7 @@ services:
       RADIUS_DB_PORT: 5432
       RADIUS_DB_NAME: wasel
       RADIUS_DB_USER: wasel
-      RADIUS_DB_PASS: changeme
+      RADIUS_DB_PASS: 53094ff06b673713c6392c1573f2ef2fc35fcb6563a55dd2d9eca5ee52e3ec8d
     depends_on:
       postgres:
         condition: service_healthy

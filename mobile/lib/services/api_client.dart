@@ -26,7 +26,7 @@ class ApiClient {
   ApiClient._internal() {
     final baseUrl = kDebugMode
         ? 'http://10.0.2.2:3000/api/v1' // Android emulator → host machine
-        : 'https://api.wasel.app/api/v1';
+        : 'https://api.wa-sel.com/api/v1';
 
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,

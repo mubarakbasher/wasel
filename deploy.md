@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Ubuntu 22.04 LTS VPS with root/sudo access (minimum 2 GB RAM, 20 GB disk)
-- A domain name (e.g., `api.wasel.app`) pointing to your VPS IP — or use the raw IP
+- A domain name (e.g., `api.wa-sel.com`) pointing to your VPS IP — or use the raw IP
 - Your phone on the same network as the VPS (or VPS accessible over the internet)
 - Git, Docker, and Docker Compose installed on the VPS
 
@@ -93,12 +93,12 @@ JWT_REFRESH_EXPIRES_IN=7d
 ENCRYPTION_KEY=<RUN: openssl rand -hex 32>
 
 # CORS — your phone will connect to this
-CORS_ORIGIN=*
+CORS_ORIGIN=https://wa-sel.com,https://api.wa-sel.com
 
 # WireGuard
 WG_SERVER_PRIVATE_KEY=<RUN: wg genkey>
 WG_SERVER_PUBLIC_KEY=<RUN: echo "<PRIVATE_KEY>" | wg pubkey>
-WG_SERVER_ENDPOINT=<YOUR_VPS_IP>:51820
+WG_SERVER_ENDPOINT=76.13.59.23:51820
 WG_SERVER_PORT=51820
 
 # SMTP — use Gmail App Password or any SMTP provider
@@ -202,7 +202,7 @@ sudo nano /etc/nginx/sites-available/wasel
 ```nginx
 server {
     listen 80;
-    server_name api.wasel.app;  # Replace with your domain
+    server_name api.wa-sel.com;  # Replace with your domain
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -220,7 +220,7 @@ sudo nginx -t
 sudo systemctl restart nginx
 
 # Get SSL certificate
-sudo certbot --nginx -d api.wasel.app
+sudo certbot --nginx -d api.wa-sel.com
 ```
 
 ### Option B: Use Raw IP (Debug Testing Only)
@@ -238,14 +238,14 @@ Edit `mobile/lib/services/api_client.dart`, line 27-29:
 ```dart
 ApiClient._internal() {
     final baseUrl = kDebugMode
-        ? 'http://<YOUR_VPS_IP>:3000/api/v1'   // For debug builds
-        : 'https://api.wasel.app/api/v1';        // For release builds
+        ? 'http://76.13.59.23:3000/api/v1'   // For debug builds
+        : 'https://api.wa-sel.com/api/v1';        // For release builds
 ```
 
 Or for quick testing, hardcode your VPS address:
 
 ```dart
-final baseUrl = 'http://<YOUR_VPS_IP>:3000/api/v1';
+final baseUrl = 'http://76.13.59.23:3000/api/v1';
 ```
 
 ### 4.2 Allow Cleartext HTTP on Android (Debug Only)
