@@ -1,0 +1,129 @@
+######################################################################
+#
+#   Wasel — Default virtual server
+#
+#   Handles RADIUS Authentication (port 1812) and Accounting (port 1813).
+#   All user data is stored in PostgreSQL via the sql module.
+#
+######################################################################
+
+server default {
+
+    listen {
+        type = auth
+        ipaddr = *
+        port = 1812
+    }
+
+    listen {
+        type = acct
+        ipaddr = *
+        port = 1813
+    }
+
+    #
+    #  Authorization — look up the user in the database
+    #
+    authorize {
+        #
+        #  Read the 'filter' attribute from the request (handles
+        #  User-Name normalization, etc.)
+        #
+        filter_username
+
+        #
+        #  If the user supplied a plain-text password via PAP, set
+        #  Auth-Type := PAP so the pap module handles verification later.
+        #
+        preprocess
+
+        #
+        #  If the request contains CHAP-Password, set Auth-Type := CHAP
+        #
+        chap
+
+        #
+        #  If the request contains MS-CHAP attributes, set Auth-Type := MS-CHAP
+        #
+        mschap
+
+        #
+        #  Pull user attributes from radcheck, radreply, radusergroup,
+        #  radgroupcheck, radgroupreply.
+        #  This is where Cleartext-Password, Expiration, Simultaneous-Use,
+        #  Mikrotik-Rate-Limit, Session-Timeout, etc. are loaded.
+        #
+        sql
+
+        #
+        #  If Auth-Type has not been set yet and we have a known good
+        #  password from the database, the pap module will set it.
+        #
+        pap
+    }
+
+    #
+    #  Authentication — verify the supplied credentials
+    #
+    authenticate {
+        #
+        #  PAP — compares User-Password with Cleartext-Password (or NT-Password, etc.)
+        #
+        Auth-Type PAP {
+            pap
+        }
+
+        #
+        #  CHAP — verifies CHAP-Password
+        #
+        Auth-Type CHAP {
+            chap
+        }
+
+        #
+        #  MS-CHAP v1 and v2
+        #
+        Auth-Type MS-CHAP {
+            mschap
+        }
+    }
+
+    #
+    #  Pre-accounting — set Acct-Type if needed
+    #
+    preacct {
+        preprocess
+        acct_unique
+    }
+
+    #
+    #  Accounting — write Start/Interim/Stop records to radacct
+    #
+    accounting {
+        sql
+    }
+
+    #
+    #  Session — used for Simultaneous-Use checking
+    #  When radcheck contains Simultaneous-Use := 1, FreeRADIUS queries
+    #  radacct to count active sessions for the user.
+    #
+    session {
+        sql
+    }
+
+    #
+    #  Post-Auth — runs after successful or failed authentication
+    #  Logs auth attempts to radpostauth table.
+    #
+    post-auth {
+        sql
+
+        #
+        #  On Access-Reject, still log to radpostauth for auditing
+        #
+        Post-Auth-Type REJECT {
+            sql
+        }
+    }
+}

@@ -1,0 +1,465 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../providers/routers_provider.dart';
+import '../../services/router_service.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_spacing.dart';
+import '../../theme/app_typography.dart';
+
+class RouterDetailScreen extends ConsumerStatefulWidget {
+  final String routerId;
+
+  const RouterDetailScreen({super.key, required this.routerId});
+
+  @override
+  ConsumerState<RouterDetailScreen> createState() =>
+      _RouterDetailScreenState();
+}
+
+class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(routersProvider.notifier).loadRouter(widget.routerId);
+      ref.read(routersProvider.notifier).loadRouterStatus(widget.routerId);
+    });
+  }
+
+  Future<void> _deleteRouter() async {
+    final router = ref.read(routersProvider).selectedRouter;
+    if (router == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Router?'),
+        content: Text(
+          "Are you sure you want to delete '${router.name}'? This will remove the WireGuard tunnel and all associated configuration. This action cannot be undone.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final success =
+        await ref.read(routersProvider.notifier).deleteRouter(router.id);
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Router deleted successfully')),
+      );
+      context.pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(routersProvider);
+    final router = state.selectedRouter;
+    final status = state.selectedRouterStatus;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(router?.name ?? 'Router Details'),
+        actions: [
+          if (router != null) ...[
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () =>
+                  context.push('/routers/edit', extra: router.id),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: _deleteRouter,
+            ),
+          ],
+        ],
+      ),
+      body: state.isLoading && router == null
+          ? const Center(child: CircularProgressIndicator())
+          : router == null
+              ? Center(
+                  child: Text('Router not found',
+                      style: AppTypography.body
+                          .copyWith(color: AppColors.textSecondary)),
+                )
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    await ref
+                        .read(routersProvider.notifier)
+                        .loadRouter(widget.routerId);
+                    await ref
+                        .read(routersProvider.notifier)
+                        .loadRouterStatus(widget.routerId);
+                  },
+                  child: ListView(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    children: [
+                      _buildStatusCard(router, status),
+                      const SizedBox(height: AppSpacing.lg),
+                      if (status?.systemInfo != null) ...[
+                        _buildSystemInfoCard(status!.systemInfo!),
+                        const SizedBox(height: AppSpacing.lg),
+                      ],
+                      _buildDetailsCard(router),
+                      const SizedBox(height: AppSpacing.lg),
+                      _buildActionsCard(router),
+                    ],
+                  ),
+                ),
+    );
+  }
+
+  Widget _buildStatusCard(dynamic router, RouterStatusInfo? status) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _statusColor(router.status),
+                ),
+                child: Icon(
+                  router.isOnline ? Icons.check : Icons.close,
+                  color: Colors.white,
+                  size: 14,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                _capitalizeStatus(router.status),
+                style: AppTypography.title2.copyWith(
+                  color: _statusColor(router.status),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          _InfoRow(
+            label: 'Last Seen',
+            value: _formatLastSeen(router.lastSeen),
+            icon: Icons.access_time,
+          ),
+          if (router.tunnelIp != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+              label: 'Tunnel IP',
+              value: router.tunnelIp!,
+              icon: Icons.lan,
+            ),
+          ],
+          if (status?.liveDataAvailable == false) ...[
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Live data unavailable',
+              style: AppTypography.caption1.copyWith(color: AppColors.warning),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemInfoCard(RouterSystemInfo info) {
+    final memoryUsed = info.totalMemory - info.freeMemory;
+    final memoryPercent =
+        info.totalMemory > 0 ? memoryUsed / info.totalMemory : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('System Information', style: AppTypography.title3),
+          const SizedBox(height: AppSpacing.lg),
+          _InfoRow(label: 'Identity', value: info.identity, icon: Icons.badge),
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+              label: 'Uptime', value: info.uptime, icon: Icons.timer),
+          const SizedBox(height: AppSpacing.md),
+          // CPU Load with progress bar
+          Row(
+            children: [
+              Icon(Icons.memory, size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: AppSpacing.sm),
+              Text('CPU Load',
+                  style: AppTypography.subhead
+                      .copyWith(color: AppColors.textSecondary)),
+              const Spacer(),
+              Text('${info.cpuLoad}%',
+                  style: AppTypography.subhead
+                      .copyWith(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            child: LinearProgressIndicator(
+              value: info.cpuLoad / 100.0,
+              minHeight: 6,
+              backgroundColor: AppColors.background,
+              valueColor: AlwaysStoppedAnimation(
+                info.cpuLoad > 90
+                    ? AppColors.error
+                    : info.cpuLoad > 70
+                        ? AppColors.warning
+                        : AppColors.success,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          // Memory with progress bar
+          Row(
+            children: [
+              Icon(Icons.storage, size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: AppSpacing.sm),
+              Text('Memory',
+                  style: AppTypography.subhead
+                      .copyWith(color: AppColors.textSecondary)),
+              const Spacer(),
+              Text(
+                '${_formatBytes(memoryUsed)} / ${_formatBytes(info.totalMemory)}',
+                style: AppTypography.subhead
+                    .copyWith(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            child: LinearProgressIndicator(
+              value: memoryPercent.clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: AppColors.background,
+              valueColor: AlwaysStoppedAnimation(
+                memoryPercent > 0.9
+                    ? AppColors.error
+                    : memoryPercent > 0.7
+                        ? AppColors.warning
+                        : AppColors.success,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+              label: 'Board', value: info.boardName, icon: Icons.developer_board),
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+              label: 'Architecture', value: info.architecture, icon: Icons.architecture),
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+              label: 'RouterOS', value: info.version, icon: Icons.info_outline),
+          if (info.model != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(label: 'Model', value: info.model!, icon: Icons.devices),
+          ],
+          if (info.serialNumber != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+                label: 'Serial', value: info.serialNumber!, icon: Icons.tag),
+          ],
+          if (info.firmware != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+                label: 'Firmware',
+                value: info.firmware!,
+                icon: Icons.system_update),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailsCard(dynamic router) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Router Details', style: AppTypography.title3),
+          const SizedBox(height: AppSpacing.lg),
+          _InfoRow(label: 'Name', value: router.name, icon: Icons.label),
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+            label: 'Model',
+            value: router.model ?? '\u2014',
+            icon: Icons.devices,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+            label: 'RouterOS',
+            value: router.rosVersion ?? '\u2014',
+            icon: Icons.info_outline,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+            label: 'API User',
+            value: router.apiUser ?? 'Not configured',
+            icon: Icons.person,
+          ),
+          if (router.wgPublicKey != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+              label: 'WG Key',
+              value: router.wgPublicKey!.length > 20
+                  ? '${router.wgPublicKey!.substring(0, 20)}...'
+                  : router.wgPublicKey!,
+              icon: Icons.vpn_key,
+            ),
+          ],
+          if (router.nasIdentifier != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+              label: 'NAS ID',
+              value: router.nasIdentifier!,
+              icon: Icons.fingerprint,
+            ),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+            label: 'Created',
+            value: _formatDate(router.createdAt),
+            icon: Icons.calendar_today,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionsCard(dynamic router) {
+    return Column(
+      children: [
+        SizedBox(
+          height: 48,
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () =>
+                context.push('/routers/setup-guide', extra: router.id),
+            icon: const Icon(Icons.article),
+            label: const Text('View Setup Guide'),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        SizedBox(
+          height: 48,
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () =>
+                context.push('/routers/edit', extra: router.id),
+            icon: const Icon(Icons.edit),
+            label: const Text('Edit Router'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'online':
+        return AppColors.success;
+      case 'degraded':
+        return AppColors.warning;
+      case 'offline':
+      default:
+        return AppColors.error;
+    }
+  }
+
+  String _capitalizeStatus(String status) {
+    if (status.isEmpty) return status;
+    return status[0].toUpperCase() + status.substring(1);
+  }
+
+  String _formatLastSeen(DateTime? lastSeen) {
+    if (lastSeen == null) return 'Never';
+    final diff = DateTime.now().difference(lastSeen);
+    if (diff.inSeconds < 60) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 30) return '${diff.inDays}d ago';
+    return '${(diff.inDays / 30).floor()}mo ago';
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppColors.textSecondary),
+        const SizedBox(width: AppSpacing.sm),
+        Text(label,
+            style:
+                AppTypography.subhead.copyWith(color: AppColors.textSecondary)),
+        const Spacer(),
+        Flexible(
+          child: Text(
+            value,
+            style:
+                AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+            textAlign: TextAlign.end,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}

@@ -1,0 +1,478 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../models/voucher.dart';
+import '../../providers/routers_provider.dart';
+import '../../providers/vouchers_provider.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_spacing.dart';
+import '../../theme/app_typography.dart';
+
+class VoucherListScreen extends ConsumerStatefulWidget {
+  const VoucherListScreen({super.key});
+
+  @override
+  ConsumerState<VoucherListScreen> createState() => _VoucherListScreenState();
+}
+
+class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
+  String? _selectedRouterId;
+  String? _statusFilter;
+  final _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(routersProvider.notifier).loadRouters();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onRouterSelected(String? routerId) {
+    setState(() => _selectedRouterId = routerId);
+    if (routerId != null) {
+      ref.read(vouchersProvider.notifier).loadVouchers(routerId, refresh: true);
+    }
+  }
+
+  void _onStatusFilterChanged(String? status) {
+    setState(() => _statusFilter = status);
+    ref.read(vouchersProvider.notifier).setFilter(status: status);
+    if (_selectedRouterId != null) {
+      ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+    }
+  }
+
+  void _onSearch(String query) {
+    ref.read(vouchersProvider.notifier).setSearch(query.isEmpty ? null : query);
+    if (_selectedRouterId != null) {
+      ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final routersState = ref.watch(routersProvider);
+    final vouchersState = ref.watch(vouchersProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Vouchers'),
+        actions: [
+          if (_selectedRouterId != null)
+            IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: () => context.push(
+                '/vouchers/create',
+                extra: _selectedRouterId,
+              ),
+            ),
+          if (_selectedRouterId != null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) {
+                if (value == 'bulk') {
+                  context.push('/vouchers/bulk-create', extra: _selectedRouterId);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'bulk',
+                  child: Row(
+                    children: [
+                      Icon(Icons.content_copy, size: 20),
+                      SizedBox(width: AppSpacing.sm),
+                      Text('Bulk Create'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Router selector
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 0,
+            ),
+            child: _buildRouterDropdown(routersState),
+          ),
+          // Search + filter row
+          if (_selectedRouterId != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 0,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 40,
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search username...',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                          ),
+                          isDense: true,
+                        ),
+                        style: AppTypography.subhead,
+                        onSubmitted: _onSearch,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  _buildStatusFilterChip(),
+                ],
+              ),
+            ),
+          const SizedBox(height: AppSpacing.sm),
+          // Voucher list
+          Expanded(
+            child: _selectedRouterId == null
+                ? _buildSelectRouterPrompt()
+                : vouchersState.isLoading && vouchersState.vouchers.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : vouchersState.error != null && vouchersState.vouchers.isEmpty
+                        ? _buildError(vouchersState.error!)
+                        : vouchersState.vouchers.isEmpty
+                            ? _buildEmpty()
+                            : _buildList(vouchersState),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouterDropdown(RoutersState routersState) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedRouterId,
+          hint: const Text('Select a router'),
+          isExpanded: true,
+          items: routersState.routers.map((router) {
+            return DropdownMenuItem(
+              value: router.id,
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: router.isOnline
+                          ? AppColors.online
+                          : router.isDegraded
+                              ? AppColors.degraded
+                              : AppColors.offline,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(router.name),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: _onRouterSelected,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusFilterChip() {
+    return PopupMenuButton<String?>(
+      onSelected: _onStatusFilterChanged,
+      itemBuilder: (context) => [
+        const PopupMenuItem(value: null, child: Text('All')),
+        const PopupMenuItem(value: 'active', child: Text('Active')),
+        const PopupMenuItem(value: 'disabled', child: Text('Disabled')),
+        const PopupMenuItem(value: 'expired', child: Text('Expired')),
+        const PopupMenuItem(value: 'used', child: Text('Used')),
+      ],
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        decoration: BoxDecoration(
+          color: _statusFilter != null ? AppColors.primaryLight : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(
+            color: _statusFilter != null ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.filter_list,
+              size: 18,
+              color: _statusFilter != null ? AppColors.primary : AppColors.textSecondary,
+            ),
+            if (_statusFilter != null) ...[
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                _capitalizeStatus(_statusFilter!),
+                style: AppTypography.caption1.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectRouterPrompt() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.router, size: 64, color: AppColors.textTertiary),
+            const SizedBox(height: AppSpacing.lg),
+            Text('Select a Router',
+                style: AppTypography.title2, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Choose a router above to view its vouchers.',
+              style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError(String error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: AppColors.error),
+            const SizedBox(height: AppSpacing.lg),
+            Text(error, style: AppTypography.body, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.xxl),
+            SizedBox(
+              height: 48,
+              child: ElevatedButton(
+                onPressed: () => ref
+                    .read(vouchersProvider.notifier)
+                    .loadVouchers(_selectedRouterId!, refresh: true),
+                child: const Text('Retry'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmpty() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.confirmation_number_outlined,
+                size: 64, color: AppColors.textTertiary),
+            const SizedBox(height: AppSpacing.lg),
+            Text('No Vouchers Yet',
+                style: AppTypography.title2, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Create your first voucher for this router.',
+              style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.xxl),
+            SizedBox(
+              height: 48,
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => context.push(
+                  '/vouchers/create',
+                  extra: _selectedRouterId,
+                ),
+                icon: const Icon(Icons.add),
+                label: const Text('Create Voucher'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildList(VouchersState state) {
+    return RefreshIndicator(
+      onRefresh: () => ref
+          .read(vouchersProvider.notifier)
+          .loadVouchers(_selectedRouterId!, refresh: true),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        itemCount: state.vouchers.length,
+        itemBuilder: (context, index) {
+          final voucher = state.vouchers[index];
+          return _VoucherCard(
+            voucher: voucher,
+            onTap: () => context.push(
+              '/vouchers/detail',
+              extra: {'routerId': _selectedRouterId!, 'voucherId': voucher.id},
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _capitalizeStatus(String status) {
+    if (status.isEmpty) return status;
+    return status[0].toUpperCase() + status.substring(1);
+  }
+}
+
+class _VoucherCard extends StatelessWidget {
+  final Voucher voucher;
+  final VoidCallback onTap;
+
+  const _VoucherCard({required this.voucher, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    voucher.username,
+                    style: AppTypography.title3.copyWith(
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+                _StatusBadge(status: voucher.status),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Row(
+              children: [
+                Icon(Icons.layers, size: 14, color: AppColors.textSecondary),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  voucher.profileName,
+                  style: AppTypography.footnote,
+                ),
+                const Spacer(),
+                Text(
+                  _formatDate(voucher.createdAt),
+                  style: AppTypography.caption1,
+                ),
+              ],
+            ),
+            if (voucher.comment != null && voucher.comment!.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                voucher.comment!,
+                style: AppTypography.caption1.copyWith(
+                  fontStyle: FontStyle.italic,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final String status;
+
+  const _StatusBadge({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: _statusColor(status).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+      ),
+      child: Text(
+        _capitalizeStatus(status),
+        style: AppTypography.caption1.copyWith(
+          color: _statusColor(status),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'active':
+        return AppColors.voucherActive;
+      case 'disabled':
+        return AppColors.voucherDisabled;
+      case 'expired':
+        return AppColors.voucherExpired;
+      case 'used':
+        return AppColors.voucherUsed;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  String _capitalizeStatus(String status) {
+    if (status.isEmpty) return status;
+    return status[0].toUpperCase() + status.substring(1);
+  }
+}

@@ -1,0 +1,110 @@
+#
+#  Wasel — Custom FreeRADIUS dictionary
+#
+#  Include the default FreeRADIUS dictionary first, then add
+#  vendor-specific attributes needed for Mikrotik routers.
+#
+
+#
+#  Include the base FreeRADIUS dictionary (ships with the installation)
+#
+$INCLUDE /usr/share/freeradius/dictionary
+
+#
+#  Mikrotik vendor-specific attributes (VSA)
+#
+#  Vendor ID: 14988 (IANA Private Enterprise Number for MikroTikls)
+#
+#  The official FreeRADIUS distribution includes a Mikrotik dictionary
+#  (/usr/share/freeradius/dictionary.mikrotik). If it is present, the
+#  $INCLUDE above will pull it in automatically.
+#
+#  The definitions below serve as a fallback in case the Mikrotik
+#  dictionary is missing or incomplete. If attributes are already
+#  defined, FreeRADIUS will use the first definition encountered.
+#
+
+#
+#  Only define the vendor and attributes if not already present.
+#  FreeRADIUS will warn (but not fail) on duplicate definitions.
+#
+
+VENDOR          Mikrotik        14988
+
+BEGIN-VENDOR    Mikrotik
+
+#
+#  Core Mikrotik RADIUS attributes used by Wasel
+#
+#  Mikrotik-Recv-Limit — download byte limit
+ATTRIBUTE       Mikrotik-Recv-Limit             1       integer
+#  Mikrotik-Xmit-Limit — upload byte limit
+ATTRIBUTE       Mikrotik-Xmit-Limit             2       integer
+#  Mikrotik-Group — hotspot user group
+ATTRIBUTE       Mikrotik-Group                  3       string
+#  Mikrotik-Wireless-Forward — allow forwarding between wireless clients
+ATTRIBUTE       Mikrotik-Wireless-Forward       4       integer
+#  Mikrotik-Wireless-Skip-Dot1x — bypass 802.1x
+ATTRIBUTE       Mikrotik-Wireless-Skip-Dot1x    5       integer
+#  Mikrotik-Wireless-Enc-Algo — encryption algorithm
+ATTRIBUTE       Mikrotik-Wireless-Enc-Algo      6       integer
+#  Mikrotik-Wireless-Enc-Key — encryption key
+ATTRIBUTE       Mikrotik-Wireless-Enc-Key       7       string
+
+#
+#  Mikrotik-Rate-Limit (attribute 8) — THE key attribute for Wasel
+#
+#  Format: "rx-rate[/tx-rate] [rx-burst-rate/tx-burst-rate] [rx-burst-threshold/tx-burst-threshold]
+#           [rx-burst-time/tx-burst-time] [priority] [rx-rate-min/tx-rate-min]"
+#
+#  Examples:
+#    "2M/1M"           — 2 Mbps download, 1 Mbps upload
+#    "5M/5M"           — 5 Mbps symmetric
+#    "10M/2M 15M/3M 8M/1M 10/10 8 256k/128k" — full burst config
+#
+ATTRIBUTE       Mikrotik-Rate-Limit             8       string
+
+#  Mikrotik-Realm — RADIUS realm
+ATTRIBUTE       Mikrotik-Realm                  9       string
+#  Mikrotik-Host-IP — host IP for hotspot
+ATTRIBUTE       Mikrotik-Host-IP                10      ipaddr
+#  Mikrotik-Mark-Id — firewall mangle mark
+ATTRIBUTE       Mikrotik-Mark-Id                11      string
+#  Mikrotik-Advertise-URL — hotspot advertisement URL
+ATTRIBUTE       Mikrotik-Advertise-URL          12      string
+#  Mikrotik-Advertise-Interval — ad display interval
+ATTRIBUTE       Mikrotik-Advertise-Interval     13      integer
+#  Mikrotik-Recv-Limit-Gigawords — high 32 bits of download limit
+ATTRIBUTE       Mikrotik-Recv-Limit-Gigawords   14      integer
+#  Mikrotik-Xmit-Limit-Gigawords — high 32 bits of upload limit
+ATTRIBUTE       Mikrotik-Xmit-Limit-Gigawords   15      integer
+#  Mikrotik-Wireless-PSK — per-client WPA PSK
+ATTRIBUTE       Mikrotik-Wireless-PSK           16      string
+#  Mikrotik-Total-Limit — combined byte limit
+ATTRIBUTE       Mikrotik-Total-Limit            17      integer
+#  Mikrotik-Total-Limit-Gigawords — high 32 bits of combined limit
+ATTRIBUTE       Mikrotik-Total-Limit-Gigawords  18      integer
+#  Mikrotik-Address-List — add client to address list
+ATTRIBUTE       Mikrotik-Address-List           19      string
+#  Mikrotik-Wireless-MPKey — multipoint key
+ATTRIBUTE       Mikrotik-Wireless-MPKey         20      string
+#  Mikrotik-Wireless-Comment — wireless comment
+ATTRIBUTE       Mikrotik-Wireless-Comment       21      string
+#  Mikrotik-Delegated-IPv6-Pool — DHCPv6 pool delegation
+ATTRIBUTE       Mikrotik-Delegated-IPv6-Pool    22      string
+#  Mikrotik-DHCP-Option-Set — DHCP option set
+ATTRIBUTE       Mikrotik-DHCP-Option-Set        23      string
+#  Mikrotik-DHCP-Option-Param-STR1 — DHCP option string param
+ATTRIBUTE       Mikrotik-DHCP-Option-Param-STR1 24      string
+#  Mikrotik-DHCP-Option-ParamSTR2
+ATTRIBUTE       Mikrotik-DHCP-Option-Param-STR2 25      string
+#  Mikrotik-Wireless-VLANID — VLAN ID for wireless
+ATTRIBUTE       Mikrotik-Wireless-VLANID        26      integer
+#  Mikrotik-Wireless-VLANIDtype — VLAN ID type
+ATTRIBUTE       Mikrotik-Wireless-VLANIDtype    27      integer
+#  Mikrotik-Wireless-Minsignal — minimum signal strength
+ATTRIBUTE       Mikrotik-Wireless-Minsignal     28      string
+#  Mikrotik-Wireless-Maxsignal — maximum signal strength
+ATTRIBUTE       Mikrotik-Wireless-Maxsignal     29      string
+
+END-VENDOR      Mikrotik

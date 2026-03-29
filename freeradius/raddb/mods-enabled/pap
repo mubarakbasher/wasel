@@ -1,0 +1,22 @@
+#
+#  PAP authentication module
+#
+#  This module authenticates PAP (Password Authentication Protocol) requests
+#  by comparing the User-Password attribute in the request against
+#  known-good passwords retrieved from the database (radcheck table).
+#
+#  Supported password formats:
+#    - Cleartext-Password  (used by Wasel vouchers)
+#    - NT-Password (MD4 hash)
+#    - MD5-Password
+#    - SHA-Password
+#    - SSHA-Password
+#    - Crypt-Password
+#
+pap {
+    #
+    #  By default, FreeRADIUS will normalize the passphrase given by
+    #  the user. Set this to "no" if you do not want normalization.
+    #
+    normalise = yes
+}

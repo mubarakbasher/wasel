@@ -1,0 +1,115 @@
+sql {
+    driver = "rlm_sql_postgresql"
+    dialect = "postgresql"
+
+    # Database connection settings
+    server = "postgres"
+    port = 5432
+    login = "wasel"
+    password = "changeme"
+    radius_db = "wasel"
+
+    # Read NAS clients from the 'nas' table dynamically
+    # This allows routers registered via the API to be recognized as RADIUS clients
+    read_clients = yes
+
+    # Use the standard FreeRADIUS PostgreSQL queries shipped with the distribution.
+    # Our migration (002_freeradius_tables.sql) creates the standard schema that
+    # these queries expect: radcheck, radreply, radusergroup, radgroupcheck,
+    # radgroupreply, radacct, radpostauth, nas.
+    $INCLUDE ${modconfdir}/sql/main/${dialect}/queries.conf
+
+    # Connection pool configuration
+    pool {
+        # Number of connections to start
+        start = 5
+
+        # Minimum number of connections to keep open
+        min = 4
+
+        # Maximum number of connections
+        max = 10
+
+        # Spare connections to maintain
+        spare = 3
+
+        # Number of uses before a connection is closed (0 = unlimited)
+        uses = 0
+
+        # Lifetime of a connection in seconds (0 = unlimited)
+        lifetime = 0
+
+        # Idle timeout in seconds — close connections idle longer than this
+        idle_timeout = 60
+    }
+
+    # Group membership query — maps username to groups via radusergroup
+    group_membership_query = "\
+        SELECT groupname \
+        FROM ${usergroup_table} \
+        WHERE username = '%{SQL-User-Name}' \
+        ORDER BY priority"
+
+    # Enable accounting on/off queries (for NAS reboots)
+    accounting {
+        type {
+            start {
+                query = "\
+                    INSERT INTO ${acct_table1} \
+                        (acctsessionid, acctuniqueid, username, realm, \
+                         nasipaddress, nasportid, nasporttype, \
+                         acctstarttime, acctupdatetime, \
+                         acctauthentic, connectinfo_start, \
+                         acctinputoctets, acctoutputoctets, \
+                         calledstationid, callingstationid, \
+                         servicetype, framedprotocol, \
+                         framedipaddress) \
+                    VALUES \
+                        ('%{Acct-Session-Id}', '%{Acct-Unique-Session-Id}', \
+                         '%{SQL-User-Name}', '%{Realm}', \
+                         '%{NAS-IP-Address}', '%{%{NAS-Port-ID}:-}', \
+                         '%{NAS-Port-Type}', \
+                         TO_TIMESTAMP(%{integer:Event-Timestamp}), \
+                         TO_TIMESTAMP(%{integer:Event-Timestamp}), \
+                         '%{Acct-Authentic}', '%{Connect-Info}', \
+                         0, 0, \
+                         '%{Called-Station-Id}', '%{Calling-Station-Id}', \
+                         '%{Service-Type}', '%{Framed-Protocol}', \
+                         '%{Framed-IP-Address}')"
+            }
+
+            interim-update {
+                query = "\
+                    UPDATE ${acct_table1} \
+                    SET \
+                        acctupdatetime = TO_TIMESTAMP(%{integer:Event-Timestamp}), \
+                        acctinterval = %{%{Acct-Delay-Time}:-0} + %{%{Acct-Session-Time}:-0} - \
+                            EXTRACT(EPOCH FROM (acctupdatetime - acctstarttime)), \
+                        framedipaddress = '%{Framed-IP-Address}', \
+                        acctsessiontime = %{%{Acct-Session-Time}:-0}, \
+                        acctinputoctets = '%{%{Acct-Input-Gigawords}:-0}'::BIGINT * 4294967296 + \
+                            '%{%{Acct-Input-Octets}:-0}'::BIGINT, \
+                        acctoutputoctets = '%{%{Acct-Output-Gigawords}:-0}'::BIGINT * 4294967296 + \
+                            '%{%{Acct-Output-Octets}:-0}'::BIGINT \
+                    WHERE acctuniqueid = '%{Acct-Unique-Session-Id}'"
+            }
+
+            stop {
+                query = "\
+                    UPDATE ${acct_table1} \
+                    SET \
+                        acctstoptime = TO_TIMESTAMP(%{integer:Event-Timestamp}), \
+                        acctupdatetime = TO_TIMESTAMP(%{integer:Event-Timestamp}), \
+                        acctsessiontime = %{%{Acct-Session-Time}:-0}, \
+                        acctinputoctets = '%{%{Acct-Input-Gigawords}:-0}'::BIGINT * 4294967296 + \
+                            '%{%{Acct-Input-Octets}:-0}'::BIGINT, \
+                        acctoutputoctets = '%{%{Acct-Output-Gigawords}:-0}'::BIGINT * 4294967296 + \
+                            '%{%{Acct-Output-Octets}:-0}'::BIGINT, \
+                        acctterminatecause = '%{Acct-Terminate-Cause}', \
+                        connectinfo_stop = '%{Connect-Info}', \
+                        framedipaddress = '%{Framed-IP-Address}' \
+                    WHERE acctuniqueid = '%{Acct-Unique-Session-Id}'"
+            }
+        }
+    }
+}

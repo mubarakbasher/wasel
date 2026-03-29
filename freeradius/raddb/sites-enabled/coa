@@ -1,0 +1,49 @@
+######################################################################
+#
+#   Wasel — CoA / Disconnect virtual server (RFC 5176)
+#
+#   Listens on port 3799 for Change-of-Authorization and
+#   Disconnect-Request packets sent by the VPS backend.
+#
+#   This allows the backend to:
+#     - Disconnect active sessions (e.g., when a voucher is disabled/deleted)
+#     - Change session attributes on-the-fly (e.g., bandwidth adjustment)
+#
+######################################################################
+
+server coa {
+
+    listen {
+        type = coa
+        ipaddr = *
+        port = 3799
+    }
+
+    #
+    #  Receive CoA-Request packets
+    #
+    recv-coa {
+        ok
+    }
+
+    #
+    #  Send CoA-ACK / CoA-NAK response
+    #
+    send-coa {
+        ok
+    }
+
+    #
+    #  Receive Disconnect-Request packets
+    #
+    recv-disconnect {
+        ok
+    }
+
+    #
+    #  Send Disconnect-ACK / Disconnect-NAK response
+    #
+    send-disconnect {
+        ok
+    }
+}

@@ -1,0 +1,76 @@
+import { vi } from 'vitest';
+
+// Set required env vars before config module loads
+process.env.NODE_ENV = 'test';
+process.env.JWT_ACCESS_SECRET = 'test-access-secret-that-is-long-enough';
+process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-that-is-long-enough';
+process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+process.env.WG_SERVER_PRIVATE_KEY = 'test-wg-private-key';
+process.env.WG_SERVER_PUBLIC_KEY = 'test-wg-public-key';
+process.env.WG_SERVER_ENDPOINT = '127.0.0.1:51820';
+process.env.DB_HOST = 'localhost';
+process.env.DB_PASSWORD = 'test';
+
+// Mock ioredis
+const redisStore = new Map<string, string>();
+
+vi.mock('ioredis', () => {
+  class MockRedis {
+    async set(key: string, value: string, _mode?: string, _ttl?: number) {
+      redisStore.set(key, value);
+      return 'OK';
+    }
+    async get(key: string) {
+      return redisStore.get(key) ?? null;
+    }
+    async del(...keys: string[]) {
+      let count = 0;
+      for (const key of keys) {
+        if (redisStore.delete(key)) count++;
+      }
+      return count;
+    }
+    async exists(key: string) {
+      return redisStore.has(key) ? 1 : 0;
+    }
+    async scan(_cursor: string, _match: string, pattern: string) {
+      const prefix = pattern.replace('*', '');
+      const keys = Array.from(redisStore.keys()).filter((k) => k.startsWith(prefix));
+      return ['0', keys];
+    }
+    async ping() { return 'PONG'; }
+    disconnect() {}
+    on() { return this; }
+  }
+  return { default: MockRedis };
+});
+
+// Mock pg
+const mockQuery = vi.fn();
+const mockClientQuery = vi.fn();
+
+vi.mock('pg', () => {
+  class Pool {
+    query = mockQuery;
+    async connect() {
+      return { query: mockClientQuery, release: vi.fn() };
+    }
+    on() {}
+  }
+  return { Pool };
+});
+
+// Expose mocks so tests can use them
+(globalThis as Record<string, unknown>).__mockPoolQuery = mockQuery;
+(globalThis as Record<string, unknown>).__mockClientQuery = mockClientQuery;
+
+// Mock nodemailer
+vi.mock('nodemailer', () => {
+  const sendMail = vi.fn().mockResolvedValue({ messageId: 'test-msg-id' });
+  return {
+    default: {
+      createTransport: vi.fn().mockReturnValue({ sendMail }),
+    },
+    createTransport: vi.fn().mockReturnValue({ sendMail }),
+  };
+});
