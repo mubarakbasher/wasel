@@ -17,6 +17,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
+COPY src/migrations/sql ./dist/migrations/sql
 
 EXPOSE 3000
 
