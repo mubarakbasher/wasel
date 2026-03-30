@@ -52,8 +52,8 @@ export async function refresh(req: Request, res: Response, next: NextFunction): 
 
 export async function verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { userId, otp } = req.body;
-    await authService.verifyEmail(userId, otp);
+    const { email, otp } = req.body;
+    await authService.verifyEmail(email, otp);
     res.status(200).json({
       success: true,
       data: { message: 'Email verified successfully' },

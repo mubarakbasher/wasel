@@ -40,7 +40,7 @@ export const resetPasswordSchema = z.object({
 });
 
 export const verifyEmailSchema = z.object({
-  userId: z.string().uuid('Invalid user ID'),
+  email: z.string().email('Invalid email address'),
   otp: z.string().length(6, 'OTP must be 6 digits'),
 });
 

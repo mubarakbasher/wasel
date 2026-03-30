@@ -170,7 +170,14 @@ export async function refresh(refreshTokenStr: string): Promise<AuthTokens> {
   return tokenService.issueTokenPair(user.id, user.email, user.name);
 }
 
-export async function verifyEmail(userId: string, otp: string): Promise<void> {
+export async function verifyEmail(email: string, otp: string): Promise<void> {
+  const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  if (userResult.rows.length === 0) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+
+  const userId = userResult.rows[0].id;
+
   const valid = await tokenService.validateVerificationOtp(userId, otp);
   if (!valid) {
     throw new AppError(400, 'Invalid or expired verification code', 'OTP_INVALID');
