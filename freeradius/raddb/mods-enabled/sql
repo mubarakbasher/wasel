@@ -2,11 +2,11 @@ sql {
     driver = "rlm_sql_postgresql"
     dialect = "postgresql"
 
-    server = "${env:RADIUS_DB_HOST:-postgres}"
+    server = "postgres"
     port = 5432
-    login = "${env:RADIUS_DB_USER:-wasel}"
-    password = "${env:RADIUS_DB_PASS:-changeme}"
-    radius_db = "${env:RADIUS_DB_NAME:-wasel}"
+    login = "wasel"
+    password = "53094ff06b673713c6392c1573f2ef2fc35fcb6563a55dd2d9eca5ee52e3ec8d"
+    radius_db = "wasel"
 
     # Table names
     acct_table1 = "radacct"
@@ -17,6 +17,9 @@ sql {
     authreply_table = "radreply"
     groupreply_table = "radgroupreply"
     usergroup_table = "radusergroup"
+
+    # Group attribute
+    group_attribute = "SQL-Group"
 
     # Read NAS clients from the 'nas' table
     read_clients = yes
