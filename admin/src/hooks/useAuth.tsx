@@ -15,8 +15,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(getStoredUser);
 
   const login = useCallback(async (email: string, password: string) => {
-    const { data } = await api.post('/auth/login', { email, password });
-    const { accessToken, refreshToken, user: userData } = data;
+    const { data: resp } = await api.post('/auth/login', { email, password });
+    const { accessToken, refreshToken, user: userData } = resp.data;
 
     if (userData.role !== 'admin') {
       throw new Error('Access denied. Admin privileges required.');
