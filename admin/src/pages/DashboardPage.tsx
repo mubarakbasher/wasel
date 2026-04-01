@@ -43,7 +43,7 @@ export default function DashboardPage() {
     <div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {isLoading
-          ? cards.map((card, i) => (
+          ? cards.map((_, i) => (
               <div
                 key={i}
                 className="bg-white rounded-lg border border-gray-200 p-5 animate-pulse"
