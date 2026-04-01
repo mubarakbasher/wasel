@@ -1,6 +1,9 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import * as voucherService from '../services/voucher.service';
+import { pool } from '../config/database';
+import { notifyBulkCreationComplete } from '../services/notification.service';
+import logger from '../config/logger';
 
 export async function createVoucher(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -16,7 +19,17 @@ export async function createVoucher(req: AuthenticatedRequest, res: Response, ne
 
 export async function createVouchersBulk(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const vouchers = await voucherService.createVouchersBulk(req.user!.id, req.params.id as string, req.body);
+    const routerId = req.params.id as string;
+    const vouchers = await voucherService.createVouchersBulk(req.user!.id, routerId, req.body);
+
+    // Fire-and-forget notification
+    pool.query('SELECT name FROM routers WHERE id = $1', [routerId])
+      .then(r => {
+        const routerName = r.rows[0]?.name || 'Unknown Router';
+        return notifyBulkCreationComplete(req.user!.id, vouchers.length, routerName);
+      })
+      .catch(err => logger.error('Failed to send bulk creation notification', { error: err }));
+
     res.status(201).json({
       success: true,
       data: vouchers,

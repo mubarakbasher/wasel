@@ -21,6 +21,7 @@ interface UserRow {
   failed_login_attempts: number;
   locked_until: Date | null;
   created_at: Date;
+  role: string;
 }
 
 interface RegisterInput {
@@ -37,12 +38,12 @@ interface AuthTokens {
 }
 
 interface RegisterResult {
-  user: { id: string; name: string; email: string };
+  user: { id: string; name: string; email: string; role: string };
   tokens: AuthTokens;
 }
 
 interface LoginResult {
-  user: { id: string; name: string; email: string };
+  user: { id: string; name: string; email: string; role: string };
   tokens: AuthTokens;
 }
 
@@ -66,16 +67,16 @@ export async function register(input: RegisterInput): Promise<RegisterResult> {
   const otp = await tokenService.createVerificationOtp(user.id);
   await emailService.sendVerificationOtp(user.email, user.name, otp);
 
-  const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name);
+  const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name, 'user');
 
   logger.info('User registered', { userId: user.id, email: user.email });
-  return { user, tokens };
+  return { user: { id: user.id, name: user.name, email: user.email, role: 'user' }, tokens };
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {
   const result = await pool.query(
     `SELECT id, name, email, password_hash, is_verified, is_active,
-            failed_login_attempts, locked_until
+            failed_login_attempts, locked_until, role
      FROM users WHERE email = $1`,
     [email],
   );
@@ -135,10 +136,10 @@ export async function login(email: string, password: string): Promise<LoginResul
     );
   }
 
-  const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name);
+  const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name, user.role);
 
   logger.info('User logged in', { userId: user.id });
-  return { user: { id: user.id, name: user.name, email: user.email }, tokens };
+  return { user: { id: user.id, name: user.name, email: user.email, role: user.role }, tokens };
 }
 
 export async function refresh(refreshTokenStr: string): Promise<AuthTokens> {
@@ -158,7 +159,7 @@ export async function refresh(refreshTokenStr: string): Promise<AuthTokens> {
   await tokenService.revokeRefreshToken(payload.userId, payload.jti);
 
   const result = await pool.query(
-    'SELECT id, name, email FROM users WHERE id = $1 AND is_active = TRUE',
+    'SELECT id, name, email, role FROM users WHERE id = $1 AND is_active = TRUE',
     [payload.userId],
   );
 
@@ -167,7 +168,7 @@ export async function refresh(refreshTokenStr: string): Promise<AuthTokens> {
   }
 
   const user = result.rows[0];
-  return tokenService.issueTokenPair(user.id, user.email, user.name);
+  return tokenService.issueTokenPair(user.id, user.email, user.name, user.role);
 }
 
 export async function verifyEmail(email: string, otp: string): Promise<void> {

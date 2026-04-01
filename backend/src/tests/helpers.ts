@@ -8,12 +8,14 @@ export const TEST_USER = {
   userId: '550e8400-e29b-41d4-a716-446655440000',
   email: 'test@example.com',
   name: 'Test User',
+  role: 'user',
 };
 
 export const TEST_USER_2 = {
   userId: '660e8400-e29b-41d4-a716-446655440000',
   email: 'other@example.com',
   name: 'Other User',
+  role: 'user',
 };
 
 // ---------------------------------------------------------------------------
@@ -25,8 +27,8 @@ export function authHeader(): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
-export function authHeaderFor(user: { userId: string; email: string; name: string }): Record<string, string> {
-  const token = generateAccessToken(user);
+export function authHeaderFor(user: { userId: string; email: string; name: string; role?: string }): Record<string, string> {
+  const token = generateAccessToken({ ...user, role: user.role || 'user' });
   return { Authorization: `Bearer ${token}` };
 }
 

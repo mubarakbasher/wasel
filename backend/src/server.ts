@@ -4,6 +4,9 @@ import logger from './config/logger';
 import { testDbConnection } from './config/database';
 import { redis } from './config/redis';
 import { startPurgeUnverifiedJob } from './jobs/purgeUnverified';
+import { startSubscriptionNotificationJob } from './jobs/subscriptionNotifications';
+import { startQuotaMonitorJob } from './jobs/quotaMonitor';
+import { startMonitoring } from './services/wireguardMonitor';
 
 async function startServer(): Promise<void> {
   try {
@@ -16,6 +19,9 @@ async function startServer(): Promise<void> {
 
     // Start background jobs
     startPurgeUnverifiedJob();
+    startSubscriptionNotificationJob();
+    startQuotaMonitorJob();
+    startMonitoring();
 
     // Start HTTP server
     app.listen(config.PORT, () => {

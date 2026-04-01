@@ -18,6 +18,7 @@ export function authenticate(req: AuthenticatedRequest, _res: Response, next: Ne
       id: payload.userId,
       email: payload.email,
       name: payload.name,
+      role: payload.role,
     };
     next();
   } catch {

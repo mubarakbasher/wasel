@@ -16,6 +16,7 @@ export interface AccessTokenPayload {
   userId: string;
   email: string;
   name: string;
+  role: string;
 }
 
 export interface RefreshTokenPayload {
@@ -76,8 +77,9 @@ export async function issueTokenPair(
   userId: string,
   email: string,
   name: string,
+  role: string,
 ): Promise<{ accessToken: string; refreshToken: string }> {
-  const accessToken = generateAccessToken({ userId, email, name });
+  const accessToken = generateAccessToken({ userId, email, name, role });
   const { token: refreshToken, jti } = generateRefreshToken(userId);
   await storeRefreshToken(userId, jti);
   return { accessToken, refreshToken };

@@ -279,6 +279,7 @@ describe('Token Service', () => {
       userId: 'test-id',
       email: 'test@example.com',
       name: 'Test User',
+      role: 'user',
     });
 
     expect(token).toBeDefined();
