@@ -8,13 +8,13 @@ import StatusBadge from '../components/StatusBadge';
 interface Router {
   id: string;
   name: string;
-  model: string;
-  ownerName: string;
-  ownerEmail: string;
+  owner_name: string;
+  owner_email: string;
   status: string;
-  lastSeen: string;
-  tunnelIp: string;
-  createdAt: string;
+  last_seen: string;
+  tunnel_ip: string;
+  created_at: string;
+  [key: string]: unknown;
 }
 
 const STATUS_OPTIONS = ['all', 'online', 'offline', 'degraded'] as const;
@@ -54,8 +54,8 @@ export default function RoutersPage() {
       const params: Record<string, string | number> = { page, limit: 20 };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (debouncedSearch) params.search = debouncedSearch;
-      const res = await api.get('/admin/routers', { params });
-      return res.data;
+      const { data: res } = await api.get('/admin/routers', { params });
+      return res;
     },
   });
 
@@ -68,14 +68,13 @@ export default function RoutersPage() {
       header: 'Name',
       render: (row) => <span className="font-medium text-gray-900">{row.name}</span>,
     },
-    { key: 'model', header: 'Model' },
     {
-      key: 'ownerName',
+      key: 'owner_name',
       header: 'Owner',
       render: (row) => (
         <div>
-          <div className="font-medium text-gray-900">{row.ownerName}</div>
-          <div className="text-xs text-gray-500">{row.ownerEmail}</div>
+          <div className="font-medium text-gray-900">{row.owner_name}</div>
+          <div className="text-xs text-gray-500">{row.owner_email}</div>
         </div>
       ),
     },
@@ -98,26 +97,26 @@ export default function RoutersPage() {
       ),
     },
     {
-      key: 'lastSeen',
+      key: 'last_seen',
       header: 'Last Seen',
       render: (row) =>
-        row.lastSeen ? (
-          <span title={new Date(row.lastSeen).toLocaleString()}>{relativeTime(row.lastSeen)}</span>
+        row.last_seen ? (
+          <span title={new Date(row.last_seen).toLocaleString()}>{relativeTime(row.last_seen)}</span>
         ) : (
           <span className="text-gray-400">-</span>
         ),
     },
     {
-      key: 'tunnelIp',
+      key: 'tunnel_ip',
       header: 'Tunnel IP',
       render: (row) => (
-        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{row.tunnelIp || '-'}</code>
+        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{row.tunnel_ip || '-'}</code>
       ),
     },
     {
-      key: 'createdAt',
+      key: 'created_at',
       header: 'Created',
-      render: (row) => new Date(row.createdAt).toLocaleString(),
+      render: (row) => new Date(row.created_at).toLocaleString(),
     },
   ];
 

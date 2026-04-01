@@ -6,14 +6,15 @@ import DataTable, { type Column } from '../components/DataTable';
 
 interface AuditLog {
   id: string;
-  timestamp: string;
-  adminName: string;
-  adminEmail: string;
+  created_at: string;
+  admin_name: string;
+  admin_email: string;
   action: string;
-  targetEntity: string;
-  targetId: string;
+  target_entity: string;
+  target_id: string;
   details: unknown;
-  ipAddress: string;
+  ip_address: string;
+  [key: string]: unknown;
 }
 
 const ENTITY_OPTIONS = ['all', 'user', 'subscription', 'payment'] as const;
@@ -44,8 +45,8 @@ export default function AuditLogsPage() {
       if (targetEntity !== 'all') params.targetEntity = targetEntity;
       if (fromDate) params.from = fromDate;
       if (toDate) params.to = toDate;
-      const res = await api.get('/admin/audit-logs', { params });
-      return res.data;
+      const { data: res } = await api.get('/admin/audit-logs', { params });
+      return res;
     },
   });
 
@@ -67,19 +68,19 @@ export default function AuditLogsPage() {
 
   const columns: Column<AuditLog>[] = [
     {
-      key: 'timestamp',
+      key: 'created_at',
       header: 'Timestamp',
       render: (row) => (
-        <span className="whitespace-nowrap">{new Date(row.timestamp).toLocaleString()}</span>
+        <span className="whitespace-nowrap">{new Date(row.created_at).toLocaleString()}</span>
       ),
     },
     {
-      key: 'adminName',
+      key: 'admin_name',
       header: 'Admin',
       render: (row) => (
         <div>
-          <div className="font-medium text-gray-900">{row.adminName}</div>
-          <div className="text-xs text-gray-500">{row.adminEmail}</div>
+          <div className="font-medium text-gray-900">{row.admin_name}</div>
+          <div className="text-xs text-gray-500">{row.admin_email}</div>
         </div>
       ),
     },
@@ -91,15 +92,15 @@ export default function AuditLogsPage() {
       ),
     },
     {
-      key: 'targetEntity',
+      key: 'target_entity',
       header: 'Target',
-      render: (row) => <span className="capitalize">{row.targetEntity}</span>,
+      render: (row) => <span className="capitalize">{row.target_entity}</span>,
     },
     {
-      key: 'targetId',
+      key: 'target_id',
       header: 'Target ID',
       render: (row) => (
-        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{row.targetId || '-'}</code>
+        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{row.target_id || '-'}</code>
       ),
     },
     {
@@ -135,7 +136,7 @@ export default function AuditLogsPage() {
         );
       },
     },
-    { key: 'ipAddress', header: 'IP Address' },
+    { key: 'ip_address', header: 'IP Address' },
   ];
 
   return (

@@ -591,7 +591,7 @@ export async function getAuditLogs(
 
   const [dataResult, countResult] = await Promise.all([
     pool.query(
-      `SELECT al.*, u.name AS admin_name
+      `SELECT al.*, u.name AS admin_name, u.email AS admin_email
        FROM audit_logs al
        LEFT JOIN users u ON al.admin_id = u.id
        ${whereClause}

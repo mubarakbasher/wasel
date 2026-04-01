@@ -9,7 +9,7 @@ interface Subscription {
   id: string;
   user_name: string;
   user_email: string;
-  plan: string;
+  plan_tier: string;
   status: string;
   start_date: string;
   end_date: string;
@@ -92,10 +92,10 @@ export default function SubscriptionsPage() {
       key: 'plan',
       header: 'Plan',
       render: (row) => {
-        const style = planStyles[row.plan?.toLowerCase()] ?? 'bg-slate-100 text-slate-700';
+        const style = planStyles[row.plan_tier?.toLowerCase()] ?? 'bg-slate-100 text-slate-700';
         return (
           <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${style}`}>
-            {row.plan}
+            {row.plan_tier}
           </span>
         );
       },
@@ -205,7 +205,7 @@ export default function SubscriptionsPage() {
             <p className="text-sm text-slate-600 mb-6">
               {confirmAction.type === 'activate' && (
                 <>
-                  Activate the <span className="font-medium">{confirmAction.subscription.plan}</span> subscription for{' '}
+                  Activate the <span className="font-medium">{confirmAction.subscription.plan_tier}</span> subscription for{' '}
                   <span className="font-medium">{confirmAction.subscription.user_name}</span>?
                 </>
               )}

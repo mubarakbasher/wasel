@@ -7,15 +7,16 @@ import StatusBadge from '../components/StatusBadge';
 
 interface Payment {
   id: string;
-  userName: string;
-  userEmail: string;
-  plan: string;
+  user_name: string;
+  user_email: string;
+  plan_tier: string;
   amount: number;
   currency: string;
-  referenceCode: string;
-  receiptUrl: string;
+  reference_code: string;
+  receipt_url: string;
   status: string;
-  createdAt: string;
+  created_at: string;
+  [key: string]: unknown;
 }
 
 const STATUS_TABS = ['pending', 'approved', 'rejected', 'all'] as const;
@@ -35,8 +36,8 @@ export default function PaymentsPage() {
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 20 };
       if (statusFilter !== 'all') params.status = statusFilter;
-      const res = await api.get('/admin/payments', { params });
-      return res.data;
+      const { data: res } = await api.get('/admin/payments', { params });
+      return res;
     },
   });
 
@@ -61,21 +62,21 @@ export default function PaymentsPage() {
 
   const columns: Column<Payment>[] = [
     {
-      key: 'userName',
+      key: 'user_name',
       header: 'User',
       render: (row) => (
         <div>
-          <div className="font-medium text-gray-900">{row.userName}</div>
-          <div className="text-xs text-gray-500">{row.userEmail}</div>
+          <div className="font-medium text-gray-900">{row.user_name}</div>
+          <div className="text-xs text-gray-500">{row.user_email}</div>
         </div>
       ),
     },
     {
-      key: 'plan',
+      key: 'plan_tier',
       header: 'Plan',
       render: (row) => (
         <span className="inline-block px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-medium capitalize">
-          {row.plan}
+          {row.plan_tier}
         </span>
       ),
     },
@@ -88,14 +89,14 @@ export default function PaymentsPage() {
         </span>
       ),
     },
-    { key: 'referenceCode', header: 'Reference Code' },
+    { key: 'reference_code', header: 'Reference Code' },
     {
-      key: 'receiptUrl',
+      key: 'receipt_url',
       header: 'Receipt',
       render: (row) =>
-        row.receiptUrl ? (
+        row.receipt_url ? (
           <a
-            href={row.receiptUrl}
+            href={row.receipt_url}
             target="_blank"
             rel="noopener noreferrer"
             className="text-indigo-600 hover:text-indigo-800 underline text-sm"
@@ -112,9 +113,9 @@ export default function PaymentsPage() {
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
-      key: 'createdAt',
+      key: 'created_at',
       header: 'Date',
-      render: (row) => new Date(row.createdAt).toLocaleString(),
+      render: (row) => new Date(row.created_at).toLocaleString(),
     },
     {
       key: 'actions',
