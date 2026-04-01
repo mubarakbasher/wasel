@@ -60,6 +60,28 @@ class SecureStorageService {
 
   Future<void> clearUserData() => _storage.delete(key: _userDataKey);
 
+  // --- Locale ---
+
+  static const _localeKey = 'wasel_locale';
+
+  Future<String?> getLocale() => _storage.read(key: _localeKey);
+
+  Future<void> setLocale(String languageCode) =>
+      _storage.write(key: _localeKey, value: languageCode);
+
+  Future<void> deleteLocale() => _storage.delete(key: _localeKey);
+
+  // --- FCM Token ---
+
+  static const _fcmTokenKey = 'wasel_fcm_token';
+
+  Future<String?> getFcmToken() => _storage.read(key: _fcmTokenKey);
+
+  Future<void> setFcmToken(String token) =>
+      _storage.write(key: _fcmTokenKey, value: token);
+
+  Future<void> deleteFcmToken() => _storage.delete(key: _fcmTokenKey);
+
   // --- Clear Everything ---
 
   Future<void> clearAll() => _storage.deleteAll();

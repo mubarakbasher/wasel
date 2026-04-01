@@ -253,92 +253,103 @@ Each task is marked with a status: `[ ]` todo, `[~]` in progress, `[x]` done.
 
 ### Epic 10: Advanced Reports & Export
 
-- [ ] `GET /reports/vouchers` — voucher sales report: created, used, expired, remaining by date range
-- [ ] `GET /reports/sessions` — session report: total sessions, avg duration, total data consumed
-- [ ] `GET /reports/revenue` — revenue estimate based on operator-set voucher pricing
-- [ ] `GET /reports/uptime` — router uptime history, average uptime percentage
-- [ ] PDF generation for reports
-- [ ] CSV export for reports
-- [ ] Mobile app: Reports screen with date range picker, report type selector, export buttons
-- [ ] Gate reports behind Professional/Enterprise tier subscription check
+- [x] `GET /reports?type=voucher-sales` — voucher sales report: created, used, expired, remaining by date range
+- [x] `GET /reports?type=sessions` — session report: total sessions, avg duration, total data consumed
+- [x] `GET /reports?type=revenue` — revenue estimate based on voucher counts per profile
+- [x] `GET /reports?type=router-uptime` — router uptime history, average uptime percentage
+- [ ] PDF generation for reports (returns 501 placeholder)
+- [x] CSV export for reports (`GET /reports/export?format=csv`)
+- [x] Mobile app: Reports screen with date range picker, report type selector, summary cards, daily breakdowns, export button
+- [x] Mobile app: Export screen with monospace CSV viewer, copy to clipboard, share via share sheet
+- [x] Gate reports behind Professional/Enterprise tier subscription check
 
 ---
 
 ### Epic 11: Push Notifications
 
-- [ ] Integrate FCM (Android) and APNs (iOS) in mobile app
-- [ ] Backend notification service: send push via FCM/APNs
-- [ ] Trigger: Subscription expiring (7, 3, 1 day before)
-- [ ] Trigger: Subscription expired
-- [ ] Trigger: Payment confirmed (admin activates subscription)
-- [ ] Trigger: Router offline (after 3-min grace) / Router back online
-- [ ] Trigger: Voucher quota low (below 10%)
-- [ ] Trigger: Bulk creation complete
-- [ ] Mobile app: Notification preferences screen (enable/disable per category)
-- [ ] Store FCM/APNs device tokens on backend, handle token refresh
+- [x] Database migration: device_tokens + notification_preferences tables (005_device_tokens.sql)
+- [x] Backend device token service: register/unregister/query tokens (deviceToken.service.ts)
+- [x] Backend notification preferences service: get/update/check per-category prefs (notificationPrefs.service.ts)
+- [x] Backend notification API endpoints: POST/DELETE /notifications/device-token, GET/PUT /notifications/preferences
+- [x] Backend notification service rewritten with FCM (firebase-admin): graceful no-op when credentials missing, preference checks, 24h dedup via Redis, stale token cleanup
+- [x] Trigger: Subscription expiring (7, 3, 1 day before) — daily cron job at 09:00 UTC
+- [x] Trigger: Subscription expired — daily cron job
+- [x] Trigger: Payment confirmed — notifyPaymentConfirmed() ready for admin approval flow
+- [x] Trigger: Router offline (after 3-min grace) / Router back online — wireguard monitor now started in server.ts
+- [x] Trigger: Voucher quota low (>=90%) — cron job every 6 hours
+- [x] Trigger: Bulk creation complete — fire-and-forget in voucher.controller.ts
+- [x] Mobile: Firebase Messaging setup with graceful fallback (push_notification_service.dart)
+- [x] Mobile: Token registration on app start, unregistration on logout
+- [x] Mobile: Notification preferences screen with grouped SwitchListTiles (7 categories)
+- [x] Mobile: Settings screen links to notification preferences
+- [x] Store FCM device tokens on backend, handle token refresh via onTokenRefresh listener
 
 ---
 
 ### Epic 12: Bulk Voucher Printing
 
-- [ ] Design thermal receipt printer voucher card layout (58mm/80mm width)
-- [ ] Design A4 multi-voucher layout (8-12 vouchers per page)
-- [ ] Generate printable PDF from voucher list
-- [ ] Mobile app: Select multiple vouchers → Print action
-- [ ] Mobile app: Connect to Bluetooth/USB thermal printer (if applicable)
+- [x] Design thermal receipt printer voucher card layout (58mm width, stacked vertically)
+- [x] Design A4 multi-voucher layout (2x4 grid, 8 vouchers per page)
+- [x] Generate printable PDF from voucher list (PrintService with generateThermalPdf + generateA4Pdf)
+- [x] Mobile app: Select multiple vouchers → Print action (long-press multi-select on voucher list, select all, print button)
+- [x] Mobile app: Print preview screen with layout picker (thermal/A4), live PDF preview, native print + share via `printing` package
+- [ ] Mobile app: Connect to Bluetooth/USB thermal printer (if applicable) — deferred, uses native OS print dialog
 
 ---
 
 ### Epic 13: Multi-Language Support
 
-- [ ] Extract all hardcoded strings to i18n resource files (should already be done from MVP setup)
-- [ ] Translate all strings to French
-- [ ] Translate all strings to Portuguese
-- [ ] Translate all strings to Swahili
-- [ ] Translate all strings to Arabic (including RTL layout support)
-- [ ] Mobile app: Language selector in Settings
-- [ ] Backend: Accept `Accept-Language` header, return localized error messages
+- [x] All ~230 strings externalized in app_localizations.dart (done in MVP)
+- [x] Arabic translation (العربية) — all strings translated
+- [x] Locale provider with persistence via secure storage
+- [x] Language selector in Settings (bottom sheet with System Default / English / Arabic)
+- [x] App rebuilds with selected locale (wired in app.dart via localeProvider)
+- [x] supportedLocales updated: en, ar
+- [ ] French translation — deferred
+- [ ] Portuguese translation — deferred
+- [ ] Swahili translation — deferred
+- [ ] Backend: Accept `Accept-Language` header, return localized error messages — deferred
 
 ---
 
 ### Epic 14: Admin Web Panel
 
 #### 14.1 Admin Backend APIs
-- [ ] Admin authentication (separate admin JWT or role-based)
-- [ ] `GET /admin/users` — list, search, paginate all users
-- [ ] `PUT /admin/users/:id` — edit, suspend, unsuspend user
-- [ ] `DELETE /admin/users/:id` — delete user account
-- [ ] `GET /admin/subscriptions` — list all subscriptions with status
-- [ ] `PUT /admin/subscriptions/:id` — activate, extend, downgrade, cancel subscription
-- [ ] `GET /admin/payments` — queue of pending payment receipts
-- [ ] `PUT /admin/payments/:id` — approve or reject payment, activate subscription on approval
-- [ ] `GET /admin/stats` — platform statistics (total users, active subs, total routers, total vouchers, system health)
-- [ ] `GET /admin/routers` — all routers across all users with status
-- [ ] `GET /admin/audit-logs` — timestamped admin action logs with filters
-- [ ] Write to audit_logs on every admin mutation
+- [x] Admin authentication — role-based via `role` column on users table (migration 006), `requireAdmin` middleware, role threaded through JWT
+- [x] `GET /admin/users` — list, search, paginate all users
+- [x] `PUT /admin/users/:id` — edit, suspend, unsuspend user (with admin protection)
+- [x] `DELETE /admin/users/:id` — delete user account (admin-protected)
+- [x] `GET /admin/subscriptions` — list all subscriptions with status
+- [x] `PUT /admin/subscriptions/:id` — activate, extend, downgrade, cancel subscription
+- [x] `GET /admin/payments` — queue of pending payment receipts
+- [x] `PUT /admin/payments/:id` — approve or reject payment, activate subscription on approval + push notification
+- [x] `GET /admin/stats` — platform statistics (users, subs by status, pending payments, revenue, routers by status, vouchers)
+- [x] `GET /admin/routers` — all routers across all users with status + owner info
+- [x] `GET /admin/audit-logs` — timestamped admin action logs with filters (admin, action, entity, date range)
+- [x] Write to audit_logs on every admin mutation (via audit.service.ts)
 
-#### 14.2 Admin Web Frontend
-- [ ] Initialize web project (React/Next.js or similar)
-- [ ] Admin login page
-- [ ] Dashboard page: platform statistics cards, charts
-- [ ] Users page: table with search, status filters, suspend/edit/delete actions
-- [ ] Subscriptions page: table with activate/extend/cancel actions
-- [ ] Payment verification page: queue of pending receipts with approve/reject
-- [ ] Routers page: all routers with status, owner, last seen
-- [ ] Audit logs page: filterable log table
-- [ ] Responsive layout for desktop browsers
+#### 14.2 Admin Web Frontend (React + Vite + Tailwind CSS)
+- [x] Initialize project (React + Vite + TypeScript + Tailwind CSS v4)
+- [x] Admin login page (checks role=admin, rejects non-admins)
+- [x] Dashboard page: StatCard grid (users, subs, payments, revenue, routers, vouchers)
+- [x] Users page: DataTable with search, status filter, edit/suspend/delete actions with modals
+- [x] Subscriptions page: DataTable with status filter, activate/extend/cancel actions
+- [x] Payment verification page: status tabs (pending default), approve/reject with confirm dialogs
+- [x] Routers page: DataTable with status/search filters, read-only with owner info
+- [x] Audit logs page: filterable DataTable (action, entity, date range) with expandable JSON details
+- [x] Responsive sidebar layout with lucide-react icons
 
 ---
 
 ### Epic 15: Professional & Enterprise Tiers
 
-- [ ] Update subscription plans with Professional ($12/mo) and Enterprise ($25/mo) options
-- [ ] Enforce tier-specific router limits (1 / 3 / 10)
-- [ ] Enforce tier-specific voucher quotas (500 / 2,000 / Unlimited)
-- [ ] Enforce tier-specific feature access (session history, reports, export)
-- [ ] Support multi-month subscription durations (Pro: 1-2 months, Enterprise: 1, 2, 6 months)
-- [ ] Mobile app: Updated plan selection screen with all three tiers
-- [ ] Mobile app: Upgrade/downgrade flow
+- [x] Update subscription plans with Professional ($12/mo) and Enterprise ($25/mo) options
+- [x] Enforce tier-specific router limits (1 / 3 / 10)
+- [x] Enforce tier-specific voucher quotas (500 / 2,000 / Unlimited)
+- [x] Enforce tier-specific feature access (session history, reports, export)
+- [x] Support multi-month subscription durations (Pro: 1-2 months, Enterprise: 1, 2, 6 months)
+- [x] Mobile app: Updated plan selection screen with all three tiers
+- [x] Mobile app: Upgrade/downgrade flow
 
 ---
 

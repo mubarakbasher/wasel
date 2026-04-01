@@ -28,12 +28,12 @@ export const subscriptionIdParamSchema = z.object({
 
 export const listSubscriptionsQuerySchema = z.object({
   ...paginationSchema,
-  status: z.enum(['pending', 'active', 'expired', 'cancelled']).optional(),
+  status: z.enum(['pending', 'active', 'expired', 'cancelled', 'pending_change']).optional(),
   userId: z.string().uuid().optional(),
 });
 
 export const updateSubscriptionBodySchema = z.object({
-  status: z.enum(['pending', 'active', 'expired', 'cancelled']).optional(),
+  status: z.enum(['pending', 'active', 'expired', 'cancelled', 'pending_change']).optional(),
   plan_tier: z.enum(['starter', 'professional', 'enterprise']).optional(),
   end_date: z.string().datetime().optional(),
   voucher_quota: z.coerce.number().int().min(0).optional(),

@@ -1,35 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import { AppError } from '../middleware/errorHandler';
-import { pool } from '../config/database';
 import * as reportService from '../services/report.service';
-
-/**
- * Check that the user has a Professional or Enterprise subscription.
- * Reports are not available for Starter tier.
- */
-async function requireReportAccess(userId: string): Promise<void> {
-  const result = await pool.query(
-    `SELECT plan_tier, status FROM subscriptions
-     WHERE user_id = $1 AND status IN ('active', 'expired')
-     ORDER BY end_date DESC LIMIT 1`,
-    [userId]
-  );
-
-  if (result.rows.length === 0) {
-    throw new AppError(403, 'Active subscription required to access reports', 'SUBSCRIPTION_REQUIRED');
-  }
-
-  const { plan_tier, status } = result.rows[0];
-
-  if (status !== 'active') {
-    throw new AppError(403, 'Active subscription required to access reports', 'SUBSCRIPTION_INACTIVE');
-  }
-
-  if (plan_tier === 'starter') {
-    throw new AppError(403, 'Reports are available for Professional and Enterprise plans only', 'TIER_INSUFFICIENT');
-  }
-}
 
 /**
  * GET /reports
@@ -40,7 +12,6 @@ async function requireReportAccess(userId: string): Promise<void> {
 export async function getReport(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.id;
-    await requireReportAccess(userId);
 
     const { type, startDate, endDate, routerId } = req.query as {
       type: reportService.ReportType;
@@ -70,7 +41,6 @@ export async function getReport(req: AuthenticatedRequest, res: Response, next: 
 export async function exportReport(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.id;
-    await requireReportAccess(userId);
 
     const { type, startDate, endDate, routerId, format } = req.query as {
       type: reportService.ReportType;

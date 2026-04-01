@@ -16,11 +16,16 @@ class PlansScreen extends ConsumerStatefulWidget {
 }
 
 class _PlansScreenState extends ConsumerState<PlansScreen> {
+  final Map<String, int> _selectedDurations = {};
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() => ref.read(subscriptionProvider.notifier).loadPlans());
   }
+
+  int _getDuration(Plan plan) =>
+      _selectedDurations[plan.tier] ?? plan.allowedDurations.first;
 
   @override
   Widget build(BuildContext context) {
@@ -40,11 +45,19 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
                     final isCurrentPlan =
                         state.subscription?.planTier == plan.tier &&
                             state.subscription?.isActive == true;
+                    final hasPendingChange = state.pendingChange != null;
                     return _PlanCard(
                       plan: plan,
                       isCurrentPlan: isCurrentPlan,
                       isLoading: state.isLoading,
-                      onSelect: isCurrentPlan
+                      hasPendingChange: hasPendingChange,
+                      selectedDuration: _getDuration(plan),
+                      onDurationChanged: (duration) {
+                        setState(() {
+                          _selectedDurations[plan.tier] = duration;
+                        });
+                      },
+                      onSelect: isCurrentPlan || hasPendingChange
                           ? null
                           : () => _handleSelectPlan(plan),
                     );
@@ -76,12 +89,27 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
   }
 
   Future<void> _handleSelectPlan(Plan plan) async {
+    final state = ref.read(subscriptionProvider);
+    final hasActiveSub = state.subscription?.isActive == true;
+    final duration = _getDuration(plan);
+    final totalPrice = plan.totalPriceLabel(duration);
+    final durationLabel = duration == 1 ? '1 month' : '$duration months';
+
+    // Determine if this is an upgrade or downgrade
+    String action = 'Subscribe to';
+    if (hasActiveSub) {
+      final tierOrder = ['starter', 'professional', 'enterprise'];
+      final currentIndex = tierOrder.indexOf(state.subscription!.planTier);
+      final newIndex = tierOrder.indexOf(plan.tier);
+      action = newIndex > currentIndex ? 'Upgrade to' : 'Downgrade to';
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Subscribe to ${plan.name}'),
+        title: Text('$action ${plan.name}'),
         content: Text(
-          'You are requesting the ${plan.name} plan at ${plan.priceLabel}/month. '
+          'You are requesting the ${plan.name} plan for $durationLabel at $totalPrice. '
           'After confirmation, you will receive payment instructions.',
         ),
         actions: [
@@ -99,8 +127,20 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    final success =
-        await ref.read(subscriptionProvider.notifier).requestSubscription(plan.tier);
+    final notifier = ref.read(subscriptionProvider.notifier);
+    final bool success;
+
+    if (hasActiveSub) {
+      success = await notifier.changeSubscription(
+        plan.tier,
+        durationMonths: duration,
+      );
+    } else {
+      success = await notifier.requestSubscription(
+        plan.tier,
+        durationMonths: duration,
+      );
+    }
 
     if (success && mounted) {
       context.push('/subscription/payment');
@@ -112,12 +152,18 @@ class _PlanCard extends StatelessWidget {
   final Plan plan;
   final bool isCurrentPlan;
   final bool isLoading;
+  final bool hasPendingChange;
+  final int selectedDuration;
+  final ValueChanged<int> onDurationChanged;
   final VoidCallback? onSelect;
 
   const _PlanCard({
     required this.plan,
     required this.isCurrentPlan,
     required this.isLoading,
+    required this.hasPendingChange,
+    required this.selectedDuration,
+    required this.onDurationChanged,
     this.onSelect,
   });
 
@@ -193,7 +239,7 @@ class _PlanCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      plan.priceLabel,
+                      plan.totalPriceLabel(selectedDuration),
                       style: AppTypography.largeTitle.copyWith(
                         color: AppColors.primary,
                       ),
@@ -202,12 +248,34 @@ class _PlanCard extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text(
-                        '/month',
+                        selectedDuration == 1
+                            ? '/month'
+                            : '/$selectedDuration months',
                         style: AppTypography.footnote,
                       ),
                     ),
                   ],
                 ),
+                if (plan.hasMultipleDurations) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  SegmentedButton<int>(
+                    segments: plan.allowedDurations
+                        .map((d) => ButtonSegment<int>(
+                              value: d,
+                              label: Text('$d mo'),
+                            ))
+                        .toList(),
+                    selected: {selectedDuration},
+                    onSelectionChanged: (selected) {
+                      onDurationChanged(selected.first);
+                    },
+                    style: SegmentedButton.styleFrom(
+                      selectedBackgroundColor:
+                          AppColors.primary.withValues(alpha: 0.12),
+                      selectedForegroundColor: AppColors.primary,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.lg),
                 const Divider(height: 1),
                 const SizedBox(height: AppSpacing.lg),
@@ -235,7 +303,9 @@ class _PlanCard extends StatelessWidget {
                           child: const Text('Current Plan'),
                         )
                       : ElevatedButton(
-                          onPressed: isLoading ? null : onSelect,
+                          onPressed: isLoading || hasPendingChange
+                              ? null
+                              : onSelect,
                           child: isLoading
                               ? const SizedBox(
                                   height: 20,
@@ -245,7 +315,11 @@ class _PlanCard extends StatelessWidget {
                                     color: Colors.white,
                                   ),
                                 )
-                              : Text('Select ${plan.name}'),
+                              : Text(
+                                  hasPendingChange
+                                      ? 'Change Pending'
+                                      : 'Select ${plan.name}',
+                                ),
                         ),
                 ),
               ],

@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
 export const requestSubscriptionSchema = z.object({
-  planTier: z.enum(['starter']), // MVP: starter only
+  planTier: z.enum(['starter', 'professional', 'enterprise']),
+  durationMonths: z.number().int().min(1).max(6).optional().default(1),
+});
+
+export const changeSubscriptionSchema = z.object({
+  planTier: z.enum(['starter', 'professional', 'enterprise']),
+  durationMonths: z.number().int().min(1).max(6).optional().default(1),
 });
 
 export const uploadReceiptSchema = z.object({

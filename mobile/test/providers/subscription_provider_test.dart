@@ -73,7 +73,7 @@ void main() {
 
     test('loadSubscription sets subscription on success', () async {
       when(() => mockService.getSubscription())
-          .thenAnswer((_) async => mockSubscription);
+          .thenAnswer((_) async => SubscriptionResponse(subscription: mockSubscription));
 
       await notifier.loadSubscription();
 
@@ -84,7 +84,7 @@ void main() {
 
     test('loadSubscription handles null (no subscription)', () async {
       when(() => mockService.getSubscription())
-          .thenAnswer((_) async => null);
+          .thenAnswer((_) async => const SubscriptionResponse());
 
       await notifier.loadSubscription();
 
@@ -155,7 +155,7 @@ void main() {
 
     test('clearSubscription resets state', () async {
       when(() => mockService.getSubscription())
-          .thenAnswer((_) async => mockSubscription);
+          .thenAnswer((_) async => SubscriptionResponse(subscription: mockSubscription));
       await notifier.loadSubscription();
 
       notifier.clearSubscription();

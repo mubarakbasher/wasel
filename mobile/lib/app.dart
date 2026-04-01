@@ -5,26 +5,41 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/app_theme.dart';
 import 'navigation/app_router.dart';
 import 'i18n/app_localizations.dart';
+import 'providers/locale_provider.dart';
 
-class WaselApp extends ConsumerWidget {
+class WaselApp extends ConsumerStatefulWidget {
   const WaselApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WaselApp> createState() => _WaselAppState();
+}
+
+class _WaselAppState extends ConsumerState<WaselApp> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+        () => ref.read(localeProvider.notifier).loadSavedLocale());
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+    final locale = ref.watch(localeProvider);
 
     return MaterialApp.router(
       title: 'Wasel',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       routerConfig: router,
+      locale: locale,
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [Locale('en')],
+      supportedLocales: AppLocalizations.supportedLocales,
     );
   }
 }

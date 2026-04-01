@@ -6,6 +6,7 @@ import '../services/subscription_service.dart';
 
 class SubscriptionState {
   final Subscription? subscription;
+  final Subscription? pendingChange;
   final List<Plan> plans;
   final bool isLoading;
   final String? error;
@@ -13,6 +14,7 @@ class SubscriptionState {
 
   const SubscriptionState({
     this.subscription,
+    this.pendingChange,
     this.plans = const [],
     this.isLoading = false,
     this.error,
@@ -21,16 +23,19 @@ class SubscriptionState {
 
   SubscriptionState copyWith({
     Subscription? subscription,
+    Subscription? pendingChange,
     List<Plan>? plans,
     bool? isLoading,
     String? error,
     SubscriptionRequestResult? lastRequest,
     bool clearSubscription = false,
+    bool clearPendingChange = false,
     bool clearError = false,
     bool clearLastRequest = false,
   }) {
     return SubscriptionState(
       subscription: clearSubscription ? null : (subscription ?? this.subscription),
+      pendingChange: clearPendingChange ? null : (pendingChange ?? this.pendingChange),
       plans: plans ?? this.plans,
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : (error ?? this.error),
@@ -63,23 +68,47 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   Future<void> loadSubscription() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final subscription = await _service.getSubscription();
-      if (subscription != null) {
-        state = state.copyWith(subscription: subscription, isLoading: false);
-      } else {
-        state = state.copyWith(isLoading: false, clearSubscription: true);
-      }
+      final response = await _service.getSubscription();
+      state = state.copyWith(
+        subscription: response.subscription,
+        pendingChange: response.pendingChange,
+        isLoading: false,
+        clearSubscription: response.subscription == null,
+        clearPendingChange: response.pendingChange == null,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _extractError(e));
     }
   }
 
-  Future<bool> requestSubscription(String planTier) async {
+  Future<bool> requestSubscription(String planTier, {int durationMonths = 1}) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final result = await _service.requestSubscription(planTier: planTier);
+      final result = await _service.requestSubscription(
+        planTier: planTier,
+        durationMonths: durationMonths,
+      );
       state = state.copyWith(
         subscription: result.subscription,
+        lastRequest: result,
+        isLoading: false,
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: _extractError(e));
+      return false;
+    }
+  }
+
+  Future<bool> changeSubscription(String planTier, {int durationMonths = 1}) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final result = await _service.changeSubscription(
+        planTier: planTier,
+        durationMonths: durationMonths,
+      );
+      state = state.copyWith(
+        pendingChange: result.subscription,
         lastRequest: result,
         isLoading: false,
       );

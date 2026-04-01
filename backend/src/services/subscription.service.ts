@@ -15,6 +15,7 @@ export interface PlanDefinition {
   sessionMonitoring: string;
   dashboard: string;
   features: string[];
+  allowedDurations: number[];
 }
 
 export const PLANS: Record<string, PlanDefinition> = {
@@ -28,6 +29,7 @@ export const PLANS: Record<string, PlanDefinition> = {
     sessionMonitoring: 'Active only',
     dashboard: 'Basic stats',
     features: ['1 Router', '500 Vouchers/month', 'Active session monitoring', 'Basic dashboard'],
+    allowedDurations: [1],
   },
   professional: {
     tier: 'professional',
@@ -39,6 +41,7 @@ export const PLANS: Record<string, PlanDefinition> = {
     sessionMonitoring: 'Active + history',
     dashboard: 'Advanced analytics',
     features: ['3 Routers', '2,000 Vouchers/month', 'Session history', 'Advanced analytics'],
+    allowedDurations: [1, 2],
   },
   enterprise: {
     tier: 'enterprise',
@@ -50,6 +53,7 @@ export const PLANS: Record<string, PlanDefinition> = {
     sessionMonitoring: 'Full + export',
     dashboard: 'Full analytics + reports',
     features: ['10 Routers', 'Unlimited Vouchers', 'Full session history + export', 'Full analytics + reports'],
+    allowedDurations: [1, 2, 6],
   },
 };
 
@@ -66,6 +70,8 @@ export interface SubscriptionRow {
   status: string;
   voucher_quota: number;
   vouchers_used: number;
+  duration_months: number;
+  previous_subscription_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -96,6 +102,7 @@ export interface SubscriptionInfo {
   vouchersUsed: number;
   daysRemaining: number;
   maxRouters: number;
+  durationMonths: number;
 }
 
 // ----- Helpers -----
@@ -127,6 +134,7 @@ function toSubscriptionInfo(row: SubscriptionRow): SubscriptionInfo {
     vouchersUsed: row.vouchers_used,
     daysRemaining,
     maxRouters: plan ? plan.maxRouters : 0,
+    durationMonths: row.duration_months ?? 1,
   };
 }
 
@@ -144,38 +152,40 @@ export function getPlans(): PlanDefinition[] {
  * If the subscription is active but past its end_date, it is automatically transitioned to 'expired'.
  * Returns null if no relevant subscription is found.
  */
-export async function getCurrentSubscription(userId: string): Promise<SubscriptionInfo | null> {
+export async function getCurrentSubscription(userId: string): Promise<{ subscription: SubscriptionInfo | null; pendingChange: SubscriptionInfo | null }> {
   const result = await pool.query<SubscriptionRow>(
-    `SELECT id, user_id, plan_tier, start_date, end_date, status, voucher_quota, vouchers_used, created_at, updated_at
+    `SELECT *
      FROM subscriptions
-     WHERE user_id = $1 AND status IN ('active', 'pending')
-     ORDER BY created_at DESC
-     LIMIT 1`,
+     WHERE user_id = $1 AND status IN ('active', 'pending', 'pending_change')
+     ORDER BY created_at DESC`,
     [userId],
   );
 
-  if (result.rows.length === 0) {
-    return null;
+  let subscription: SubscriptionInfo | null = null;
+  let pendingChange: SubscriptionInfo | null = null;
+
+  for (const row of result.rows) {
+    // Auto-expire if active but past end_date
+    if (row.status === 'active' && new Date(row.end_date) < new Date()) {
+      await pool.query(
+        `UPDATE subscriptions SET status = 'expired' WHERE id = $1`,
+        [row.id],
+      );
+      logger.info('Subscription auto-expired on access', {
+        userId,
+        subscriptionId: row.id,
+      });
+      continue;
+    }
+
+    if ((row.status === 'active' || row.status === 'pending') && !subscription) {
+      subscription = toSubscriptionInfo(row);
+    } else if (row.status === 'pending_change' && !pendingChange) {
+      pendingChange = toSubscriptionInfo(row);
+    }
   }
 
-  const row = result.rows[0];
-
-  // Auto-expire if active but past end_date
-  if (row.status === 'active' && new Date(row.end_date) < new Date()) {
-    await pool.query(
-      `UPDATE subscriptions SET status = 'expired' WHERE id = $1`,
-      [row.id],
-    );
-
-    logger.info('Subscription auto-expired on access', {
-      userId,
-      subscriptionId: row.id,
-    });
-
-    return null;
-  }
-
-  return toSubscriptionInfo(row);
+  return { subscription, pendingChange };
 }
 
 /**
@@ -187,11 +197,21 @@ export async function getCurrentSubscription(userId: string): Promise<Subscripti
 export async function requestSubscription(
   userId: string,
   planTier: string,
+  durationMonths: number = 1,
 ): Promise<{ subscription: SubscriptionInfo; payment: { id: string; amount: number; currency: string; referenceCode: string; status: string } }> {
   // Validate plan tier
   const plan = PLANS[planTier];
   if (!plan) {
     throw new AppError(400, `Invalid plan tier: ${planTier}`, 'INVALID_PLAN');
+  }
+
+  // Validate duration against plan's allowed durations
+  if (!plan.allowedDurations.includes(durationMonths)) {
+    throw new AppError(
+      400,
+      `${plan.name} plan supports ${plan.allowedDurations.join(', ')} month(s) only`,
+      'INVALID_DURATION',
+    );
   }
 
   // Check for existing active or pending subscription
@@ -216,16 +236,18 @@ export async function requestSubscription(
 
     const startDate = new Date();
     const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 30);
+    endDate.setDate(endDate.getDate() + (durationMonths * 30));
 
-    const voucherQuota = plan.monthlyVouchers;
+    // Scale quota by duration; enterprise unlimited stays -1
+    const voucherQuota = plan.monthlyVouchers === -1 ? -1 : plan.monthlyVouchers * durationMonths;
+    const totalAmount = plan.price * durationMonths;
 
     // Create subscription
     const subResult = await client.query<SubscriptionRow>(
-      `INSERT INTO subscriptions (user_id, plan_tier, start_date, end_date, status, voucher_quota, vouchers_used)
-       VALUES ($1, $2, $3, $4, 'pending', $5, 0)
-       RETURNING id, user_id, plan_tier, start_date, end_date, status, voucher_quota, vouchers_used, created_at, updated_at`,
-      [userId, planTier, startDate.toISOString(), endDate.toISOString(), voucherQuota],
+      `INSERT INTO subscriptions (user_id, plan_tier, start_date, end_date, status, voucher_quota, vouchers_used, duration_months)
+       VALUES ($1, $2, $3, $4, 'pending', $5, 0, $6)
+       RETURNING *`,
+      [userId, planTier, startDate.toISOString(), endDate.toISOString(), voucherQuota, durationMonths],
     );
 
     const subscription = subResult.rows[0];
@@ -236,7 +258,7 @@ export async function requestSubscription(
       `INSERT INTO payments (user_id, plan_tier, amount, currency, reference_code, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')
        RETURNING id, amount, currency, reference_code, status`,
-      [userId, planTier, plan.price, plan.currency, referenceCode],
+      [userId, planTier, totalAmount, plan.currency, referenceCode],
     );
 
     const payment = paymentResult.rows[0];
@@ -248,6 +270,7 @@ export async function requestSubscription(
       subscriptionId: subscription.id,
       paymentId: payment.id,
       planTier,
+      durationMonths,
       referenceCode,
     });
 
@@ -316,7 +339,7 @@ export async function uploadReceipt(
  */
 export async function getActiveSubscription(userId: string): Promise<SubscriptionInfo | null> {
   const result = await pool.query<SubscriptionRow>(
-    `SELECT id, user_id, plan_tier, start_date, end_date, status, voucher_quota, vouchers_used, created_at, updated_at
+    `SELECT *
      FROM subscriptions
      WHERE user_id = $1 AND status = 'active' AND end_date > NOW()
      ORDER BY created_at DESC
@@ -364,6 +387,110 @@ export async function getRouterLimit(userId: string): Promise<number> {
   }
 
   return subscription.maxRouters;
+}
+
+/**
+ * Request a plan change (upgrade/downgrade) while the user has an active subscription.
+ * Creates a new subscription with status 'pending_change' and a payment record.
+ * When the admin approves payment, the old subscription is cancelled and the new one activates.
+ */
+export async function changeSubscription(
+  userId: string,
+  newPlanTier: string,
+  durationMonths: number = 1,
+): Promise<{ subscription: SubscriptionInfo; payment: { id: string; amount: number; currency: string; referenceCode: string; status: string } }> {
+  const plan = PLANS[newPlanTier];
+  if (!plan) {
+    throw new AppError(400, `Invalid plan tier: ${newPlanTier}`, 'INVALID_PLAN');
+  }
+
+  if (!plan.allowedDurations.includes(durationMonths)) {
+    throw new AppError(
+      400,
+      `${plan.name} plan supports ${plan.allowedDurations.join(', ')} month(s) only`,
+      'INVALID_DURATION',
+    );
+  }
+
+  // Must have an active subscription to change
+  const activeSub = await getActiveSubscription(userId);
+  if (!activeSub) {
+    throw new AppError(400, 'No active subscription to change. Use /subscription/request instead.', 'NO_ACTIVE_SUBSCRIPTION');
+  }
+
+  if (activeSub.planTier === newPlanTier) {
+    throw new AppError(400, 'You are already on this plan', 'SAME_PLAN');
+  }
+
+  // Check for existing pending change
+  const existingChange = await pool.query(
+    `SELECT id FROM subscriptions
+     WHERE user_id = $1 AND status = 'pending_change'
+     LIMIT 1`,
+    [userId],
+  );
+
+  if (existingChange.rows.length > 0) {
+    throw new AppError(409, 'You already have a pending plan change request', 'CHANGE_PENDING');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + (durationMonths * 30));
+
+    const voucherQuota = plan.monthlyVouchers === -1 ? -1 : plan.monthlyVouchers * durationMonths;
+    const totalAmount = plan.price * durationMonths;
+
+    const subResult = await client.query<SubscriptionRow>(
+      `INSERT INTO subscriptions (user_id, plan_tier, start_date, end_date, status, voucher_quota, vouchers_used, duration_months, previous_subscription_id)
+       VALUES ($1, $2, $3, $4, 'pending_change', $5, 0, $6, $7)
+       RETURNING *`,
+      [userId, newPlanTier, startDate.toISOString(), endDate.toISOString(), voucherQuota, durationMonths, activeSub.id],
+    );
+
+    const subscription = subResult.rows[0];
+
+    const referenceCode = generateReferenceCode();
+    const paymentResult = await client.query<PaymentRow>(
+      `INSERT INTO payments (user_id, plan_tier, amount, currency, reference_code, status)
+       VALUES ($1, $2, $3, $4, $5, 'pending')
+       RETURNING id, amount, currency, reference_code, status`,
+      [userId, newPlanTier, totalAmount, plan.currency, referenceCode],
+    );
+
+    const payment = paymentResult.rows[0];
+
+    await client.query('COMMIT');
+
+    logger.info('Plan change requested', {
+      userId,
+      fromTier: activeSub.planTier,
+      toTier: newPlanTier,
+      durationMonths,
+      subscriptionId: subscription.id,
+      paymentId: payment.id,
+    });
+
+    return {
+      subscription: toSubscriptionInfo(subscription),
+      payment: {
+        id: payment.id,
+        amount: parseFloat(payment.amount),
+        currency: payment.currency,
+        referenceCode: payment.reference_code!,
+        status: payment.status,
+      },
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**

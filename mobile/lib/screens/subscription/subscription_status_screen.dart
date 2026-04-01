@@ -29,6 +29,7 @@ class _SubscriptionStatusScreenState
   Widget build(BuildContext context) {
     final state = ref.watch(subscriptionProvider);
     final sub = state.subscription;
+    final pendingChange = state.pendingChange;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Subscription')),
@@ -36,7 +37,7 @@ class _SubscriptionStatusScreenState
           ? const Center(child: CircularProgressIndicator())
           : sub == null
               ? _buildNoSubscription()
-              : _buildSubscriptionDetails(sub),
+              : _buildSubscriptionDetails(sub, pendingChange),
     );
   }
 
@@ -78,7 +79,7 @@ class _SubscriptionStatusScreenState
     );
   }
 
-  Widget _buildSubscriptionDetails(Subscription sub) {
+  Widget _buildSubscriptionDetails(Subscription sub, Subscription? pendingChange) {
     final statusColor = _statusColor(sub.status);
     final vouchersRemaining = sub.vouchersRemaining;
     final quotaPercent = sub.voucherQuota == -1
@@ -155,6 +156,46 @@ class _SubscriptionStatusScreenState
               ],
             ),
           ),
+
+          // Pending change banner
+          if (pendingChange != null) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.pending_actions,
+                      color: AppColors.warning, size: 24),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Plan change pending',
+                          style: AppTypography.subhead.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'Upgrade to ${pendingChange.planName} awaiting payment approval',
+                          style: AppTypography.footnote.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           const SizedBox(height: AppSpacing.lg),
 
@@ -254,6 +295,7 @@ class _SubscriptionStatusScreenState
       case 'active':
         return AppColors.success;
       case 'pending':
+      case 'pending_change':
         return AppColors.warning;
       case 'expired':
         return AppColors.error;

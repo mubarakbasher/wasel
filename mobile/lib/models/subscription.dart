@@ -2,11 +2,12 @@ class Subscription {
   final String id;
   final String planTier; // starter, professional, enterprise
   final String planName;
-  final String status; // active, expired, cancelled, pending
+  final String status; // active, expired, cancelled, pending, pending_change
   final int voucherQuota;
   final int vouchersUsed;
   final int daysRemaining;
   final int maxRouters;
+  final int durationMonths;
   final DateTime startDate;
   final DateTime endDate;
 
@@ -19,6 +20,7 @@ class Subscription {
     this.vouchersUsed = 0,
     required this.daysRemaining,
     required this.maxRouters,
+    this.durationMonths = 1,
     required this.startDate,
     required this.endDate,
   });
@@ -33,6 +35,7 @@ class Subscription {
       vouchersUsed: json['vouchersUsed'] as int? ?? 0,
       daysRemaining: json['daysRemaining'] as int? ?? 0,
       maxRouters: json['maxRouters'] as int? ?? 0,
+      durationMonths: json['durationMonths'] as int? ?? 1,
       startDate: DateTime.parse(json['startDate'] as String),
       endDate: DateTime.parse(json['endDate'] as String),
     );
@@ -48,6 +51,7 @@ class Subscription {
       'vouchersUsed': vouchersUsed,
       'daysRemaining': daysRemaining,
       'maxRouters': maxRouters,
+      'durationMonths': durationMonths,
       'startDate': startDate.toIso8601String(),
       'endDate': endDate.toIso8601String(),
     };
@@ -55,6 +59,7 @@ class Subscription {
 
   bool get isActive => status == 'active';
   bool get isPending => status == 'pending';
+  bool get isPendingChange => status == 'pending_change';
   bool get isExpired => status == 'expired';
 
   int get vouchersRemaining =>

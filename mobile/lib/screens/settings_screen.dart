@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/locale_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -137,11 +138,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // App section
           _SectionHeader(title: 'App'),
           _SettingsTile(
-            icon: Icons.language,
-            title: 'Language',
-            subtitle: 'English',
-            onTap: () {},
+            icon: Icons.notifications_outlined,
+            title: 'Notifications',
+            subtitle: 'Manage push notification preferences',
+            onTap: () => context.push('/notification-preferences'),
           ),
+          _LanguageTile(),
           _SettingsTile(
             icon: Icons.info_outline,
             title: 'About',
@@ -194,6 +196,84 @@ class _SectionHeader extends StatelessWidget {
         style: AppTypography.caption1.copyWith(
           fontWeight: FontWeight.w600,
           letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _LanguageTile extends ConsumerWidget {
+  const _LanguageTile();
+
+  static const _languages = [
+    (code: null, label: 'System Default', native: 'System Default'),
+    (code: 'en', label: 'English', native: 'English'),
+    (code: 'ar', label: 'Arabic', native: 'العربية'),
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentLocale = ref.watch(localeProvider);
+    final currentLabel = currentLocale == null
+        ? 'System Default'
+        : _languages
+            .firstWhere(
+              (l) => l.code == currentLocale.languageCode,
+              orElse: () => _languages.first,
+            )
+            .native;
+
+    return ListTile(
+      leading: const Icon(Icons.language, color: AppColors.primary),
+      title: Text('Language', style: AppTypography.body),
+      subtitle: Text(currentLabel, style: AppTypography.footnote),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textTertiary),
+      contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      minVerticalPadding: AppSpacing.md,
+      onTap: () => _showLanguagePicker(context, ref, currentLocale),
+    );
+  }
+
+  void _showLanguagePicker(
+      BuildContext context, WidgetRef ref, Locale? currentLocale) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
+              child: Text('Select Language', style: AppTypography.title3),
+            ),
+            const Divider(),
+            for (final lang in _languages)
+              RadioListTile<String?>(
+                value: lang.code,
+                groupValue: currentLocale?.languageCode,
+                title: Text(lang.label, style: AppTypography.body),
+                subtitle: lang.code != null && lang.native != lang.label
+                    ? Text(lang.native, style: AppTypography.footnote)
+                    : null,
+                activeColor: AppColors.primary,
+                onChanged: (code) {
+                  if (code == null) {
+                    ref.read(localeProvider.notifier).clearLocale();
+                  } else {
+                    ref
+                        .read(localeProvider.notifier)
+                        .setLocale(Locale(code));
+                  }
+                  Navigator.pop(context);
+                },
+              ),
+            const SizedBox(height: AppSpacing.md),
+          ],
         ),
       ),
     );

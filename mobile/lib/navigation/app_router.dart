@@ -26,6 +26,11 @@ import '../screens/sessions/session_history_screen.dart';
 import '../screens/subscription/plans_screen.dart';
 import '../screens/subscription/subscription_status_screen.dart';
 import '../screens/subscription/payment_screen.dart';
+import '../screens/reports/reports_screen.dart';
+import '../screens/reports/report_export_screen.dart';
+import '../screens/notification_preferences_screen.dart';
+import '../screens/vouchers/voucher_print_screen.dart';
+import '../models/voucher.dart';
 import 'scaffold_with_nav_bar.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -165,6 +170,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return VoucherDetailScreen(
             routerId: extra['routerId'] as String,
             voucherId: extra['voucherId'] as String,
+          );
+        },
+      ),
+      // Print routes
+      GoRoute(
+        path: '/vouchers/print',
+        builder: (context, state) {
+          final vouchers = state.extra as List<Voucher>;
+          return VoucherPrintScreen(vouchers: vouchers);
+        },
+      ),
+      // Notification preferences
+      GoRoute(
+        path: '/notification-preferences',
+        builder: (context, state) => const NotificationPreferencesScreen(),
+      ),
+      // Report routes
+      GoRoute(
+        path: '/reports',
+        builder: (context, state) => const ReportsScreen(),
+      ),
+      GoRoute(
+        path: '/reports/export',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return ReportExportScreen(
+            reportType: extra['reportType'] as String,
+            exportData: extra['exportData'] as String,
           );
         },
       ),

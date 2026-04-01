@@ -8,6 +8,7 @@ class Plan {
   final String sessionMonitoring;
   final String dashboard;
   final List<String> features;
+  final List<int> allowedDurations; // months
 
   const Plan({
     required this.tier,
@@ -19,6 +20,7 @@ class Plan {
     required this.sessionMonitoring,
     required this.dashboard,
     required this.features,
+    required this.allowedDurations,
   });
 
   factory Plan.fromJson(Map<String, dynamic> json) {
@@ -34,10 +36,20 @@ class Plan {
       features: (json['features'] as List<dynamic>)
           .map((e) => e as String)
           .toList(),
+      allowedDurations: json['allowedDurations'] != null
+          ? (json['allowedDurations'] as List<dynamic>)
+              .map((e) => e as int)
+              .toList()
+          : [1],
     );
   }
 
   bool get isUnlimitedVouchers => monthlyVouchers == -1;
 
+  bool get hasMultipleDurations => allowedDurations.length > 1;
+
   String get priceLabel => '\$${price.toStringAsFixed(0)}';
+
+  String totalPriceLabel(int months) =>
+      '\$${(price * months).toStringAsFixed(0)}';
 }

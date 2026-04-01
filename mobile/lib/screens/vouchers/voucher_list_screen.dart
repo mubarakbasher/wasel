@@ -20,6 +20,8 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
   String? _selectedRouterId;
   String? _statusFilter;
   final _searchController = TextEditingController();
+  bool _isSelectMode = false;
+  final Set<String> _selectedVoucherIds = {};
 
   @override
   void initState() {
@@ -57,46 +59,126 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
     }
   }
 
+  void _enterSelectMode(String voucherId) {
+    setState(() {
+      _isSelectMode = true;
+      _selectedVoucherIds.add(voucherId);
+    });
+  }
+
+  void _exitSelectMode() {
+    setState(() {
+      _isSelectMode = false;
+      _selectedVoucherIds.clear();
+    });
+  }
+
+  void _toggleVoucherSelection(String voucherId) {
+    setState(() {
+      if (_selectedVoucherIds.contains(voucherId)) {
+        _selectedVoucherIds.remove(voucherId);
+        if (_selectedVoucherIds.isEmpty) {
+          _isSelectMode = false;
+        }
+      } else {
+        _selectedVoucherIds.add(voucherId);
+      }
+    });
+  }
+
+  void _selectAll(List<Voucher> vouchers) {
+    setState(() {
+      _selectedVoucherIds.addAll(vouchers.map((v) => v.id));
+    });
+  }
+
+  void _onPrintSelected(List<Voucher> allVouchers) {
+    final selectedVouchers = allVouchers
+        .where((v) => _selectedVoucherIds.contains(v.id))
+        .toList();
+    _exitSelectMode();
+    context.push('/vouchers/print', extra: selectedVouchers);
+  }
+
   @override
   Widget build(BuildContext context) {
     final routersState = ref.watch(routersProvider);
     final vouchersState = ref.watch(vouchersProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Vouchers'),
-        actions: [
-          if (_selectedRouterId != null)
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: () => context.push(
-                '/vouchers/create',
-                extra: _selectedRouterId,
+      appBar: _isSelectMode
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _exitSelectMode,
               ),
-            ),
-          if (_selectedRouterId != null)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) {
-                if (value == 'bulk') {
-                  context.push('/vouchers/bulk-create', extra: _selectedRouterId);
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'bulk',
-                  child: Row(
-                    children: [
-                      Icon(Icons.content_copy, size: 20),
-                      SizedBox(width: AppSpacing.sm),
-                      Text('Bulk Create'),
-                    ],
-                  ),
+              title: Text('${_selectedVoucherIds.length} selected'),
+              actions: [
+                TextButton(
+                  onPressed: () => _selectAll(vouchersState.vouchers),
+                  child: const Text('Select All'),
                 ),
               ],
+            )
+          : AppBar(
+              title: const Text('Vouchers'),
+              actions: [
+                if (_selectedRouterId != null)
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: () => context.push(
+                      '/vouchers/create',
+                      extra: _selectedRouterId,
+                    ),
+                  ),
+                if (_selectedRouterId != null)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == 'bulk') {
+                        context.push('/vouchers/bulk-create', extra: _selectedRouterId);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'bulk',
+                        child: Row(
+                          children: [
+                            Icon(Icons.content_copy, size: 20),
+                            SizedBox(width: AppSpacing.sm),
+                            Text('Bulk Create'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
-        ],
-      ),
+      bottomNavigationBar: _isSelectMode && _selectedVoucherIds.isNotEmpty
+          ? SafeArea(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.sm,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border(
+                    top: BorderSide(color: AppColors.border),
+                  ),
+                ),
+                child: SizedBox(
+                  height: 48,
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _onPrintSelected(vouchersState.vouchers),
+                    icon: const Icon(Icons.print),
+                    label: Text('Print (${_selectedVoucherIds.length})'),
+                  ),
+                ),
+              ),
+            )
+          : null,
       body: Column(
         children: [
           // Router selector
@@ -342,10 +424,19 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
           final voucher = state.vouchers[index];
           return _VoucherCard(
             voucher: voucher,
-            onTap: () => context.push(
-              '/vouchers/detail',
-              extra: {'routerId': _selectedRouterId!, 'voucherId': voucher.id},
-            ),
+            isSelectMode: _isSelectMode,
+            isSelected: _selectedVoucherIds.contains(voucher.id),
+            onTap: _isSelectMode
+                ? () => _toggleVoucherSelection(voucher.id)
+                : () => context.push(
+                    '/vouchers/detail',
+                    extra: {'routerId': _selectedRouterId!, 'voucherId': voucher.id},
+                  ),
+            onLongPress: () {
+              if (!_isSelectMode) {
+                _enterSelectMode(voucher.id);
+              }
+            },
           );
         },
       ),
@@ -361,13 +452,23 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
 class _VoucherCard extends StatelessWidget {
   final Voucher voucher;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final bool isSelectMode;
+  final bool isSelected;
 
-  const _VoucherCard({required this.voucher, required this.onTap});
+  const _VoucherCard({
+    required this.voucher,
+    required this.onTap,
+    required this.onLongPress,
+    this.isSelectMode = false,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         margin: const EdgeInsets.only(bottom: AppSpacing.sm),
         padding: const EdgeInsets.all(AppSpacing.lg),
@@ -376,7 +477,19 @@ class _VoucherCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
           border: Border.all(color: AppColors.border),
         ),
-        child: Column(
+        child: Row(
+          children: [
+            if (isSelectMode)
+              Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
+                child: Checkbox(
+                  value: isSelected,
+                  onChanged: (_) => onTap(),
+                  activeColor: AppColors.primary,
+                ),
+              ),
+            Expanded(
+              child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -419,6 +532,9 @@ class _VoucherCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
+          ],
+        ),
+            ),
           ],
         ),
       ),

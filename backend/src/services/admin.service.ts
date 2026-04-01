@@ -384,12 +384,46 @@ export async function reviewPayment(
 
     // 2. If approved, activate the matching pending subscription
     if (decision === 'approved') {
-      await client.query(
-        `UPDATE subscriptions
-         SET status = 'active', start_date = NOW(), end_date = NOW() + INTERVAL '30 days', updated_at = NOW()
-         WHERE user_id = $1 AND status = 'pending'`,
+      // Check for pending_change (upgrade/downgrade) first
+      const pendingChange = await client.query(
+        `SELECT id, previous_subscription_id FROM subscriptions
+         WHERE user_id = $1 AND status = 'pending_change'
+         ORDER BY created_at DESC LIMIT 1`,
         [payment.user_id],
       );
+
+      if (pendingChange.rows.length > 0) {
+        const change = pendingChange.rows[0];
+
+        // Cancel the old active subscription
+        if (change.previous_subscription_id) {
+          await client.query(
+            `UPDATE subscriptions SET status = 'cancelled', updated_at = NOW()
+             WHERE id = $1`,
+            [change.previous_subscription_id],
+          );
+        }
+
+        // Activate the new subscription
+        await client.query(
+          `UPDATE subscriptions
+           SET status = 'active', start_date = NOW(),
+               end_date = NOW() + (duration_months * INTERVAL '30 days'),
+               updated_at = NOW()
+           WHERE id = $1`,
+          [change.id],
+        );
+      } else {
+        // Regular new subscription activation
+        await client.query(
+          `UPDATE subscriptions
+           SET status = 'active', start_date = NOW(),
+               end_date = NOW() + (duration_months * INTERVAL '30 days'),
+               updated_at = NOW()
+           WHERE user_id = $1 AND status = 'pending'`,
+          [payment.user_id],
+        );
+      }
     }
 
     await client.query('COMMIT');

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/push_notification_service.dart';
 import '../services/secure_storage.dart';
 
 // ---------------------------------------------------------------------------
@@ -264,6 +265,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      await PushNotificationService().unregisterCurrentToken();
       await _authService.logout();
     } finally {
       await _storage.clearAll();

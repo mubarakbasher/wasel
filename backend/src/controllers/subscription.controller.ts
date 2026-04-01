@@ -16,10 +16,11 @@ export async function getPlans(req: Request, res: Response, next: NextFunction):
 
 export async function getSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const subscription = await subscriptionService.getCurrentSubscription(req.user!.id);
+    const { subscription, pendingChange } = await subscriptionService.getCurrentSubscription(req.user!.id);
     res.status(200).json({
       success: true,
       data: subscription,
+      pendingChange: pendingChange ?? undefined,
     });
   } catch (error) {
     next(error);
@@ -28,11 +29,24 @@ export async function getSubscription(req: AuthenticatedRequest, res: Response, 
 
 export async function requestSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { planTier } = req.body;
-    const subscription = await subscriptionService.requestSubscription(req.user!.id, planTier);
+    const { planTier, durationMonths } = req.body;
+    const subscription = await subscriptionService.requestSubscription(req.user!.id, planTier, durationMonths);
     res.status(201).json({
       success: true,
       data: subscription,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function changeSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { planTier, durationMonths } = req.body;
+    const result = await subscriptionService.changeSubscription(req.user!.id, planTier, durationMonths);
+    res.status(201).json({
+      success: true,
+      data: result,
     });
   } catch (error) {
     next(error);

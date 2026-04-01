@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/authenticate';
 import { validate } from '../middleware/validate';
 import {
   requestSubscriptionSchema,
+  changeSubscriptionSchema,
   uploadReceiptSchema,
 } from '../validators/subscription.validators';
 import * as subscriptionController from '../controllers/subscription.controller';
@@ -20,6 +21,13 @@ router.post(
   authenticate,
   validate({ body: requestSubscriptionSchema }),
   subscriptionController.requestSubscription,
+);
+
+router.post(
+  '/change',
+  authenticate,
+  validate({ body: changeSubscriptionSchema }),
+  subscriptionController.changeSubscription,
 );
 
 router.post(
