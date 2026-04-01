@@ -3,6 +3,6 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'us
   CHECK (role IN ('user', 'admin'));
 
 -- Mark seed admin user
-UPDATE users SET role = 'admin' WHERE email = 'admin@wasel.app';
+UPDATE users SET role = 'admin' WHERE email = 'admin@wa-sel.com';
 
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
