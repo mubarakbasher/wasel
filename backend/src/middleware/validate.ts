@@ -14,10 +14,16 @@ export function validate(schemas: ValidationSchemas) {
         req.body = schemas.body.parse(req.body);
       }
       if (schemas.query) {
-        req.query = schemas.query.parse(req.query) as typeof req.query;
+        const parsed = schemas.query.parse(req.query) as Record<string, unknown>;
+        Object.keys(parsed).forEach((key) => {
+          (req.query as Record<string, unknown>)[key] = parsed[key];
+        });
       }
       if (schemas.params) {
-        req.params = schemas.params.parse(req.params) as typeof req.params;
+        const parsed = schemas.params.parse(req.params) as Record<string, unknown>;
+        Object.keys(parsed).forEach((key) => {
+          (req.params as Record<string, unknown>)[key] = parsed[key];
+        });
       }
       next();
     } catch (err) {
