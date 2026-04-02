@@ -7,12 +7,14 @@ import {
   Router,
   ScrollText,
   Wifi,
+  Package,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/users', label: 'Users', icon: Users },
   { to: '/subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { to: '/plans', label: 'Plans', icon: Package },
   { to: '/payments', label: 'Payments', icon: Banknote },
   { to: '/routers', label: 'Routers', icon: Router },
   { to: '/audit-logs', label: 'Audit Logs', icon: ScrollText },

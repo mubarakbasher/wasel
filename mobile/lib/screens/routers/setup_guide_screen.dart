@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/routers_provider.dart';
+import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
@@ -44,7 +45,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
             IconButton(
               icon: const Icon(Icons.copy),
               onPressed: () => _copyToClipboard(guide.setupGuide),
-              tooltip: 'Copy to clipboard',
+              tooltip: 'Copy all to clipboard',
             ),
         ],
       ),
@@ -88,11 +89,10 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
     );
   }
 
-  Widget _buildGuide(dynamic guide) {
+  Widget _buildGuide(RouterSetupGuide guide) {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: [
-        // Header
         Text(guide.routerName, style: AppTypography.title2),
         const SizedBox(height: AppSpacing.sm),
         Text(
@@ -100,8 +100,6 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
           style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.lg),
-
-        // Info chips
         Wrap(
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
@@ -124,39 +122,148 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
           ],
         ),
         const SizedBox(height: AppSpacing.xxl),
-
-        // Setup guide text
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: SelectableText(
-            guide.setupGuide,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              height: 1.5,
-              color: AppColors.textPrimary,
+        if (guide.steps.isNotEmpty)
+          ...guide.steps.map((step) => _buildStepCard(step))
+        else
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: SelectableText(
+              guide.setupGuide,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                height: 1.5,
+                color: AppColors.textPrimary,
+              ),
             ),
           ),
-        ),
         const SizedBox(height: AppSpacing.xxl),
-
-        // Copy button
         SizedBox(
           height: 48,
           width: double.infinity,
           child: OutlinedButton.icon(
             onPressed: () => _copyToClipboard(guide.setupGuide),
             icon: const Icon(Icons.copy),
-            label: const Text('Copy Setup Guide to Clipboard'),
+            label: const Text('Copy All to Clipboard'),
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
       ],
+    );
+  }
+
+  Widget _buildStepCard(SetupStep step) {
+    final isVerification = step.step == 7;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(
+            color: isVerification
+                ? AppColors.success.withValues(alpha: 0.4)
+                : AppColors.border,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.md, AppSpacing.md, 0),
+              child: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isVerification
+                          ? AppColors.success
+                          : AppColors.primary,
+                    ),
+                    alignment: Alignment.center,
+                    child: isVerification
+                        ? const Icon(Icons.check, size: 16, color: Colors.white)
+                        : Text(
+                            '${step.step}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      step.title,
+                      style: AppTypography.headline.copyWith(fontSize: 15),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
+              child: Text(
+                step.description,
+                style: AppTypography.caption1
+                    .copyWith(color: AppColors.textSecondary),
+              ),
+            ),
+            Container(
+              margin: const EdgeInsets.fromLTRB(
+                  AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.sm),
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      step.command,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        height: 1.5,
+                        color: Color(0xFFD4D4D4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: step.command));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Step ${step.step} copied'),
+                          duration: const Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                    child: const Icon(
+                      Icons.copy,
+                      size: 18,
+                      color: Color(0xFF9E9E9E),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -469,23 +469,26 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
           ],
         ),
         const SizedBox(height: AppSpacing.xxl),
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: SelectableText(
-            guide.setupGuide,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              height: 1.5,
-              color: AppColors.textPrimary,
+        if (guide.steps.isNotEmpty)
+          ...guide.steps.map((step) => _buildStepCard(step))
+        else
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: SelectableText(
+              guide.setupGuide,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                height: 1.5,
+                color: AppColors.textPrimary,
+              ),
             ),
           ),
-        ),
         const SizedBox(height: AppSpacing.xxl),
         SizedBox(
           height: 48,
@@ -493,11 +496,122 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
           child: OutlinedButton.icon(
             onPressed: () => _copyToClipboard(guide.setupGuide),
             icon: const Icon(Icons.copy),
-            label: const Text('Copy Setup Guide to Clipboard'),
+            label: const Text('Copy All to Clipboard'),
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
       ],
+    );
+  }
+
+  Widget _buildStepCard(SetupStep step) {
+    final isVerification = step.step == 7;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(
+            color: isVerification ? AppColors.success.withValues(alpha: 0.4) : AppColors.border,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.md, AppSpacing.md, 0),
+              child: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isVerification
+                          ? AppColors.success
+                          : AppColors.primary,
+                    ),
+                    alignment: Alignment.center,
+                    child: isVerification
+                        ? const Icon(Icons.check, size: 16, color: Colors.white)
+                        : Text(
+                            '${step.step}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      step.title,
+                      style: AppTypography.headline.copyWith(fontSize: 15),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Description
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
+              child: Text(
+                step.description,
+                style: AppTypography.caption1
+                    .copyWith(color: AppColors.textSecondary),
+              ),
+            ),
+            // Command box
+            Container(
+              margin: const EdgeInsets.fromLTRB(
+                  AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.sm),
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      step.command,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        height: 1.5,
+                        color: Color(0xFFD4D4D4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: step.command));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Step ${step.step} copied'),
+                          duration: const Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                    child: const Icon(
+                      Icons.copy,
+                      size: 18,
+                      color: Color(0xFF9E9E9E),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

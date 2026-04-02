@@ -187,8 +187,16 @@ class RoutersNotifier extends StateNotifier<RoutersState> {
   String _extractError(dynamic e) {
     if (e is DioException) {
       final data = e.response?.data;
-      if (data is Map<String, dynamic> && data.containsKey('message')) {
-        return data['message'] as String;
+      if (data is Map<String, dynamic>) {
+        // Backend format: { "error": { "message": "..." } }
+        final error = data['error'];
+        if (error is Map<String, dynamic> && error.containsKey('message')) {
+          return error['message'] as String;
+        }
+        // Fallback flat format: { "message": "..." }
+        if (data.containsKey('message')) {
+          return data['message'] as String;
+        }
       }
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {

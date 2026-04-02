@@ -4,7 +4,7 @@ import * as subscriptionService from '../services/subscription.service';
 
 export async function getPlans(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const plans = subscriptionService.getPlans();
+    const plans = await subscriptionService.getPlans();
     res.status(200).json({
       success: true,
       data: plans,

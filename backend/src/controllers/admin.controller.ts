@@ -87,6 +87,56 @@ export async function deleteSubscription(req: AuthenticatedRequest, res: Respons
   }
 }
 
+export async function listPlans(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const plans = await adminService.getPlans();
+    res.status(200).json({ success: true, data: plans });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createPlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const plan = await adminService.createPlan(req.body);
+    await auditService.logAction({
+      adminId: req.user!.id, action: 'plan.create', targetEntity: 'plan',
+      targetId: plan.id, details: req.body, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(201).json({ success: true, data: plan });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updatePlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const plan = await adminService.updatePlan(id, req.body);
+    await auditService.logAction({
+      adminId: req.user!.id, action: 'plan.update', targetEntity: 'plan',
+      targetId: id, details: req.body, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: plan });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deletePlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    await adminService.deletePlan(id);
+    await auditService.logAction({
+      adminId: req.user!.id, action: 'plan.delete', targetEntity: 'plan',
+      targetId: id, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: { message: 'Plan deleted successfully' } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function listPayments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { page, limit, status } = req.query as Record<string, string>;

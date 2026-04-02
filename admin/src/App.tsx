@@ -9,6 +9,7 @@ import SubscriptionsPage from './pages/SubscriptionsPage';
 import PaymentsPage from './pages/PaymentsPage';
 import RoutersPage from './pages/RoutersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
+import PlansPage from './pages/PlansPage';
 import type { ReactNode } from 'react';
 
 const queryClient = new QueryClient({
@@ -46,6 +47,7 @@ export default function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/subscriptions" element={<SubscriptionsPage />} />
+              <Route path="/plans" element={<PlansPage />} />
               <Route path="/payments" element={<PaymentsPage />} />
               <Route path="/routers" element={<RoutersPage />} />
               <Route path="/audit-logs" element={<AuditLogsPage />} />

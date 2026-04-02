@@ -34,9 +34,9 @@ export const listSubscriptionsQuerySchema = z.object({
 
 export const updateSubscriptionBodySchema = z.object({
   status: z.enum(['pending', 'active', 'expired', 'cancelled', 'pending_change']).optional(),
-  plan_tier: z.enum(['starter', 'professional', 'enterprise']).optional(),
+  plan_tier: z.string().min(1).max(50).optional(),
   end_date: z.string().datetime().optional(),
-  voucher_quota: z.coerce.number().int().min(0).optional(),
+  voucher_quota: z.coerce.number().int().min(-1).optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
 export const paymentIdParamSchema = z.object({
@@ -66,3 +66,36 @@ export const listAuditLogsQuerySchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
 });
+
+// Plans
+export const planIdParamSchema = z.object({
+  id: z.string().uuid('Invalid plan ID'),
+});
+
+export const createPlanBodySchema = z.object({
+  tier: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, 'Tier must be lowercase alphanumeric with underscores'),
+  name: z.string().min(1).max(100),
+  price: z.coerce.number().min(0),
+  currency: z.string().length(3).default('USD'),
+  max_routers: z.coerce.number().int().min(1),
+  monthly_vouchers: z.coerce.number().int().min(-1),
+  session_monitoring: z.string().max(100).optional(),
+  dashboard: z.string().max(100).optional(),
+  features: z.array(z.string()).default([]),
+  allowed_durations: z.array(z.coerce.number().int().min(1).max(12)).min(1).default([1]),
+  is_active: z.boolean().default(true),
+});
+
+export const updatePlanBodySchema = z.object({
+  tier: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, 'Tier must be lowercase alphanumeric with underscores').optional(),
+  name: z.string().min(1).max(100).optional(),
+  price: z.coerce.number().min(0).optional(),
+  currency: z.string().length(3).optional(),
+  max_routers: z.coerce.number().int().min(1).optional(),
+  monthly_vouchers: z.coerce.number().int().min(-1).optional(),
+  session_monitoring: z.string().max(100).optional(),
+  dashboard: z.string().max(100).optional(),
+  features: z.array(z.string()).optional(),
+  allowed_durations: z.array(z.coerce.number().int().min(1).max(12)).min(1).optional(),
+  is_active: z.boolean().optional(),
+}).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });

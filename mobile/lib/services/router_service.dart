@@ -82,17 +82,42 @@ class RouterStatusInfo {
   }
 }
 
+class SetupStep {
+  final int step;
+  final String title;
+  final String description;
+  final String command;
+
+  const SetupStep({
+    required this.step,
+    required this.title,
+    required this.description,
+    required this.command,
+  });
+
+  factory SetupStep.fromJson(Map<String, dynamic> json) {
+    return SetupStep(
+      step: (json['step'] as num).toInt(),
+      title: json['title'] as String,
+      description: json['description'] as String,
+      command: json['command'] as String,
+    );
+  }
+}
+
 class RouterSetupGuide {
   final String routerName;
   final String setupGuide;
   final String? tunnelIp;
   final String serverEndpoint;
+  final List<SetupStep> steps;
 
   const RouterSetupGuide({
     required this.routerName,
     required this.setupGuide,
     this.tunnelIp,
     required this.serverEndpoint,
+    this.steps = const [],
   });
 
   factory RouterSetupGuide.fromJson(Map<String, dynamic> json) {
@@ -101,6 +126,10 @@ class RouterSetupGuide {
       setupGuide: json['setupGuide'] as String,
       tunnelIp: json['tunnelIp'] as String?,
       serverEndpoint: json['serverEndpoint'] as String,
+      steps: (json['steps'] as List<dynamic>?)
+              ?.map((e) => SetupStep.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 }

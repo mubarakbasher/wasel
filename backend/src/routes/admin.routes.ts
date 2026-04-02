@@ -20,6 +20,12 @@ router.get('/subscriptions', validate({ query: validators.listSubscriptionsQuery
 router.put('/subscriptions/:id', validate({ params: validators.subscriptionIdParamSchema, body: validators.updateSubscriptionBodySchema }), adminController.updateSubscription);
 router.delete('/subscriptions/:id', validate({ params: validators.subscriptionIdParamSchema }), adminController.deleteSubscription);
 
+// Plans
+router.get('/plans', adminController.listPlans);
+router.post('/plans', validate({ body: validators.createPlanBodySchema }), adminController.createPlan);
+router.put('/plans/:id', validate({ params: validators.planIdParamSchema, body: validators.updatePlanBodySchema }), adminController.updatePlan);
+router.delete('/plans/:id', validate({ params: validators.planIdParamSchema }), adminController.deletePlan);
+
 // Payments
 router.get('/payments', validate({ query: validators.listPaymentsQuerySchema }), adminController.listPayments);
 router.put('/payments/:id', validate({ params: validators.paymentIdParamSchema, body: validators.reviewPaymentBodySchema }), adminController.reviewPayment);

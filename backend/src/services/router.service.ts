@@ -6,7 +6,7 @@ import { generateKeyPair, generatePresharedKey } from '../utils/wireguard';
 import { allocateNextTunnelIp, parseTunnelSubnet } from '../utils/ipAllocation';
 import { encrypt, decrypt, generateRadiusSecret, generateNasIdentifier } from '../utils/encryption';
 import { addPeer, removePeer } from './wireguardPeer';
-import { generateMikrotikConfigText } from './wireguardConfig';
+import { generateMikrotikConfigText, generateSetupSteps } from './wireguardConfig';
 import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
 
@@ -401,7 +401,7 @@ export async function getRouterStatus(
 export async function getSetupGuide(
   userId: string,
   routerId: string,
-): Promise<{ routerName: string; setupGuide: string; tunnelIp: string | null; serverEndpoint: string }> {
+): Promise<{ routerName: string; setupGuide: string; tunnelIp: string | null; serverEndpoint: string; steps: import('./wireguardConfig').SetupStep[] }> {
   const result = await pool.query<RouterRow>(
     'SELECT * FROM routers WHERE id = $1 AND user_id = $2',
     [routerId, userId],
@@ -421,7 +421,7 @@ export async function getSetupGuide(
   const radiusSecret = decrypt(router.radius_secret_enc);
   const serverEndpoint = `${config.WG_SERVER_ENDPOINT}:${config.WG_SERVER_PORT}`;
 
-  const setupGuide = generateMikrotikConfigText({
+  const configParams = {
     routerName: router.name,
     routerPrivateKey,
     routerTunnelIp: router.tunnel_ip,
@@ -429,12 +429,16 @@ export async function getSetupGuide(
     serverEndpoint,
     radiusSecret,
     radiusServerIp: parseTunnelSubnet(router.tunnel_ip).serverIp,
-  });
+  };
+
+  const setupGuide = generateMikrotikConfigText(configParams);
+  const steps = generateSetupSteps(configParams);
 
   return {
     routerName: router.name,
     setupGuide,
     tunnelIp: router.tunnel_ip,
     serverEndpoint,
+    steps,
   };
 }

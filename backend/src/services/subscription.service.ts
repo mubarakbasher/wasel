@@ -18,46 +18,46 @@ export interface PlanDefinition {
   allowedDurations: number[];
 }
 
-export const PLANS: Record<string, PlanDefinition> = {
-  starter: {
-    tier: 'starter',
-    name: 'Starter',
-    price: 5,
-    currency: 'USD',
-    maxRouters: 1,
-    monthlyVouchers: 500,
-    sessionMonitoring: 'Active only',
-    dashboard: 'Basic stats',
-    features: ['1 Router', '500 Vouchers/month', 'Active session monitoring', 'Basic dashboard'],
-    allowedDurations: [1],
-  },
-  professional: {
-    tier: 'professional',
-    name: 'Professional',
-    price: 12,
-    currency: 'USD',
-    maxRouters: 3,
-    monthlyVouchers: 2000,
-    sessionMonitoring: 'Active + history',
-    dashboard: 'Advanced analytics',
-    features: ['3 Routers', '2,000 Vouchers/month', 'Session history', 'Advanced analytics'],
-    allowedDurations: [1, 2],
-  },
-  enterprise: {
-    tier: 'enterprise',
-    name: 'Enterprise',
-    price: 25,
-    currency: 'USD',
-    maxRouters: 10,
-    monthlyVouchers: -1, // unlimited
-    sessionMonitoring: 'Full + export',
-    dashboard: 'Full analytics + reports',
-    features: ['10 Routers', 'Unlimited Vouchers', 'Full session history + export', 'Full analytics + reports'],
-    allowedDurations: [1, 2, 6],
-  },
-};
+interface PlanRow {
+  id: string;
+  tier: string;
+  name: string;
+  price: string;
+  currency: string;
+  max_routers: number;
+  monthly_vouchers: number;
+  session_monitoring: string | null;
+  dashboard: string | null;
+  features: string[];
+  allowed_durations: number[];
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
 
-export type PlanTier = keyof typeof PLANS;
+function toPlanDefinition(row: PlanRow): PlanDefinition {
+  return {
+    tier: row.tier,
+    name: row.name,
+    price: parseFloat(row.price),
+    currency: row.currency,
+    maxRouters: row.max_routers,
+    monthlyVouchers: row.monthly_vouchers,
+    sessionMonitoring: row.session_monitoring ?? '',
+    dashboard: row.dashboard ?? '',
+    features: row.features,
+    allowedDurations: row.allowed_durations,
+  };
+}
+
+async function getPlanByTier(tier: string): Promise<PlanDefinition | null> {
+  const result = await pool.query<PlanRow>(
+    `SELECT * FROM plans WHERE tier = $1 AND is_active = true LIMIT 1`,
+    [tier],
+  );
+  if (result.rows.length === 0) return null;
+  return toPlanDefinition(result.rows[0]);
+}
 
 // ----- Interfaces -----
 
@@ -117,11 +117,11 @@ function generateReferenceCode(): string {
   return code;
 }
 
-function toSubscriptionInfo(row: SubscriptionRow): SubscriptionInfo {
+async function toSubscriptionInfo(row: SubscriptionRow): Promise<SubscriptionInfo> {
   const now = new Date();
   const endDate = new Date(row.end_date);
   const daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / 86400000));
-  const plan = PLANS[row.plan_tier];
+  const plan = await getPlanByTier(row.plan_tier);
 
   return {
     id: row.id,
@@ -141,10 +141,13 @@ function toSubscriptionInfo(row: SubscriptionRow): SubscriptionInfo {
 // ----- Service Functions -----
 
 /**
- * Return all plan definitions as an array.
+ * Return all active plan definitions from the database.
  */
-export function getPlans(): PlanDefinition[] {
-  return Object.values(PLANS);
+export async function getPlans(): Promise<PlanDefinition[]> {
+  const result = await pool.query<PlanRow>(
+    `SELECT * FROM plans WHERE is_active = true ORDER BY price ASC`,
+  );
+  return result.rows.map(toPlanDefinition);
 }
 
 /**
@@ -179,9 +182,9 @@ export async function getCurrentSubscription(userId: string): Promise<{ subscrip
     }
 
     if ((row.status === 'active' || row.status === 'pending') && !subscription) {
-      subscription = toSubscriptionInfo(row);
+      subscription = await toSubscriptionInfo(row);
     } else if (row.status === 'pending_change' && !pendingChange) {
-      pendingChange = toSubscriptionInfo(row);
+      pendingChange = await toSubscriptionInfo(row);
     }
   }
 
@@ -200,7 +203,7 @@ export async function requestSubscription(
   durationMonths: number = 1,
 ): Promise<{ subscription: SubscriptionInfo; payment: { id: string; amount: number; currency: string; referenceCode: string; status: string } }> {
   // Validate plan tier
-  const plan = PLANS[planTier];
+  const plan = await getPlanByTier(planTier);
   if (!plan) {
     throw new AppError(400, `Invalid plan tier: ${planTier}`, 'INVALID_PLAN');
   }
@@ -275,7 +278,7 @@ export async function requestSubscription(
     });
 
     return {
-      subscription: toSubscriptionInfo(subscription),
+      subscription: await toSubscriptionInfo(subscription),
       payment: {
         id: payment.id,
         amount: parseFloat(payment.amount),
@@ -351,7 +354,7 @@ export async function getActiveSubscription(userId: string): Promise<Subscriptio
     return null;
   }
 
-  return toSubscriptionInfo(result.rows[0]);
+  return await toSubscriptionInfo(result.rows[0]);
 }
 
 /**
@@ -399,7 +402,7 @@ export async function changeSubscription(
   newPlanTier: string,
   durationMonths: number = 1,
 ): Promise<{ subscription: SubscriptionInfo; payment: { id: string; amount: number; currency: string; referenceCode: string; status: string } }> {
-  const plan = PLANS[newPlanTier];
+  const plan = await getPlanByTier(newPlanTier);
   if (!plan) {
     throw new AppError(400, `Invalid plan tier: ${newPlanTier}`, 'INVALID_PLAN');
   }
@@ -476,7 +479,7 @@ export async function changeSubscription(
     });
 
     return {
-      subscription: toSubscriptionInfo(subscription),
+      subscription: await toSubscriptionInfo(subscription),
       payment: {
         id: payment.id,
         amount: parseFloat(payment.amount),

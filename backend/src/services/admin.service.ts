@@ -325,6 +325,155 @@ export async function deleteSubscription(subId: string): Promise<void> {
   logger.info('Admin deleted subscription', { subId });
 }
 
+// ----- Plan management -----
+
+interface PlanRow {
+  id: string;
+  tier: string;
+  name: string;
+  price: string;
+  currency: string;
+  max_routers: number;
+  monthly_vouchers: number;
+  session_monitoring: string | null;
+  dashboard: string | null;
+  features: string[];
+  allowed_durations: number[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get all plans (active and inactive).
+ */
+export async function getPlans(): Promise<PlanRow[]> {
+  const result = await pool.query<PlanRow>(
+    `SELECT * FROM plans ORDER BY price ASC`,
+  );
+  return result.rows;
+}
+
+/**
+ * Create a new plan.
+ */
+export async function createPlan(data: {
+  tier: string;
+  name: string;
+  price: number;
+  currency?: string;
+  max_routers: number;
+  monthly_vouchers: number;
+  session_monitoring?: string;
+  dashboard?: string;
+  features?: string[];
+  allowed_durations?: number[];
+  is_active?: boolean;
+}): Promise<PlanRow> {
+  const result = await pool.query<PlanRow>(
+    `INSERT INTO plans (tier, name, price, currency, max_routers, monthly_vouchers, session_monitoring, dashboard, features, allowed_durations, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING *`,
+    [
+      data.tier,
+      data.name,
+      data.price,
+      data.currency ?? 'USD',
+      data.max_routers,
+      data.monthly_vouchers,
+      data.session_monitoring ?? null,
+      data.dashboard ?? null,
+      JSON.stringify(data.features ?? []),
+      JSON.stringify(data.allowed_durations ?? [1]),
+      data.is_active ?? true,
+    ],
+  );
+
+  logger.info('Admin created plan', { tier: data.tier });
+  return result.rows[0];
+}
+
+/**
+ * Update an existing plan.
+ */
+export async function updatePlan(
+  planId: string,
+  data: Record<string, unknown>,
+): Promise<PlanRow> {
+  const setClauses: string[] = [];
+  const params: unknown[] = [];
+  let paramIndex = 1;
+
+  const fields = ['tier', 'name', 'price', 'currency', 'max_routers', 'monthly_vouchers', 'session_monitoring', 'dashboard', 'is_active'];
+  for (const field of fields) {
+    if (data[field] !== undefined) {
+      setClauses.push(`${field} = $${paramIndex++}`);
+      params.push(data[field]);
+    }
+  }
+
+  // JSONB fields
+  if (data.features !== undefined) {
+    setClauses.push(`features = $${paramIndex++}`);
+    params.push(JSON.stringify(data.features));
+  }
+  if (data.allowed_durations !== undefined) {
+    setClauses.push(`allowed_durations = $${paramIndex++}`);
+    params.push(JSON.stringify(data.allowed_durations));
+  }
+
+  if (setClauses.length === 0) {
+    throw new AppError(400, 'No fields to update');
+  }
+
+  setClauses.push(`updated_at = NOW()`);
+
+  const result = await pool.query<PlanRow>(
+    `UPDATE plans SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+    [...params, planId],
+  );
+
+  if (result.rowCount === 0) {
+    throw new AppError(404, 'Plan not found');
+  }
+
+  logger.info('Admin updated plan', { planId, fields: Object.keys(data) });
+  return result.rows[0];
+}
+
+/**
+ * Delete a plan. Blocks deletion if subscriptions reference this plan's tier.
+ */
+export async function deletePlan(planId: string): Promise<void> {
+  // Get the plan tier first
+  const planResult = await pool.query<{ id: string; tier: string }>(
+    `SELECT id, tier FROM plans WHERE id = $1`,
+    [planId],
+  );
+
+  if (planResult.rowCount === 0) {
+    throw new AppError(404, 'Plan not found');
+  }
+
+  const tier = planResult.rows[0].tier;
+
+  // Check if any subscriptions use this tier
+  const subCount = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM subscriptions WHERE plan_tier = $1`,
+    [tier],
+  );
+
+  if (parseInt(subCount.rows[0].count, 10) > 0) {
+    throw new AppError(
+      409,
+      `Cannot delete plan "${tier}" — it has existing subscriptions. Deactivate it instead.`,
+    );
+  }
+
+  await pool.query(`DELETE FROM plans WHERE id = $1`, [planId]);
+  logger.info('Admin deleted plan', { planId, tier });
+}
+
 /**
  * Get paginated list of payments with optional status filter.
  */

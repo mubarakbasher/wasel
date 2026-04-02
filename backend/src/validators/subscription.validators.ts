@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
 export const requestSubscriptionSchema = z.object({
-  planTier: z.enum(['starter', 'professional', 'enterprise']),
-  durationMonths: z.number().int().min(1).max(6).optional().default(1),
+  planTier: z.string().min(1).max(50),
+  durationMonths: z.number().int().min(1).max(12).optional().default(1),
 });
 
 export const changeSubscriptionSchema = z.object({
-  planTier: z.enum(['starter', 'professional', 'enterprise']),
+  planTier: z.string().min(1).max(50),
   durationMonths: z.number().int().min(1).max(6).optional().default(1),
 });
 

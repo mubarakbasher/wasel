@@ -269,3 +269,80 @@ You should see handshake activity and successful pings to the VPS tunnel IP.
 ================================================================================
 `.trimStart();
 }
+
+// ---------------------------------------------------------------------------
+// Structured setup steps (for mobile step-by-step UI)
+// ---------------------------------------------------------------------------
+
+export interface SetupStep {
+  step: number;
+  title: string;
+  description: string;
+  command: string;
+}
+
+/**
+ * Generate structured setup steps for the mobile app UI.
+ * Each step has a title, description, and copyable RouterOS command.
+ */
+export function generateSetupSteps(params: {
+  routerPrivateKey: string;
+  routerTunnelIp: string;
+  serverPublicKey: string;
+  serverEndpoint: string;
+  presharedKey?: string;
+  radiusSecret: string;
+  radiusServerIp: string;
+}): SetupStep[] {
+  const { host, port } = parseEndpoint(params.serverEndpoint);
+  const network = deriveNetwork30(params.routerTunnelIp);
+
+  const pskPart = params.presharedKey
+    ? ` preshared-key="${params.presharedKey}"`
+    : '';
+
+  return [
+    {
+      step: 1,
+      title: 'Create the WireGuard interface',
+      description: 'Creates a new WireGuard interface named "wg-wasel" on your router.',
+      command: `/interface wireguard add name=wg-wasel listen-port=51820 private-key="${params.routerPrivateKey}"`,
+    },
+    {
+      step: 2,
+      title: 'Add the Wasel VPS as a WireGuard peer',
+      description: 'Tells your router how to reach the Wasel VPS through the encrypted tunnel. The persistent-keepalive ensures the tunnel stays up even behind NAT.',
+      command: `/interface wireguard peers add interface=wg-wasel public-key="${params.serverPublicKey}" endpoint-address=${host} endpoint-port=${port} allowed-address=10.10.0.0/16 persistent-keepalive=25s${pskPart}`,
+    },
+    {
+      step: 3,
+      title: 'Assign the tunnel IP address',
+      description: 'Gives your router its unique address on the VPN.',
+      command: `/ip address add address=${toSubnet30(params.routerTunnelIp)} interface=wg-wasel network=${network}`,
+    },
+    {
+      step: 4,
+      title: 'Configure RADIUS authentication',
+      description: 'Points the router\'s hotspot to the Wasel RADIUS server on the VPN.',
+      command: `/radius add service=hotspot address=${params.radiusServerIp} secret="${params.radiusSecret}"`,
+    },
+    {
+      step: 5,
+      title: 'Enable RADIUS on the hotspot profile',
+      description: 'Tells the hotspot to authenticate users via RADIUS instead of local users.',
+      command: `/ip hotspot profile set default use-radius=yes radius-default-domain=""`,
+    },
+    {
+      step: 6,
+      title: 'Add firewall rules',
+      description: 'Ensures the router accepts RADIUS and WireGuard packets. Rules are placed at the top of the input chain.',
+      command: `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=1812,1813 action=accept comment="Allow RADIUS auth/acct from Wasel VPS" place-before=0\n/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=3799 action=accept comment="Allow RADIUS CoA from Wasel VPS" place-before=1\n/ip firewall filter add chain=input protocol=udp dst-port=51820 action=accept comment="Allow WireGuard" place-before=2`,
+    },
+    {
+      step: 7,
+      title: 'Verification',
+      description: 'After running all commands, verify the tunnel is up. You should see handshake activity and successful pings to the VPS tunnel IP.',
+      command: `/interface wireguard peers print\n/ping ${params.radiusServerIp} count=4`,
+    },
+  ];
+}
