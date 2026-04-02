@@ -505,7 +505,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
   }
 
   Widget _buildStepCard(SetupStep step) {
-    final isVerification = step.step == 7;
+    final isVerification = step.step >= 9;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Container(

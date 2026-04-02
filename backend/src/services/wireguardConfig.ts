@@ -334,15 +334,33 @@ export function generateSetupSteps(params: {
     },
     {
       step: 6,
-      title: 'Add firewall rules',
-      description: 'Ensures the router accepts RADIUS and WireGuard packets. Rules are placed at the top of the input chain.',
-      command: `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=1812,1813 action=accept comment="Allow RADIUS auth/acct from Wasel VPS" place-before=0\n/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=3799 action=accept comment="Allow RADIUS CoA from Wasel VPS" place-before=1\n/ip firewall filter add chain=input protocol=udp dst-port=51820 action=accept comment="Allow WireGuard" place-before=2`,
+      title: 'Allow RADIUS auth/acct traffic',
+      description: 'Allows RADIUS authentication and accounting packets from the Wasel VPS.',
+      command: `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=1812,1813 action=accept comment="Allow RADIUS auth/acct from Wasel VPS" place-before=0`,
     },
     {
       step: 7,
-      title: 'Verification',
-      description: 'After running all commands, verify the tunnel is up. You should see handshake activity and successful pings to the VPS tunnel IP.',
-      command: `/interface wireguard peers print\n/ping ${params.radiusServerIp} count=4`,
+      title: 'Allow RADIUS CoA traffic',
+      description: 'Allows RADIUS Change-of-Authorization packets for disconnecting users.',
+      command: `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=3799 action=accept comment="Allow RADIUS CoA from Wasel VPS" place-before=1`,
+    },
+    {
+      step: 8,
+      title: 'Allow WireGuard traffic',
+      description: 'Allows incoming WireGuard VPN packets.',
+      command: `/ip firewall filter add chain=input protocol=udp dst-port=51820 action=accept comment="Allow WireGuard" place-before=2`,
+    },
+    {
+      step: 9,
+      title: 'Verify the tunnel',
+      description: 'Check that the WireGuard peer is active and you can ping the VPS tunnel IP.',
+      command: `/interface wireguard peers print`,
+    },
+    {
+      step: 10,
+      title: 'Ping the VPS',
+      description: 'You should see successful replies confirming the tunnel is working.',
+      command: `/ping ${params.radiusServerIp} count=4`,
     },
   ];
 }
