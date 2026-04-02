@@ -310,6 +310,22 @@ export async function updateSubscription(
 }
 
 /**
+ * Delete a subscription.
+ */
+export async function deleteSubscription(subId: string): Promise<void> {
+  const result = await pool.query(
+    `DELETE FROM subscriptions WHERE id = $1`,
+    [subId],
+  );
+
+  if (result.rowCount === 0) {
+    throw new AppError(404, 'Subscription not found');
+  }
+
+  logger.info('Admin deleted subscription', { subId });
+}
+
+/**
  * Get paginated list of payments with optional status filter.
  */
 export async function getPayments(

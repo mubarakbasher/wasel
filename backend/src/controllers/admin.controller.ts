@@ -73,6 +73,20 @@ export async function updateSubscription(req: AuthenticatedRequest, res: Respons
   }
 }
 
+export async function deleteSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    await adminService.deleteSubscription(id);
+    await auditService.logAction({
+      adminId: req.user!.id, action: 'subscription.delete', targetEntity: 'subscription',
+      targetId: id, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: { message: 'Subscription deleted successfully' } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function listPayments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { page, limit, status } = req.query as Record<string, string>;

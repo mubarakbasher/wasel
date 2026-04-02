@@ -18,6 +18,7 @@ router.delete('/users/:id', validate({ params: validators.userIdParamSchema }), 
 // Subscriptions
 router.get('/subscriptions', validate({ query: validators.listSubscriptionsQuerySchema }), adminController.listSubscriptions);
 router.put('/subscriptions/:id', validate({ params: validators.subscriptionIdParamSchema, body: validators.updateSubscriptionBodySchema }), adminController.updateSubscription);
+router.delete('/subscriptions/:id', validate({ params: validators.subscriptionIdParamSchema }), adminController.deleteSubscription);
 
 // Payments
 router.get('/payments', validate({ query: validators.listPaymentsQuerySchema }), adminController.listPayments);
