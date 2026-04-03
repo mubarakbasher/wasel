@@ -2,11 +2,11 @@ sql {
     driver = "rlm_sql_postgresql"
     dialect = "postgresql"
 
-    server = "postgres"
-    port = 5432
-    login = "wasel"
-    password = "53094ff06b673713c6392c1573f2ef2fc35fcb6563a55dd2d9eca5ee52e3ec8d"
-    radius_db = "wasel"
+    server = "${RADIUS_DB_HOST}"
+    port = ${RADIUS_DB_PORT}
+    login = "${RADIUS_DB_USER}"
+    password = "${RADIUS_DB_PASS}"
+    radius_db = "${RADIUS_DB_NAME}"
 
     # Table names
     acct_table1 = "radacct"

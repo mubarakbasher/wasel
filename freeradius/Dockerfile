@@ -1,15 +1,15 @@
 FROM freeradius/freeradius-server:latest
 
-# Install PostgreSQL driver for FreeRADIUS
+# Install PostgreSQL driver for FreeRADIUS and envsubst (gettext-base)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends freeradius-postgresql && \
+    apt-get install -y --no-install-recommends freeradius-postgresql gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
 # Enable SQL module (symlink from mods-available to mods-enabled)
 RUN ln -sf /etc/freeradius/mods-available/sql /etc/freeradius/mods-enabled/sql
 
-# Override only the SQL module config with our PostgreSQL settings
-COPY raddb/mods-enabled/sql /etc/freeradius/mods-enabled/sql
+# Copy SQL config as a template (env vars substituted at runtime)
+COPY raddb/mods-enabled/sql /etc/freeradius/mods-enabled/sql.template
 
 # Override sites-enabled with our auth/acct/coa config
 COPY raddb/sites-enabled/default /etc/freeradius/sites-enabled/default
@@ -28,6 +28,11 @@ RUN sed -i 's/destination = files/destination = stdout/' /etc/freeradius/radiusd
 # Ensure correct ownership
 RUN chown -R freerad:freerad /etc/freeradius
 
+# Add entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 EXPOSE 1812/udp 1813/udp 3799/udp
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["freeradius", "-f"]
