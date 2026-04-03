@@ -7,7 +7,7 @@ process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-that-is-long-enough';
 process.env.ENCRYPTION_KEY = 'a'.repeat(64);
 process.env.WG_SERVER_PRIVATE_KEY = 'test-wg-private-key';
 process.env.WG_SERVER_PUBLIC_KEY = 'test-wg-public-key';
-process.env.WG_SERVER_ENDPOINT = '127.0.0.1:51820';
+process.env.WG_SERVER_ENDPOINT = '127.0.0.1';
 process.env.DB_HOST = 'localhost';
 process.env.DB_PASSWORD = 'test';
 

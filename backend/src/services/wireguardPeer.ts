@@ -5,6 +5,8 @@ import { join } from 'path';
 import { randomBytes } from 'crypto';
 import { tmpdir } from 'os';
 import logger from '../config/logger';
+import { pool } from '../config/database';
+import { decrypt } from '../utils/encryption';
 
 const execFileAsync = promisify(execFile);
 
@@ -194,4 +196,54 @@ export async function syncConfigFile(configContent: string): Promise<void> {
     logger.error('Failed to sync WireGuard config', { error: message });
     throw new Error(`Failed to sync WireGuard config: ${message}`);
   }
+}
+
+/**
+ * Restore all router peers from the database to the running wg0 interface.
+ *
+ * Called on backend startup to ensure peers survive container restarts.
+ * Each peer is added individually; failures are logged but don't block others.
+ */
+export async function syncPeersFromDatabase(): Promise<void> {
+  const result = await pool.query<{
+    id: string;
+    wg_public_key: string;
+    tunnel_ip: string;
+    wg_preshared_key_enc: string | null;
+  }>(
+    'SELECT id, wg_public_key, tunnel_ip, wg_preshared_key_enc FROM routers WHERE wg_public_key IS NOT NULL AND tunnel_ip IS NOT NULL'
+  );
+
+  const routers = result.rows;
+  if (routers.length === 0) {
+    logger.info('WireGuard peer sync: no routers to sync');
+    return;
+  }
+
+  let synced = 0;
+  let failed = 0;
+
+  for (const router of routers) {
+    try {
+      const presharedKey = router.wg_preshared_key_enc
+        ? decrypt(router.wg_preshared_key_enc)
+        : undefined;
+
+      await addPeer({
+        publicKey: router.wg_public_key,
+        routerIp: router.tunnel_ip,
+        presharedKey,
+      });
+      synced++;
+    } catch (error) {
+      failed++;
+      logger.error('WireGuard peer sync: failed to add peer', {
+        routerId: router.id,
+        tunnelIp: router.tunnel_ip,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  logger.info('WireGuard peer sync complete', { total: routers.length, synced, failed });
 }

@@ -7,6 +7,7 @@ import { startPurgeUnverifiedJob } from './jobs/purgeUnverified';
 import { startSubscriptionNotificationJob } from './jobs/subscriptionNotifications';
 import { startQuotaMonitorJob } from './jobs/quotaMonitor';
 import { startMonitoring } from './services/wireguardMonitor';
+import { syncPeersFromDatabase } from './services/wireguardPeer';
 
 async function startServer(): Promise<void> {
   try {
@@ -16,6 +17,15 @@ async function startServer(): Promise<void> {
     // Test Redis connection
     await redis.ping();
     logger.info('Redis ping successful');
+
+    // Restore WireGuard peers before monitoring starts
+    try {
+      await syncPeersFromDatabase();
+    } catch (error) {
+      logger.warn('WireGuard peer sync failed on startup (non-fatal)', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     // Start background jobs
     startPurgeUnverifiedJob();

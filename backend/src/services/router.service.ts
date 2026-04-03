@@ -22,6 +22,7 @@ export interface RouterRow {
   api_pass_enc: string | null;
   wg_public_key: string | null;
   wg_private_key_enc: string | null;
+  wg_preshared_key_enc: string | null;
   wg_endpoint: string | null;
   tunnel_ip: string | null;
   radius_secret_enc: string | null;
@@ -105,6 +106,7 @@ export async function createRouter(
 
   // Encrypt sensitive fields
   const wgPrivateKeyEnc = encrypt(routerPrivateKey);
+  const wgPresharedKeyEnc = encrypt(presharedKey);
   const radiusSecretEnc = encrypt(radiusSecret);
   const apiPassEnc = data.apiPass ? encrypt(data.apiPass) : null;
 
@@ -116,9 +118,9 @@ export async function createRouter(
     const result = await client.query<RouterRow>(
       `INSERT INTO routers (
         user_id, name, model, ros_version, api_user, api_pass_enc,
-        wg_public_key, wg_private_key_enc, tunnel_ip,
+        wg_public_key, wg_private_key_enc, wg_preshared_key_enc, tunnel_ip,
         radius_secret_enc, nas_identifier, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'offline')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'offline')
       RETURNING *`,
       [
         userId,
@@ -129,6 +131,7 @@ export async function createRouter(
         apiPassEnc,
         routerPublicKey,
         wgPrivateKeyEnc,
+        wgPresharedKeyEnc,
         tunnel.routerIp,
         radiusSecretEnc,
         'pending', // placeholder, will update after we have the ID
@@ -419,6 +422,7 @@ export async function getSetupGuide(
 
   const routerPrivateKey = decrypt(router.wg_private_key_enc);
   const radiusSecret = decrypt(router.radius_secret_enc);
+  const presharedKey = router.wg_preshared_key_enc ? decrypt(router.wg_preshared_key_enc) : undefined;
   const serverEndpoint = `${config.WG_SERVER_ENDPOINT}:${config.WG_SERVER_PORT}`;
 
   const configParams = {
@@ -427,8 +431,9 @@ export async function getSetupGuide(
     routerTunnelIp: router.tunnel_ip,
     serverPublicKey: config.WG_SERVER_PUBLIC_KEY,
     serverEndpoint,
+    presharedKey,
     radiusSecret,
-    radiusServerIp: parseTunnelSubnet(router.tunnel_ip).serverIp,
+    radiusServerIp: '10.10.0.1', // VPS wg0 address — always the same for all routers
   };
 
   const setupGuide = generateMikrotikConfigText(configParams);

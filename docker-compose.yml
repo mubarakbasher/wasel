@@ -1,8 +1,9 @@
 services:
   backend:
     build: ./backend
-    ports:
-      - '3000:3000'
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
     env_file:
       - ./backend/.env
     depends_on:

@@ -27,10 +27,46 @@ docker --version
 docker compose version
 ```
 
-### 1.2 Install WireGuard (for router tunnels)
+### 1.2 Install & Configure WireGuard (for router tunnels)
 
 ```bash
 sudo apt install wireguard -y
+
+# Generate server keys
+WG_PRIV=$(wg genkey)
+WG_PUB=$(echo "$WG_PRIV" | wg pubkey)
+echo "WG_SERVER_PRIVATE_KEY=$WG_PRIV"
+echo "WG_SERVER_PUBLIC_KEY=$WG_PUB"
+
+# Save private key to file
+echo "$WG_PRIV" | sudo tee /etc/wireguard/server_private.key > /dev/null
+sudo chmod 600 /etc/wireguard/server_private.key
+
+# Create wg0 interface
+sudo ip link add dev wg0 type wireguard
+sudo ip addr add 10.10.0.1/16 dev wg0
+sudo wg set wg0 listen-port 51820 private-key /etc/wireguard/server_private.key
+sudo ip link set dev wg0 up
+
+# Enable IP forwarding
+echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+
+# Verify
+sudo wg show wg0
+```
+
+To make wg0 persist across reboots, create `/etc/wireguard/wg0.conf`:
+
+```bash
+sudo tee /etc/wireguard/wg0.conf > /dev/null <<EOF
+[Interface]
+PrivateKey = $WG_PRIV
+Address = 10.10.0.1/16
+ListenPort = 51820
+EOF
+
+sudo systemctl enable wg-quick@wg0
 ```
 
 ### 1.3 Open Firewall Ports
@@ -72,15 +108,15 @@ nano backend/.env
 NODE_ENV=production
 PORT=3000
 
-# PostgreSQL — matches docker-compose.yml defaults
-DB_HOST=postgres
+# PostgreSQL — backend uses network_mode:host, so connect via localhost
+DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=wasel
 DB_USER=wasel
 DB_PASSWORD=<STRONG_PASSWORD>
 
 # Redis
-REDIS_HOST=redis
+REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 
 # JWT — generate random secrets
@@ -95,10 +131,10 @@ ENCRYPTION_KEY=<RUN: openssl rand -hex 32>
 # CORS — your phone will connect to this
 CORS_ORIGIN=https://wa-sel.com,https://api.wa-sel.com
 
-# WireGuard
-WG_SERVER_PRIVATE_KEY=<RUN: wg genkey>
-WG_SERVER_PUBLIC_KEY=<RUN: echo "<PRIVATE_KEY>" | wg pubkey>
-WG_SERVER_ENDPOINT=76.13.59.23:51820
+# WireGuard — ENDPOINT is hostname/IP only (no port)
+WG_SERVER_PRIVATE_KEY=<from step 1.2>
+WG_SERVER_PUBLIC_KEY=<from step 1.2>
+WG_SERVER_ENDPOINT=76.13.59.23
 WG_SERVER_PORT=51820
 
 # SMTP — use Gmail App Password or any SMTP provider
@@ -108,8 +144,8 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 SMTP_FROM=noreply@wasel.app
 
-# FreeRADIUS
-RADIUS_HOST=freeradius
+# FreeRADIUS — backend uses network_mode:host, so connect via localhost
+RADIUS_HOST=127.0.0.1
 RADIUS_AUTH_PORT=1812
 RADIUS_ACCT_PORT=1813
 RADIUS_COA_PORT=3799
@@ -423,7 +459,8 @@ sudo wg show
 | App shows "No internet connection" | Check VPS firewall (port 3000 open), verify API URL in `api_client.dart` matches your VPS |
 | App shows "Connection timed out" | VPS may be unreachable — try `curl http://<VPS_IP>:3000/api/v1/health` from your PC |
 | Registration works but no OTP email | Check SMTP config in `.env`, check `docker compose logs backend` for SMTP errors |
-| Router shows "offline" | WireGuard tunnel not established — check router setup guide was applied, verify port 51820/udp is open |
+| Router shows "offline" | WireGuard tunnel not established — run `sudo wg show wg0` on VPS to check if wg0 exists and peer is listed. Verify port 51820/udp is open. Re-apply setup guide commands on MikroTik |
+| WireGuard no handshake | Check: 1) `sudo wg show wg0` shows the peer, 2) VPS firewall allows 51820/udp, 3) MikroTik endpoint-address is correct (no port in address), 4) Keys match |
 | Voucher login fails on hotspot | Check FreeRADIUS logs: `docker compose logs freeradius`, verify RADIUS secret matches between router and VPS |
 | "502 Bad Gateway" from Nginx | Backend container may be down: `docker compose ps`, `docker compose logs backend` |
 | Android blocks HTTP requests | Add `network_security_config.xml` (see section 4.2) or use HTTPS |
