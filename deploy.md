@@ -27,47 +27,41 @@ docker --version
 docker compose version
 ```
 
-### 1.2 Install & Configure WireGuard (for router tunnels)
+### 1.2 Configure WireGuard (managed by Docker)
+
+WireGuard runs inside a Docker container — no need to install it on the host.
 
 ```bash
-sudo apt install wireguard -y
+# Generate server keys (wireguard-tools only needed for key generation)
+sudo apt install wireguard-tools -y
 
-# Generate server keys
 WG_PRIV=$(wg genkey)
 WG_PUB=$(echo "$WG_PRIV" | wg pubkey)
 echo "WG_SERVER_PRIVATE_KEY=$WG_PRIV"
 echo "WG_SERVER_PUBLIC_KEY=$WG_PUB"
 
-# Save private key to file
-echo "$WG_PRIV" | sudo tee /etc/wireguard/server_private.key > /dev/null
-sudo chmod 600 /etc/wireguard/server_private.key
+# Create the WireGuard config directory and config file
+sudo mkdir -p /etc/wireguard
 
-# Create wg0 interface
-sudo ip link add dev wg0 type wireguard
-sudo ip addr add 10.10.0.1/16 dev wg0
-sudo wg set wg0 listen-port 51820 private-key /etc/wireguard/server_private.key
-sudo ip link set dev wg0 up
-
-# Enable IP forwarding
-echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
-
-# Verify
-sudo wg show wg0
-```
-
-To make wg0 persist across reboots, create `/etc/wireguard/wg0.conf`:
-
-```bash
 sudo tee /etc/wireguard/wg0.conf > /dev/null <<EOF
 [Interface]
 PrivateKey = $WG_PRIV
 Address = 10.10.0.1/16
 ListenPort = 51820
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth+ -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth+ -j MASQUERADE
 EOF
 
-sudo systemctl enable wg-quick@wg0
+sudo chmod 600 /etc/wireguard/wg0.conf
 ```
+
+The `eth+` wildcard matches any `eth*` interface. If your VPS uses a different naming convention (e.g., `ens3`), replace `eth+` with `ens+` or your specific interface name. Check with: `ip route | grep default`.
+
+The WireGuard Docker container will automatically:
+- Load the WireGuard kernel module
+- Create and bring up the `wg0` interface
+- Enable IP forwarding
+- Apply the iptables rules for routing
 
 ### 1.3 Open Firewall Ports
 
@@ -447,7 +441,8 @@ docker compose exec backend node -e "require('./dist/migrations/runner.js').runM
 ### WireGuard Status
 
 ```bash
-sudo wg show
+docker compose exec wireguard wg show
+docker compose logs wireguard
 ```
 
 ---
@@ -459,8 +454,9 @@ sudo wg show
 | App shows "No internet connection" | Check VPS firewall (port 3000 open), verify API URL in `api_client.dart` matches your VPS |
 | App shows "Connection timed out" | VPS may be unreachable — try `curl http://<VPS_IP>:3000/api/v1/health` from your PC |
 | Registration works but no OTP email | Check SMTP config in `.env`, check `docker compose logs backend` for SMTP errors |
-| Router shows "offline" | WireGuard tunnel not established — run `sudo wg show wg0` on VPS to check if wg0 exists and peer is listed. Verify port 51820/udp is open. Re-apply setup guide commands on MikroTik |
-| WireGuard no handshake | Check: 1) `sudo wg show wg0` shows the peer, 2) VPS firewall allows 51820/udp, 3) MikroTik endpoint-address is correct (no port in address), 4) Keys match |
+| Router shows "offline" | WireGuard tunnel not established — run `docker compose exec wireguard wg show wg0` to check if wg0 exists and peer is listed. Check `docker compose logs wireguard` for errors. Verify port 51820/udp is open. Re-apply setup guide commands on MikroTik |
+| WireGuard no handshake | Check: 1) `docker compose exec wireguard wg show wg0` shows the peer, 2) VPS firewall allows 51820/udp, 3) MikroTik endpoint-address is correct (no port in address), 4) Keys match |
+| WireGuard container won't start | Check `/etc/wireguard/wg0.conf` exists and has correct format. Check `docker compose logs wireguard`. Ensure `/lib/modules` exists on host (kernel modules needed) |
 | Voucher login fails on hotspot | Check FreeRADIUS logs: `docker compose logs freeradius`, verify RADIUS secret matches between router and VPS |
 | "502 Bad Gateway" from Nginx | Backend container may be down: `docker compose ps`, `docker compose logs backend` |
 | Android blocks HTTP requests | Add `network_security_config.xml` (see section 4.2) or use HTTPS |

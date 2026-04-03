@@ -1,4 +1,28 @@
 services:
+  wireguard:
+    image: lscr.io/linuxserver/wireguard
+    container_name: wireguard
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - /etc/wireguard:/config/wg_confs
+      - /lib/modules:/lib/modules:ro
+    sysctls:
+      - net.ipv4.ip_forward=1
+    healthcheck:
+      test: ['CMD-SHELL', 'wg show wg0 2>/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
   backend:
     build: ./backend
     network_mode: host
@@ -6,10 +30,14 @@ services:
       - NET_ADMIN
     env_file:
       - ./backend/.env
+    volumes:
+      - /etc/wireguard:/etc/wireguard
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      wireguard:
         condition: service_healthy
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/v1/health || exit 1']
@@ -52,18 +80,17 @@ services:
 
   freeradius:
     build: ./freeradius
-    ports:
-      - '1812:1812/udp'
-      - '1813:1813/udp'
-      - '3799:3799/udp'
+    network_mode: host
     environment:
-      RADIUS_DB_HOST: postgres
+      RADIUS_DB_HOST: 127.0.0.1
       RADIUS_DB_PORT: 5432
       RADIUS_DB_NAME: wasel
       RADIUS_DB_USER: wasel
       RADIUS_DB_PASS: 53094ff06b673713c6392c1573f2ef2fc35fcb6563a55dd2d9eca5ee52e3ec8d
     depends_on:
       postgres:
+        condition: service_healthy
+      wireguard:
         condition: service_healthy
     healthcheck:
       test: ['CMD-SHELL', 'pgrep freeradius || exit 1']
