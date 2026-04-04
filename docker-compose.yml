@@ -101,8 +101,6 @@ services:
     build: ./admin
     ports:
       - '5173:5173'
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
     depends_on:
       backend:
         condition: service_healthy

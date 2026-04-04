@@ -24,7 +24,9 @@ app.use(
 // CORS
 app.use(
   cors({
-    origin: config.CORS_ORIGIN,
+    origin: config.CORS_ORIGIN === '*'
+      ? '*'
+      : config.CORS_ORIGIN.split(',').map(s => s.trim()),
     credentials: true,
   })
 );
