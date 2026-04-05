@@ -38,6 +38,9 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
   // Step 2: Validity
   int? _validitySeconds; // null = open
+  bool _isCustomValidity = false;
+  final _customValidityController = TextEditingController();
+  String _customValidityUnit = 'hours'; // 'hours' or 'days'
 
   @override
   void dispose() {
@@ -45,6 +48,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     _limitValueController.dispose();
     _countController.dispose();
     _priceController.dispose();
+    _customValidityController.dispose();
     super.dispose();
   }
 
@@ -236,7 +240,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
           Text('What type of limit?',
-              style: AppTypography.headline2
+              style: AppTypography.headline
                   .copyWith(color: AppColors.textPrimary)),
           const SizedBox(height: AppSpacing.lg),
 
@@ -364,7 +368,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
         decoration: BoxDecoration(
           color: selected
               ? AppColors.primary.withValues(alpha: 0.1)
-              : AppColors.surfaceSecondary,
+              : AppColors.surface,
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
           border: Border.all(
             color: selected ? AppColors.primary : AppColors.border,
@@ -408,7 +412,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: [
         Text('Voucher validity',
-            style: AppTypography.headline2
+            style: AppTypography.headline
                 .copyWith(color: AppColors.textPrimary)),
         const SizedBox(height: AppSpacing.sm),
         Text(
@@ -421,32 +425,101 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
         Wrap(
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
-          children: presets.map((preset) {
-            final isSelected = _validitySeconds == preset.seconds;
-            return ChoiceChip(
-              label: Text(preset.label),
-              selected: isSelected,
+          children: [
+            ...presets.map((preset) {
+              final isSelected =
+                  !_isCustomValidity && _validitySeconds == preset.seconds;
+              return ChoiceChip(
+                label: Text(preset.label),
+                selected: isSelected,
+                onSelected: (_) {
+                  setState(() {
+                    _isCustomValidity = false;
+                    _validitySeconds = preset.seconds;
+                  });
+                },
+                selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                labelStyle: AppTypography.subhead.copyWith(
+                  color:
+                      isSelected ? AppColors.primary : AppColors.textPrimary,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                ),
+                side: BorderSide(
+                  color: isSelected ? AppColors.primary : AppColors.border,
+                ),
+              );
+            }),
+            ChoiceChip(
+              label: const Text('Custom'),
+              selected: _isCustomValidity,
               onSelected: (_) {
-                setState(() => _validitySeconds = preset.seconds);
+                setState(() {
+                  _isCustomValidity = true;
+                  _updateCustomValidity();
+                });
               },
               selectedColor: AppColors.primary.withValues(alpha: 0.15),
               labelStyle: AppTypography.subhead.copyWith(
-                color: isSelected ? AppColors.primary : AppColors.textPrimary,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                color: _isCustomValidity
+                    ? AppColors.primary
+                    : AppColors.textPrimary,
+                fontWeight:
+                    _isCustomValidity ? FontWeight.w600 : FontWeight.w400,
               ),
               side: BorderSide(
-                color: isSelected ? AppColors.primary : AppColors.border,
+                color: _isCustomValidity ? AppColors.primary : AppColors.border,
               ),
-            );
-          }).toList(),
+            ),
+          ],
         ),
+
+        if (_isCustomValidity) ...[
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _customValidityController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'Value',
+                    hintText: 'e.g. 5',
+                  ),
+                  onChanged: (_) => _updateCustomValidity(),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                flex: 2,
+                child: DropdownButtonFormField<String>(
+                  value: _customValidityUnit,
+                  decoration: const InputDecoration(labelText: 'Unit'),
+                  items: const [
+                    DropdownMenuItem(value: 'hours', child: Text('Hours')),
+                    DropdownMenuItem(value: 'days', child: Text('Days')),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() {
+                        _customValidityUnit = v;
+                        _updateCustomValidity();
+                      });
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: AppSpacing.xl),
 
         // Explanation card
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: AppColors.surfaceSecondary,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
           ),
           child: Column(
@@ -489,6 +562,16 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     );
   }
 
+  void _updateCustomValidity() {
+    final n = int.tryParse(_customValidityController.text.trim());
+    if (n != null && n > 0) {
+      setState(() {
+        _validitySeconds =
+            _customValidityUnit == 'days' ? n * 86400 : n * 3600;
+      });
+    }
+  }
+
   String _formatDuration(int seconds) {
     if (seconds < 3600) return '${seconds ~/ 60} minutes';
     if (seconds < 86400) {
@@ -519,7 +602,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
           Text('How many vouchers?',
-              style: AppTypography.headline2
+              style: AppTypography.headline
                   .copyWith(color: AppColors.textPrimary)),
           const SizedBox(height: AppSpacing.lg),
 
@@ -565,7 +648,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
-              color: AppColors.surfaceSecondary,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
               border: Border.all(color: AppColors.border),
             ),
