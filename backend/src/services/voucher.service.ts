@@ -381,8 +381,8 @@ export async function getVouchersByRouter(
 ): Promise<VoucherListResult> {
   await verifyRouterOwnership(userId, routerId);
 
-  const page = options.page || 1;
-  const limit = options.limit || 20;
+  const page = Number(options.page) || 1;
+  const limit = Number(options.limit) || 20;
   const offset = (page - 1) * limit;
 
   const conditions: string[] = ['vm.user_id = $1', 'vm.router_id = $2'];

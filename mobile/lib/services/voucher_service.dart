@@ -28,9 +28,9 @@ class VoucherService {
     final meta = response.data['meta'] as Map<String, dynamic>?;
     return VoucherListResult(
       vouchers: data.map((e) => Voucher.fromJson(e as Map<String, dynamic>)).toList(),
-      total: meta?['total'] as int? ?? data.length,
-      page: meta?['page'] as int? ?? page,
-      limit: meta?['limit'] as int? ?? limit,
+      total: meta?['total'] != null ? int.parse(meta!['total'].toString()) : data.length,
+      page: meta?['page'] != null ? int.parse(meta!['page'].toString()) : page,
+      limit: meta?['limit'] != null ? int.parse(meta!['limit'].toString()) : limit,
     );
   }
 

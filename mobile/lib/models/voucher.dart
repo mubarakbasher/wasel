@@ -46,7 +46,9 @@ class Voucher {
       comment: json['comment'] as String?,
       status: json['status'] as String? ?? 'active',
       expiration: json['expiration'] as String?,
-      simultaneousUse: json['simultaneousUse'] as int?,
+      simultaneousUse: json['simultaneousUse'] != null
+          ? int.parse(json['simultaneousUse'].toString())
+          : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
