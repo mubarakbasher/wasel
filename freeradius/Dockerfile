@@ -8,8 +8,11 @@ RUN apt-get update && \
 # Enable SQL module (symlink from mods-available to mods-enabled)
 RUN ln -sf /etc/freeradius/mods-available/sql /etc/freeradius/mods-enabled/sql
 
-# Copy SQL config as a template (env vars substituted at runtime)
-COPY raddb/mods-enabled/sql /etc/freeradius/mods-enabled/sql.template
+# Copy SQL config as a template (env vars substituted at runtime by entrypoint)
+COPY raddb/mods-enabled/sql /etc/freeradius/sql.template
+
+# Copy sqlcounter module config for time/data limit enforcement
+COPY raddb/mods-enabled/sqlcounter /etc/freeradius/mods-enabled/sqlcounter
 
 # Override sites-enabled with our auth/acct/coa config
 COPY raddb/sites-enabled/default /etc/freeradius/sites-enabled/default
