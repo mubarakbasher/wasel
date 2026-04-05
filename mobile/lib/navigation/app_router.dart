@@ -13,14 +13,9 @@ import '../screens/routers/router_detail_screen.dart';
 import '../screens/routers/edit_router_screen.dart';
 import '../screens/routers/setup_guide_screen.dart';
 import '../screens/vouchers/voucher_list_screen.dart';
-import '../screens/vouchers/create_voucher_screen.dart';
-import '../screens/vouchers/bulk_create_screen.dart';
+import '../screens/vouchers/create_voucher_wizard.dart';
 import '../screens/vouchers/voucher_detail_screen.dart';
 import '../screens/settings_screen.dart';
-import '../screens/profiles/profile_list_screen.dart';
-import '../screens/profiles/create_profile_screen.dart';
-import '../screens/profiles/edit_profile_screen.dart';
-import '../screens/profiles/profile_detail_screen.dart';
 import '../screens/sessions/active_sessions_screen.dart';
 import '../screens/sessions/session_history_screen.dart';
 import '../screens/subscription/plans_screen.dart';
@@ -125,42 +120,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return SetupGuideScreen(routerId: routerId);
         },
       ),
-      // Profile routes
-      GoRoute(
-        path: '/profiles',
-        builder: (context, state) => const ProfileListScreen(),
-      ),
-      GoRoute(
-        path: '/profiles/create',
-        builder: (context, state) => const CreateProfileScreen(),
-      ),
-      GoRoute(
-        path: '/profiles/detail',
-        builder: (context, state) {
-          final profileId = state.extra as String;
-          return ProfileDetailScreen(profileId: profileId);
-        },
-      ),
-      GoRoute(
-        path: '/profiles/edit',
-        builder: (context, state) {
-          final profileId = state.extra as String;
-          return EditProfileScreen(profileId: profileId);
-        },
-      ),
       // Voucher routes
       GoRoute(
         path: '/vouchers/create',
         builder: (context, state) {
           final routerId = state.extra as String;
-          return CreateVoucherScreen(routerId: routerId);
-        },
-      ),
-      GoRoute(
-        path: '/vouchers/bulk-create',
-        builder: (context, state) {
-          final routerId = state.extra as String;
-          return BulkCreateScreen(routerId: routerId);
+          return CreateVoucherWizard(routerId: routerId);
         },
       ),
       GoRoute(

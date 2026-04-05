@@ -6,8 +6,7 @@ import { validate } from '../middleware/validate';
 import {
   routerIdParamSchema,
   voucherIdParamSchema,
-  createVoucherSchema,
-  bulkCreateVoucherSchema,
+  createVouchersSchema,
   updateVoucherSchema,
   listVouchersQuerySchema,
 } from '../validators/voucher.validators';
@@ -19,24 +18,14 @@ const router = Router({ mergeParams: true });
 // All routes require authentication + active subscription
 // Routes are mounted under /routers/:id/vouchers
 
-// Create single voucher (with quota check for 1)
+// Create vouchers (unified: single or bulk based on count)
 router.post(
   '/',
   authenticate,
   requireSubscription,
-  validate({ params: routerIdParamSchema, body: createVoucherSchema }),
-  checkQuota(),
-  voucherController.createVoucher,
-);
-
-// Create vouchers in bulk (with quota check for count)
-router.post(
-  '/bulk',
-  authenticate,
-  requireSubscription,
-  validate({ params: routerIdParamSchema, body: bulkCreateVoucherSchema }),
-  checkQuota((req: AuthenticatedRequest) => req.body.count),
-  voucherController.createVouchersBulk,
+  validate({ params: routerIdParamSchema, body: createVouchersSchema }),
+  checkQuota((req: AuthenticatedRequest) => req.body.count || 1),
+  voucherController.createVouchers,
 );
 
 // List vouchers for a router

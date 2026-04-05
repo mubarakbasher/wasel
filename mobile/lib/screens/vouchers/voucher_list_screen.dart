@@ -131,27 +131,6 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
                       extra: _selectedRouterId,
                     ),
                   ),
-                if (_selectedRouterId != null)
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (value) {
-                      if (value == 'bulk') {
-                        context.push('/vouchers/bulk-create', extra: _selectedRouterId);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'bulk',
-                        child: Row(
-                          children: [
-                            Icon(Icons.content_copy, size: 20),
-                            SizedBox(width: AppSpacing.sm),
-                            Text('Bulk Create'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
               ],
             ),
       bottomNavigationBar: _isSelectMode && _selectedVoucherIds.isNotEmpty
@@ -202,7 +181,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
                       child: TextField(
                         controller: _searchController,
                         decoration: InputDecoration(
-                          hintText: 'Search username...',
+                          hintText: 'Search voucher code...',
                           prefixIcon: const Icon(Icons.search, size: 20),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: AppSpacing.md,
@@ -511,7 +490,7 @@ class _VoucherCard extends StatelessWidget {
                 Icon(Icons.layers, size: 14, color: AppColors.textSecondary),
                 const SizedBox(width: AppSpacing.xs),
                 Text(
-                  voucher.profileName,
+                  voucher.limitDisplayText,
                   style: AppTypography.footnote,
                 ),
                 const Spacer(),

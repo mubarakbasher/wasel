@@ -120,12 +120,8 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
     final text = StringBuffer()
       ..writeln('WiFi Voucher')
       ..writeln('─────────────')
-      ..writeln('Username: ${voucher.username}');
-    if (voucher.password != null) {
-      text.writeln('Password: ${voucher.password}');
-    }
-    text
-      ..writeln('Plan: ${voucher.profileName}')
+      ..writeln('Code: ${voucher.username}')
+      ..writeln('Plan: ${voucher.limitDisplayText}')
       ..writeln('─────────────');
     if (voucher.expiration != null) {
       text.writeln('Valid until: ${voucher.expiration}');
@@ -138,9 +134,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
     final voucher = ref.read(vouchersProvider).selectedVoucher;
     if (voucher == null) return;
 
-    final text = 'Username: ${voucher.username}'
-        '${voucher.password != null ? '\nPassword: ${voucher.password}' : ''}';
-    Clipboard.setData(ClipboardData(text: text));
+    Clipboard.setData(ClipboardData(text: voucher.username));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Credentials copied to clipboard')),
     );
@@ -212,8 +206,8 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          // Username
-          Text('Username',
+          // Voucher Code
+          Text('Voucher Code',
               style: AppTypography.caption1
                   .copyWith(color: AppColors.textSecondary)),
           const SizedBox(height: AppSpacing.xs),
@@ -235,43 +229,12 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
                       ClipboardData(text: voucher.username));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                        content: Text('Username copied')),
+                        content: Text('Code copied')),
                   );
                 },
               ),
             ],
           ),
-          if (voucher.password != null) ...[
-            const Divider(height: AppSpacing.xxl),
-            Text('Password',
-                style: AppTypography.caption1
-                    .copyWith(color: AppColors.textSecondary)),
-            const SizedBox(height: AppSpacing.xs),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    voucher.password!,
-                    style: AppTypography.title2.copyWith(
-                      fontFamily: 'monospace',
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.copy, size: 20),
-                  onPressed: () {
-                    Clipboard.setData(
-                        ClipboardData(text: voucher.password!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Password copied')),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ],
           const SizedBox(height: AppSpacing.md),
           SizedBox(
             width: double.infinity,
@@ -300,16 +263,18 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
           Text('Details', style: AppTypography.title3),
           const SizedBox(height: AppSpacing.lg),
           _InfoRow(
-            label: 'Profile',
-            value: voucher.profileName,
+            label: 'Limit',
+            value: voucher.limitDisplayText,
             icon: Icons.layers,
           ),
-          const SizedBox(height: AppSpacing.md),
-          _InfoRow(
-            label: 'Group',
-            value: voucher.groupProfile,
-            icon: Icons.group_work,
-          ),
+          if (voucher.price != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+              label: 'Price',
+              value: voucher.price!.toStringAsFixed(2),
+              icon: Icons.attach_money,
+            ),
+          ],
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             label: 'Status',

@@ -56,6 +56,14 @@ server default {
         sql
 
         #
+        #  Enforce cumulative time and data limits via sqlcounter.
+        #  These compare radacct totals against Max-All-Session and
+        #  Max-Total-Octets check attributes.
+        #
+        max_all_session
+        max_total_octets
+
+        #
         #  If Auth-Type has not been set yet and we have a known good
         #  password from the database, the pap module will set it.
         #

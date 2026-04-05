@@ -6,6 +6,7 @@ import { redis } from './config/redis';
 import { startPurgeUnverifiedJob } from './jobs/purgeUnverified';
 import { startSubscriptionNotificationJob } from './jobs/subscriptionNotifications';
 import { startQuotaMonitorJob } from './jobs/quotaMonitor';
+import { startValidityExpirationJob } from './jobs/validityExpiration';
 import { startMonitoring } from './services/wireguardMonitor';
 import { syncPeersFromDatabase } from './services/wireguardPeer';
 
@@ -31,6 +32,7 @@ async function startServer(): Promise<void> {
     startPurgeUnverifiedJob();
     startSubscriptionNotificationJob();
     startQuotaMonitorJob();
+    startValidityExpirationJob();
     startMonitoring();
 
     // Start HTTP server

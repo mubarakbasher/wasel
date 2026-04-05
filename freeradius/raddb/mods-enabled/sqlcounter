@@ -1,0 +1,51 @@
+#
+#  Wasel — SQL-based counters for enforcing time and data limits.
+#
+#  These counters query the radacct table to track cumulative usage
+#  and compare against check attributes (Max-All-Session, Max-Total-Octets).
+#
+
+#
+#  Total session time counter (no reset — lifetime of the voucher)
+#  Checks the Max-All-Session attribute in radcheck/radgroupcheck.
+#
+sqlcounter max_all_session {
+    sql_module_instance = sql
+    dialect = postgresql
+
+    counter_name = Max-All-Session
+    check_name = Max-All-Session
+    reply_name = Session-Timeout
+
+    key = User-Name
+
+    reset = never
+
+    query = "\
+        SELECT COALESCE(SUM(acctsessiontime), 0) \
+        FROM radacct \
+        WHERE username = '%{${key}}'"
+}
+
+#
+#  Total data (input + output octets) counter — no reset.
+#  Checks the Max-Total-Octets attribute in radcheck/radgroupcheck.
+#
+sqlcounter max_total_octets {
+    sql_module_instance = sql
+    dialect = postgresql
+
+    counter_name = Max-Total-Octets
+    check_name = Max-Total-Octets
+    reply_name = Session-Timeout
+    reply_message_name = Reply-Message
+
+    key = User-Name
+
+    reset = never
+
+    query = "\
+        SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0) \
+        FROM radacct \
+        WHERE username = '%{${key}}'"
+}

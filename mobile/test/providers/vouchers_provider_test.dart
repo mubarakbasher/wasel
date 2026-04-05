@@ -16,8 +16,10 @@ void main() {
     'routerId': 'r-1',
     'username': 'voucher-abc',
     'password': 'pass123',
-    'profileName': 'Basic Plan',
-    'groupProfile': 'basic-plan',
+    'limitType': 'time',
+    'limitValue': 3600,
+    'limitUnit': 'hours',
+    'price': 1.00,
     'status': 'active',
     'createdAt': '2026-01-01T00:00:00.000Z',
     'updatedAt': '2026-01-01T00:00:00.000Z',
@@ -28,8 +30,10 @@ void main() {
     'userId': 'u-1',
     'routerId': 'r-1',
     'username': 'voucher-def',
-    'profileName': 'Basic Plan',
-    'groupProfile': 'basic-plan',
+    'limitType': 'data',
+    'limitValue': 1073741824,
+    'limitUnit': 'GB',
+    'price': 2.00,
     'status': 'disabled',
     'createdAt': '2026-01-01T00:00:00.000Z',
     'updatedAt': '2026-01-01T00:00:00.000Z',
@@ -54,7 +58,7 @@ void main() {
       when(() => mockService.getVouchers(
             'r-1',
             status: null,
-            profileId: null,
+            limitType: null,
             search: null,
             page: 1,
             limit: 20,
@@ -77,7 +81,7 @@ void main() {
       when(() => mockService.getVouchers(
             'r-1',
             status: any(named: 'status'),
-            profileId: any(named: 'profileId'),
+            limitType: any(named: 'limitType'),
             search: any(named: 'search'),
             page: any(named: 'page'),
             limit: any(named: 'limit'),
@@ -89,62 +93,58 @@ void main() {
       expect(notifier.state.error, isNotNull);
     });
 
-    test('createVoucher adds to list and returns true', () async {
-      when(() => mockService.createVoucher(
+    test('createVouchers adds to list and returns true', () async {
+      when(() => mockService.createVouchers(
             routerId: 'r-1',
-            profileId: 'p-1',
-          )).thenAnswer((_) async => mockVoucher);
+            limitType: 'time',
+            limitValue: 2,
+            limitUnit: 'hours',
+            count: 1,
+            price: 1.00,
+          )).thenAnswer((_) async => [mockVoucher]);
 
-      final result = await notifier.createVoucher(
+      final result = await notifier.createVouchers(
         routerId: 'r-1',
-        profileId: 'p-1',
+        limitType: 'time',
+        limitValue: 2,
+        limitUnit: 'hours',
+        count: 1,
+        price: 1.00,
       );
 
       expect(result, true);
       expect(notifier.state.vouchers, hasLength(1));
-      expect(notifier.state.selectedVoucher?.id, 'v-1');
       expect(notifier.state.total, 1);
     });
 
-    test('createVoucher returns false on failure', () async {
-      when(() => mockService.createVoucher(
+    test('createVouchers returns false on failure', () async {
+      when(() => mockService.createVouchers(
             routerId: 'r-1',
-            profileId: 'p-1',
+            limitType: 'time',
+            limitValue: 2,
+            limitUnit: 'hours',
+            count: 1,
+            price: 1.00,
           )).thenThrow(Exception('quota'));
 
-      final result = await notifier.createVoucher(
+      final result = await notifier.createVouchers(
         routerId: 'r-1',
-        profileId: 'p-1',
+        limitType: 'time',
+        limitValue: 2,
+        limitUnit: 'hours',
+        count: 1,
+        price: 1.00,
       );
 
       expect(result, false);
       expect(notifier.state.error, isNotNull);
     });
 
-    test('createVouchersBulk adds to list', () async {
-      when(() => mockService.createVouchersBulk(
-            routerId: 'r-1',
-            profileId: 'p-1',
-            count: 2,
-          )).thenAnswer((_) async => [mockVoucher, mockVoucher2]);
-
-      final result = await notifier.createVouchersBulk(
-        routerId: 'r-1',
-        profileId: 'p-1',
-        count: 2,
-      );
-
-      expect(result, true);
-      expect(notifier.state.vouchers, hasLength(2));
-      expect(notifier.state.total, 2);
-    });
-
     test('deleteVoucher removes from list', () async {
-      // First load vouchers
       when(() => mockService.getVouchers(
             'r-1',
             status: null,
-            profileId: null,
+            limitType: null,
             search: null,
             page: 1,
             limit: 20,
@@ -168,11 +168,10 @@ void main() {
     });
 
     test('toggleVoucherStatus updates voucher in list', () async {
-      // Load initial voucher
       when(() => mockService.getVouchers(
             'r-1',
             status: null,
-            profileId: null,
+            limitType: null,
             search: null,
             page: 1,
             limit: 20,
@@ -206,17 +205,6 @@ void main() {
 
       notifier.setSearch(null);
       expect(notifier.state.searchQuery, isNull);
-    });
-
-    test('clearSelection clears selected voucher', () async {
-      when(() => mockService.createVoucher(
-            routerId: 'r-1',
-            profileId: 'p-1',
-          )).thenAnswer((_) async => mockVoucher);
-      await notifier.createVoucher(routerId: 'r-1', profileId: 'p-1');
-
-      notifier.clearSelection();
-      expect(notifier.state.selectedVoucher, isNull);
     });
   });
 }

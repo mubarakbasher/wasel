@@ -7,7 +7,7 @@ class VoucherService {
   Future<VoucherListResult> getVouchers(
     String routerId, {
     String? status,
-    String? profileId,
+    String? limitType,
     String? search,
     int page = 1,
     int limit = 20,
@@ -17,7 +17,7 @@ class VoucherService {
       'limit': limit,
     };
     if (status != null) queryParams['status'] = status;
-    if (profileId != null) queryParams['profileId'] = profileId;
+    if (limitType != null) queryParams['limitType'] = limitType;
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
     final response = await _api.dio.get(
@@ -39,57 +39,28 @@ class VoucherService {
     return Voucher.fromJson(response.data['data'] as Map<String, dynamic>);
   }
 
-  Future<Voucher> createVoucher({
+  Future<List<Voucher>> createVouchers({
     required String routerId,
-    required String profileId,
-    String? username,
-    String? password,
-    String? comment,
-    String? expiration,
-    int? simultaneousUse,
+    required String limitType,
+    required int limitValue,
+    required String limitUnit,
+    int? validitySeconds,
+    required int count,
+    required double price,
   }) async {
     final body = <String, dynamic>{
-      'profileId': profileId,
+      'limitType': limitType,
+      'limitValue': limitValue,
+      'limitUnit': limitUnit,
+      'count': count,
+      'price': price,
     };
-    if (username != null && username.isNotEmpty) body['username'] = username;
-    if (password != null && password.isNotEmpty) body['password'] = password;
-    if (comment != null && comment.isNotEmpty) body['comment'] = comment;
-    if (expiration != null) body['expiration'] = expiration;
-    if (simultaneousUse != null) body['simultaneousUse'] = simultaneousUse;
+    if (validitySeconds != null && validitySeconds > 0) {
+      body['validitySeconds'] = validitySeconds;
+    }
 
     final response = await _api.dio.post(
       '/routers/$routerId/vouchers',
-      data: body,
-    );
-    return Voucher.fromJson(response.data['data'] as Map<String, dynamic>);
-  }
-
-  Future<List<Voucher>> createVouchersBulk({
-    required String routerId,
-    required String profileId,
-    required int count,
-    String? usernamePrefix,
-    int? usernameLength,
-    int? passwordLength,
-    String? comment,
-    String? expiration,
-    int? simultaneousUse,
-  }) async {
-    final body = <String, dynamic>{
-      'profileId': profileId,
-      'count': count,
-    };
-    if (usernamePrefix != null && usernamePrefix.isNotEmpty) {
-      body['usernamePrefix'] = usernamePrefix;
-    }
-    if (usernameLength != null) body['usernameLength'] = usernameLength;
-    if (passwordLength != null) body['passwordLength'] = passwordLength;
-    if (comment != null && comment.isNotEmpty) body['comment'] = comment;
-    if (expiration != null) body['expiration'] = expiration;
-    if (simultaneousUse != null) body['simultaneousUse'] = simultaneousUse;
-
-    final response = await _api.dio.post(
-      '/routers/$routerId/vouchers/bulk',
       data: body,
     );
     final data = response.data['data'] as List;

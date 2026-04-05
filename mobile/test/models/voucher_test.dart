@@ -8,12 +8,17 @@ void main() {
     'routerId': 'r-1',
     'username': 'testuser',
     'password': 'pass123',
-    'profileName': 'Basic Plan',
-    'groupProfile': 'basic-plan',
+    'profileName': null,
+    'groupProfile': null,
     'comment': 'Test voucher',
     'status': 'active',
     'expiration': 'January 01 2027 00:00:00',
     'simultaneousUse': 1,
+    'limitType': 'time',
+    'limitValue': 3600,
+    'limitUnit': 'hours',
+    'validitySeconds': 86400,
+    'price': 1.50,
     'createdAt': '2026-03-01T00:00:00.000Z',
     'updatedAt': '2026-03-01T00:00:00.000Z',
   };
@@ -24,7 +29,11 @@ void main() {
       expect(voucher.id, 'v-1');
       expect(voucher.username, 'testuser');
       expect(voucher.password, 'pass123');
-      expect(voucher.profileName, 'Basic Plan');
+      expect(voucher.limitType, 'time');
+      expect(voucher.limitValue, 3600);
+      expect(voucher.limitUnit, 'hours');
+      expect(voucher.validitySeconds, 86400);
+      expect(voucher.price, 1.50);
       expect(voucher.status, 'active');
       expect(voucher.simultaneousUse, 1);
     });
@@ -37,14 +46,17 @@ void main() {
       expect(Voucher.fromJson({...validJson, 'status': 'used'}).isUsed, true);
     });
 
+    test('limitDisplayText shows correct text', () {
+      final voucher = Voucher.fromJson(validJson);
+      expect(voucher.limitDisplayText, '1 hours');
+    });
+
     test('fromJson handles null optional fields', () {
       final json = {
         'id': 'v-1',
         'userId': 'u-1',
         'routerId': 'r-1',
         'username': 'user',
-        'profileName': 'Plan',
-        'groupProfile': 'plan',
         'createdAt': '2026-01-01T00:00:00.000Z',
         'updatedAt': '2026-01-01T00:00:00.000Z',
       };
@@ -53,6 +65,9 @@ void main() {
       expect(voucher.comment, isNull);
       expect(voucher.expiration, isNull);
       expect(voucher.simultaneousUse, isNull);
+      expect(voucher.limitType, isNull);
+      expect(voucher.limitValue, isNull);
+      expect(voucher.price, isNull);
       expect(voucher.status, 'active');
     });
 
@@ -62,6 +77,8 @@ void main() {
       expect(json['username'], 'testuser');
       expect(json['status'], 'active');
       expect(json['simultaneousUse'], 1);
+      expect(json['limitType'], 'time');
+      expect(json['price'], 1.50);
     });
   });
 }

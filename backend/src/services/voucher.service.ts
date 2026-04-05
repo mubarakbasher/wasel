@@ -10,9 +10,14 @@ export interface VoucherMetaRow {
   user_id: string;
   router_id: string;
   radius_username: string;
-  group_profile: string;
+  group_profile: string | null;
   comment: string | null;
   status: string;
+  limit_type: string | null;
+  limit_value: string | null; // BIGINT comes as string from pg
+  limit_unit: string | null;
+  validity_seconds: number | null;
+  price: string | null; // DECIMAL comes as string from pg
   created_at: Date;
   updated_at: Date;
 }
@@ -23,12 +28,17 @@ export interface VoucherInfo {
   routerId: string;
   username: string;
   password: string | null;
-  profileName: string;
-  groupProfile: string;
+  profileName: string | null;
+  groupProfile: string | null;
   comment: string | null;
   status: string;
   expiration: string | null;
   simultaneousUse: number | null;
+  limitType: string | null;
+  limitValue: number | null;
+  limitUnit: string | null;
+  validitySeconds: number | null;
+  price: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +62,30 @@ function generateRandomString(length: number, charset = 'ABCDEFGHJKLMNPQRSTUVWXY
     result += charset[bytes[i] % charset.length];
   }
   return result;
+}
+
+/**
+ * Convert limit value + unit to base units (seconds or bytes).
+ */
+function normalizeLimit(value: number, unit: string): number {
+  switch (unit) {
+    case 'minutes': return value * 60;
+    case 'hours': return value * 3600;
+    case 'days': return value * 86400;
+    case 'MB': return value * 1024 * 1024;
+    case 'GB': return value * 1024 * 1024 * 1024;
+    default: return value;
+  }
+}
+
+/**
+ * Build a human-readable limit description for display.
+ */
+function buildLimitDisplayName(limitType: string, limitValue: number, limitUnit: string): string {
+  if (limitType === 'time') {
+    return `${limitValue} ${limitUnit}`;
+  }
+  return `${limitValue} ${limitUnit}`;
 }
 
 /**
@@ -79,12 +113,17 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
   );
   const simultaneousUse = simResult.rows.length > 0 ? parseInt(simResult.rows[0].value, 10) : null;
 
-  // Fetch profile display name
-  const profileResult = await pool.query(
-    `SELECT display_name FROM radius_profiles WHERE group_name = $1 AND user_id = $2`,
-    [row.group_profile, row.user_id],
-  );
-  const profileName = profileResult.rows.length > 0 ? profileResult.rows[0].display_name : row.group_profile;
+  // Build profile name: from radius_profiles (legacy) or from limit info (new)
+  let profileName: string | null = null;
+  if (row.group_profile) {
+    const profileResult = await pool.query(
+      `SELECT display_name FROM radius_profiles WHERE group_name = $1 AND user_id = $2`,
+      [row.group_profile, row.user_id],
+    );
+    profileName = profileResult.rows.length > 0 ? profileResult.rows[0].display_name : row.group_profile;
+  } else if (row.limit_type && row.limit_value && row.limit_unit) {
+    profileName = buildLimitDisplayName(row.limit_type, Number(row.limit_value), row.limit_unit);
+  }
 
   return {
     id: row.id,
@@ -98,13 +137,18 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
     status: row.status,
     expiration,
     simultaneousUse,
+    limitType: row.limit_type,
+    limitValue: row.limit_value ? Number(row.limit_value) : null,
+    limitUnit: row.limit_unit,
+    validitySeconds: row.validity_seconds,
+    price: row.price ? parseFloat(row.price) : null,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
 }
 
 /**
- * Verify router belongs to the user. Returns the router row.
+ * Verify router belongs to the user.
  */
 async function verifyRouterOwnership(userId: string, routerId: string): Promise<void> {
   const result = await pool.query(
@@ -114,20 +158,6 @@ async function verifyRouterOwnership(userId: string, routerId: string): Promise<
   if (result.rows.length === 0) {
     throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
   }
-}
-
-/**
- * Verify profile belongs to the user and return its group_name.
- */
-async function verifyProfileOwnership(userId: string, profileId: string): Promise<string> {
-  const result = await pool.query(
-    'SELECT group_name FROM radius_profiles WHERE id = $1 AND user_id = $2',
-    [profileId, userId],
-  );
-  if (result.rows.length === 0) {
-    throw new AppError(404, 'RADIUS profile not found', 'PROFILE_NOT_FOUND');
-  }
-  return result.rows[0].group_name;
 }
 
 /**
@@ -145,15 +175,14 @@ function formatRadiusExpiration(isoDate: string): string {
 type PgClient = { query: (...args: any[]) => Promise<any> };
 
 /**
- * Insert RADIUS entries for a single voucher within a transaction.
+ * Insert RADIUS entries for a new-style voucher (no profiles).
  */
-async function insertRadiusEntries(
+async function insertRadiusEntriesV2(
   client: PgClient,
   username: string,
   password: string,
-  groupName: string,
-  expiration?: string,
-  simultaneousUse?: number,
+  limitType: 'time' | 'data',
+  normalizedLimitValue: number,
 ): Promise<void> {
   // radcheck: Cleartext-Password
   await client.query(
@@ -161,137 +190,73 @@ async function insertRadiusEntries(
     [username, 'Cleartext-Password', ':=', password],
   );
 
-  // radcheck: Expiration (optional)
-  if (expiration) {
-    await client.query(
-      'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
-      [username, 'Expiration', ':=', formatRadiusExpiration(expiration)],
-    );
-  }
-
-  // radcheck: Simultaneous-Use (optional)
-  if (simultaneousUse != null) {
-    await client.query(
-      'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
-      [username, 'Simultaneous-Use', ':=', String(simultaneousUse)],
-    );
-  }
-
-  // radusergroup: map username to group profile
+  // radcheck: Simultaneous-Use (default 1)
   await client.query(
-    'INSERT INTO radusergroup (username, groupname, priority) VALUES ($1, $2, $3)',
-    [username, groupName, 1],
+    'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+    [username, 'Simultaneous-Use', ':=', '1'],
   );
+
+  // radcheck: limit attribute
+  if (limitType === 'time') {
+    // Max-All-Session: total allowed online time in seconds
+    await client.query(
+      'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+      [username, 'Max-All-Session', ':=', String(normalizedLimitValue)],
+    );
+  } else {
+    // Data limit
+    if (normalizedLimitValue <= 4294967295) {
+      await client.query(
+        'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+        [username, 'Max-Total-Octets', ':=', String(normalizedLimitValue)],
+      );
+    } else {
+      // Split into base + gigawords for values > 4GB
+      const gigawords = Math.floor(normalizedLimitValue / 4294967296);
+      const remainder = normalizedLimitValue % 4294967296;
+      await client.query(
+        'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+        [username, 'Max-Total-Octets', ':=', String(remainder)],
+      );
+      await client.query(
+        'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+        [username, 'Max-Total-Octets-Gigawords', ':=', String(gigawords)],
+      );
+    }
+  }
 }
 
 // ----- Service Functions -----
 
 /**
- * Create a single voucher.
+ * Create vouchers (unified: handles both single and bulk creation).
  */
-export async function createVoucher(
+export async function createVouchers(
   userId: string,
   routerId: string,
   data: {
-    profileId: string;
-    username?: string;
-    password?: string;
-    comment?: string;
-    expiration?: string;
-    simultaneousUse?: number;
-  },
-): Promise<VoucherInfo> {
-  await verifyRouterOwnership(userId, routerId);
-  const groupName = await verifyProfileOwnership(userId, data.profileId);
-
-  const username = data.username || generateRandomString(8);
-  const password = data.password || generateRandomString(8);
-
-  // Check username uniqueness
-  const existingUser = await pool.query(
-    'SELECT id FROM radcheck WHERE username = $1 LIMIT 1',
-    [username],
-  );
-  if (existingUser.rows.length > 0) {
-    throw new AppError(409, `Username '${username}' is already taken`, 'USERNAME_TAKEN');
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Insert into voucher_meta
-    const result = await client.query<VoucherMetaRow>(
-      `INSERT INTO voucher_meta (user_id, router_id, radius_username, group_profile, comment, status)
-       VALUES ($1, $2, $3, $4, $5, 'active')
-       RETURNING *`,
-      [userId, routerId, username, groupName, data.comment || null],
-    );
-    const voucher = result.rows[0];
-
-    // Insert RADIUS entries
-    await insertRadiusEntries(client, username, password, groupName, data.expiration, data.simultaneousUse);
-
-    // Increment vouchers_used in subscription
-    await client.query(
-      `UPDATE subscriptions SET vouchers_used = vouchers_used + 1
-       WHERE user_id = $1 AND status = 'active'`,
-      [userId],
-    );
-
-    await client.query('COMMIT');
-
-    logger.info('Voucher created', {
-      voucherId: voucher.id,
-      userId,
-      routerId,
-      username,
-      groupProfile: groupName,
-    });
-
-    return toVoucherInfo(voucher);
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Create vouchers in bulk (up to 100 per batch).
- */
-export async function createVouchersBulk(
-  userId: string,
-  routerId: string,
-  data: {
-    profileId: string;
+    limitType: 'time' | 'data';
+    limitValue: number;
+    limitUnit: string;
+    validitySeconds?: number | null;
     count: number;
-    usernamePrefix?: string;
-    usernameLength?: number;
-    passwordLength?: number;
-    comment?: string;
-    expiration?: string;
-    simultaneousUse?: number;
+    price: number;
   },
 ): Promise<VoucherInfo[]> {
   await verifyRouterOwnership(userId, routerId);
-  const groupName = await verifyProfileOwnership(userId, data.profileId);
 
   const count = data.count;
-  const usernameLength = data.usernameLength || 8;
-  const passwordLength = data.passwordLength || 8;
-  const prefix = data.usernamePrefix || '';
+  const normalizedValue = normalizeLimit(data.limitValue, data.limitUnit);
 
-  // Generate unique usernames
-  const credentials: Array<{ username: string; password: string }> = [];
+  // Generate unique numeric-only usernames (no separate password)
+  const credentials: Array<{ username: string }> = [];
   const usedUsernames = new Set<string>();
 
   for (let i = 0; i < count; i++) {
     let username: string;
     let attempts = 0;
     do {
-      username = prefix + generateRandomString(usernameLength);
+      username = generateRandomString(8, '0123456789');
       attempts++;
       if (attempts > 100) {
         throw new AppError(500, 'Failed to generate unique usernames', 'USERNAME_GENERATION_FAILED');
@@ -299,10 +264,7 @@ export async function createVouchersBulk(
     } while (usedUsernames.has(username));
 
     usedUsernames.add(username);
-    credentials.push({
-      username,
-      password: generateRandomString(passwordLength),
-    });
+    credentials.push({ username });
   }
 
   // Verify none of the usernames already exist in radcheck
@@ -323,17 +285,29 @@ export async function createVouchersBulk(
     const vouchers: VoucherMetaRow[] = [];
 
     for (const cred of credentials) {
-      // Insert into voucher_meta
+      // Insert into voucher_meta with new columns
       const result = await client.query<VoucherMetaRow>(
-        `INSERT INTO voucher_meta (user_id, router_id, radius_username, group_profile, comment, status)
-         VALUES ($1, $2, $3, $4, $5, 'active')
+        `INSERT INTO voucher_meta
+         (user_id, router_id, radius_username, group_profile, comment, status,
+          limit_type, limit_value, limit_unit, validity_seconds, price)
+         VALUES ($1, $2, $3, NULL, NULL, 'active', $4, $5, $6, $7, $8)
          RETURNING *`,
-        [userId, routerId, cred.username, groupName, data.comment || null],
+        [
+          userId, routerId, cred.username,
+          data.limitType,
+          normalizedValue,
+          data.limitUnit,
+          data.validitySeconds ?? null,
+          data.price,
+        ],
       );
       vouchers.push(result.rows[0]);
 
-      // Insert RADIUS entries
-      await insertRadiusEntries(client, cred.username, cred.password, groupName, data.expiration, data.simultaneousUse);
+      // Insert RADIUS entries (username = password, no radusergroup)
+      await insertRadiusEntriesV2(
+        client, cred.username, cred.username,
+        data.limitType, normalizedValue,
+      );
     }
 
     // Increment vouchers_used in subscription
@@ -345,11 +319,13 @@ export async function createVouchersBulk(
 
     await client.query('COMMIT');
 
-    logger.info('Vouchers created in bulk', {
+    logger.info('Vouchers created', {
       userId,
       routerId,
       count,
-      groupProfile: groupName,
+      limitType: data.limitType,
+      limitValue: data.limitValue,
+      limitUnit: data.limitUnit,
     });
 
     const voucherInfos: VoucherInfo[] = [];
@@ -373,7 +349,7 @@ export async function getVouchersByRouter(
   routerId: string,
   options: {
     status?: string;
-    profileId?: string;
+    limitType?: string;
     page?: number;
     limit?: number;
     search?: string;
@@ -394,16 +370,9 @@ export async function getVouchersByRouter(
     values.push(options.status);
   }
 
-  if (options.profileId) {
-    // Resolve profile group_name from profileId
-    const profileResult = await pool.query(
-      'SELECT group_name FROM radius_profiles WHERE id = $1 AND user_id = $2',
-      [options.profileId, userId],
-    );
-    if (profileResult.rows.length > 0) {
-      conditions.push(`vm.group_profile = $${paramIndex++}`);
-      values.push(profileResult.rows[0].group_name);
-    }
+  if (options.limitType) {
+    conditions.push(`vm.limit_type = $${paramIndex++}`);
+    values.push(options.limitType);
   }
 
   if (options.search) {
@@ -520,18 +489,15 @@ export async function updateVoucher(
 
     // Handle status change in RADIUS
     if (data.status === 'disabled') {
-      // Remove any existing Auth-Type entry first
       await client.query(
         `DELETE FROM radcheck WHERE username = $1 AND attribute = 'Auth-Type'`,
         [username],
       );
-      // Insert Auth-Type := Reject
       await client.query(
         `INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)`,
         [username, 'Auth-Type', ':=', 'Reject'],
       );
     } else if (data.status === 'active' && voucher.status === 'disabled') {
-      // Remove Auth-Type := Reject
       await client.query(
         `DELETE FROM radcheck WHERE username = $1 AND attribute = 'Auth-Type'`,
         [username],
@@ -540,7 +506,6 @@ export async function updateVoucher(
 
     // Handle expiration update
     if (data.expiration !== undefined) {
-      // Remove existing Expiration
       await client.query(
         `DELETE FROM radcheck WHERE username = $1 AND attribute = 'Expiration'`,
         [username],
@@ -639,7 +604,6 @@ export async function deleteVoucher(
  * Uses radclient via CLI. Non-fatal if unavailable.
  */
 async function sendCoaDisconnect(userId: string, routerId: string, username: string): Promise<void> {
-  // Look up the router's NAS IP and RADIUS secret
   const routerResult = await pool.query(
     'SELECT tunnel_ip, radius_secret_enc FROM routers WHERE id = $1 AND user_id = $2',
     [routerId, userId],
@@ -650,7 +614,6 @@ async function sendCoaDisconnect(userId: string, routerId: string, username: str
   const router = routerResult.rows[0];
   if (!router.tunnel_ip || !router.radius_secret_enc) return;
 
-  // Check for active sessions in radacct
   const sessionResult = await pool.query(
     `SELECT acctsessionid FROM radacct
      WHERE username = $1 AND nasipaddress = $2 AND acctstoptime IS NULL`,
@@ -659,11 +622,9 @@ async function sendCoaDisconnect(userId: string, routerId: string, username: str
 
   if (sessionResult.rows.length === 0) return;
 
-  // Import decrypt lazily to avoid circular dependencies
   const { decrypt } = await import('../utils/encryption');
   const radiusSecret = decrypt(router.radius_secret_enc);
 
-  // Use radclient to send Disconnect-Request
   const { exec } = await import('child_process');
   const { promisify } = await import('util');
   const execAsync = promisify(exec);

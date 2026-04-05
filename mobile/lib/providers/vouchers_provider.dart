@@ -13,7 +13,7 @@ class VouchersState {
   final int page;
   final int limit;
   final String? filterStatus;
-  final String? filterProfileId;
+  final String? filterLimitType;
   final String? searchQuery;
 
   const VouchersState({
@@ -25,7 +25,7 @@ class VouchersState {
     this.page = 1,
     this.limit = 20,
     this.filterStatus,
-    this.filterProfileId,
+    this.filterLimitType,
     this.searchQuery,
   });
 
@@ -40,12 +40,12 @@ class VouchersState {
     int? page,
     int? limit,
     String? filterStatus,
-    String? filterProfileId,
+    String? filterLimitType,
     String? searchQuery,
     bool clearError = false,
     bool clearSelected = false,
     bool clearFilterStatus = false,
-    bool clearFilterProfileId = false,
+    bool clearFilterLimitType = false,
     bool clearSearch = false,
   }) {
     return VouchersState(
@@ -59,8 +59,8 @@ class VouchersState {
       limit: limit ?? this.limit,
       filterStatus:
           clearFilterStatus ? null : (filterStatus ?? this.filterStatus),
-      filterProfileId:
-          clearFilterProfileId ? null : (filterProfileId ?? this.filterProfileId),
+      filterLimitType:
+          clearFilterLimitType ? null : (filterLimitType ?? this.filterLimitType),
       searchQuery:
           clearSearch ? null : (searchQuery ?? this.searchQuery),
     );
@@ -78,12 +78,12 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     state = state.copyWith(clearError: true);
   }
 
-  void setFilter({String? status, String? profileId}) {
+  void setFilter({String? status, String? limitType}) {
     state = state.copyWith(
       filterStatus: status,
-      filterProfileId: profileId,
+      filterLimitType: limitType,
       clearFilterStatus: status == null,
-      clearFilterProfileId: profileId == null,
+      clearFilterLimitType: limitType == null,
     );
   }
 
@@ -103,7 +103,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
       final result = await _service.getVouchers(
         routerId,
         status: state.filterStatus,
-        profileId: state.filterProfileId,
+        limitType: state.filterLimitType,
         search: state.searchQuery,
         page: refresh ? 1 : state.page,
         limit: state.limit,
@@ -129,62 +129,25 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     }
   }
 
-  Future<bool> createVoucher({
+  Future<bool> createVouchers({
     required String routerId,
-    required String profileId,
-    String? username,
-    String? password,
-    String? comment,
-    String? expiration,
-    int? simultaneousUse,
-  }) async {
-    state = state.copyWith(isLoading: true, clearError: true);
-    try {
-      final voucher = await _service.createVoucher(
-        routerId: routerId,
-        profileId: profileId,
-        username: username,
-        password: password,
-        comment: comment,
-        expiration: expiration,
-        simultaneousUse: simultaneousUse,
-      );
-      state = state.copyWith(
-        vouchers: [voucher, ...state.vouchers],
-        total: state.total + 1,
-        selectedVoucher: voucher,
-        isLoading: false,
-      );
-      return true;
-    } catch (e) {
-      state = state.copyWith(isLoading: false, error: _extractError(e));
-      return false;
-    }
-  }
-
-  Future<bool> createVouchersBulk({
-    required String routerId,
-    required String profileId,
+    required String limitType,
+    required int limitValue,
+    required String limitUnit,
+    int? validitySeconds,
     required int count,
-    String? usernamePrefix,
-    int? usernameLength,
-    int? passwordLength,
-    String? comment,
-    String? expiration,
-    int? simultaneousUse,
+    required double price,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final vouchers = await _service.createVouchersBulk(
+      final vouchers = await _service.createVouchers(
         routerId: routerId,
-        profileId: profileId,
+        limitType: limitType,
+        limitValue: limitValue,
+        limitUnit: limitUnit,
+        validitySeconds: validitySeconds,
         count: count,
-        usernamePrefix: usernamePrefix,
-        usernameLength: usernameLength,
-        passwordLength: passwordLength,
-        comment: comment,
-        expiration: expiration,
-        simultaneousUse: simultaneousUse,
+        price: price,
       );
       state = state.copyWith(
         vouchers: [...vouchers, ...state.vouchers],
