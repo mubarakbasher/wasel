@@ -183,6 +183,7 @@ async function insertRadiusEntriesV2(
   password: string,
   limitType: 'time' | 'data',
   normalizedLimitValue: number,
+  validitySeconds?: number | null,
 ): Promise<void> {
   // radcheck: Cleartext-Password
   await client.query(
@@ -223,6 +224,16 @@ async function insertRadiusEntriesV2(
         [username, 'Max-Total-Octets-Gigawords', ':=', String(gigawords)],
       );
     }
+  }
+
+  // radcheck: Expiration (if validity period is set)
+  if (validitySeconds) {
+    const expirationDate = new Date(Date.now() + validitySeconds * 1000);
+    const formatted = formatRadiusExpiration(expirationDate.toISOString());
+    await client.query(
+      'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+      [username, 'Expiration', ':=', formatted],
+    );
   }
 }
 
@@ -307,6 +318,7 @@ export async function createVouchers(
       await insertRadiusEntriesV2(
         client, cred.username, cred.username,
         data.limitType, normalizedValue,
+        data.validitySeconds,
       );
     }
 
