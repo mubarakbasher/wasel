@@ -13,13 +13,16 @@ export interface DashboardData {
   }[];
   subscription: {
     planTier: string;
+    planName: string;
     status: string;
     vouchersUsed: number;
     voucherQuota: number;
     startDate: string;
     endDate: string;
+    daysRemaining: number;
   } | null;
-  vouchersCreatedToday: number;
+  vouchersUsedToday: number;
+  dailyRevenue: number;
   totalVouchers: number;
   dataUsage24h: {
     totalInput: number;
@@ -43,7 +46,8 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   const [
     routersResult,
     subscription,
-    vouchersCreatedTodayResult,
+    vouchersUsedTodayResult,
+    dailyRevenueResult,
     totalVouchersResult,
     dataUsageResult,
     activeSessionsResult,
@@ -57,13 +61,27 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
     // 2. Active subscription
     getActiveSubscription(userId),
 
-    // 3. Vouchers created today
+    // 3. Vouchers used today (distinct usernames with sessions started today)
     pool.query(
-      'SELECT COUNT(*) AS count FROM voucher_meta WHERE user_id = $1 AND created_at >= CURRENT_DATE',
+      `SELECT COUNT(DISTINCT ra.username) AS count
+       FROM radacct ra
+       JOIN routers r ON ra.nasipaddress = r.tunnel_ip
+       JOIN voucher_meta vm ON ra.username = vm.radius_username
+       WHERE r.user_id = $1 AND ra.acctstarttime >= CURRENT_DATE`,
       [userId],
     ),
 
-    // 4. Total vouchers
+    // 4. Daily revenue (sum of prices of vouchers used today)
+    pool.query(
+      `SELECT COALESCE(SUM(vm.price), 0) AS total
+       FROM radacct ra
+       JOIN routers r ON ra.nasipaddress = r.tunnel_ip
+       JOIN voucher_meta vm ON ra.username = vm.radius_username
+       WHERE r.user_id = $1 AND ra.acctstarttime >= CURRENT_DATE`,
+      [userId],
+    ),
+
+    // 5. Total vouchers
     pool.query(
       'SELECT COUNT(*) AS count FROM voucher_meta WHERE user_id = $1',
       [userId],
@@ -101,15 +119,18 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   const subscriptionData = subscription
     ? {
         planTier: subscription.planTier,
+        planName: subscription.planName,
         status: subscription.status,
         vouchersUsed: subscription.vouchersUsed,
         voucherQuota: subscription.voucherQuota,
         startDate: subscription.startDate,
         endDate: subscription.endDate,
+        daysRemaining: subscription.daysRemaining,
       }
     : null;
 
-  const vouchersCreatedToday = parseInt(vouchersCreatedTodayResult.rows[0].count, 10);
+  const vouchersUsedToday = parseInt(vouchersUsedTodayResult.rows[0].count, 10);
+  const dailyRevenue = parseFloat(dailyRevenueResult.rows[0].total);
   const totalVouchers = parseInt(totalVouchersResult.rows[0].count, 10);
 
   const dataUsage24h = {
@@ -127,13 +148,14 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
     userId,
     routerCount: routers.length,
     totalVouchers,
-    vouchersCreatedToday,
+    vouchersUsedToday,
   });
 
   return {
     routers,
     subscription: subscriptionData,
-    vouchersCreatedToday,
+    vouchersUsedToday,
+    dailyRevenue,
     totalVouchers,
     dataUsage24h,
     activeSessionsByRouter,

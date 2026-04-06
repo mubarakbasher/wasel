@@ -18,9 +18,14 @@ class DashboardState {
   List<dynamic> get routers => (data?['routers'] as List?) ?? [];
   Map<String, dynamic>? get subscription =>
       data?['subscription'] as Map<String, dynamic>?;
-  int get vouchersCreatedToday =>
-      data?['vouchersCreatedToday'] as int? ?? 0;
+  int get vouchersUsedToday =>
+      data?['vouchersUsedToday'] as int? ?? 0;
+  double get dailyRevenue =>
+      (data?['dailyRevenue'] as num?)?.toDouble() ?? 0.0;
   int get totalVouchers => data?['totalVouchers'] as int? ?? 0;
+  int get onlineRouters => routers
+      .where((r) => (r['status'] as String?) == 'online')
+      .length;
   Map<String, dynamic> get dataUsage24h =>
       (data?['dataUsage24h'] as Map<String, dynamic>?) ??
           {'totalInput': 0, 'totalOutput': 0};

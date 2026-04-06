@@ -109,6 +109,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             _buildSubscriptionCard(state),
             const SizedBox(height: AppSpacing.lg),
             _buildQuickStatsRow(state),
+            const SizedBox(height: AppSpacing.md),
+            _buildSecondStatsRow(state),
             const SizedBox(height: AppSpacing.lg),
             _buildDataUsageCard(state),
             const SizedBox(height: AppSpacing.lg),
@@ -264,8 +266,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: _buildStatCard(
             icon: Icons.confirmation_number,
             label: 'Vouchers Today',
-            value: '${state.vouchersCreatedToday}',
+            value: '${state.vouchersUsedToday}',
             color: AppColors.secondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSecondStatsRow(DashboardState state) {
+    final revenue = state.dailyRevenue;
+    final revenueText = revenue == revenue.roundToDouble()
+        ? '\$${revenue.toStringAsFixed(0)}'
+        : '\$${revenue.toStringAsFixed(2)}';
+
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.payments,
+            label: 'Daily Revenue',
+            value: revenueText,
+            color: AppColors.success,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.router,
+            label: 'Online Routers',
+            value: '${state.onlineRouters}',
+            color: AppColors.online,
           ),
         ),
       ],
