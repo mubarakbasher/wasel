@@ -113,6 +113,30 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
   );
   const simultaneousUse = simResult.rows.length > 0 ? parseInt(simResult.rows[0].value, 10) : null;
 
+  // Fetch session counts from radacct to compute real-time status
+  const sessionResult = await pool.query(
+    `SELECT COUNT(*) FILTER (WHERE acctstoptime IS NULL)::int AS active_count,
+            COUNT(*)::int AS total_count
+     FROM radacct WHERE username = $1`,
+    [row.radius_username],
+  );
+  const activeCount = sessionResult.rows[0].active_count;
+  const totalCount = sessionResult.rows[0].total_count;
+
+  // Compute effective status from RADIUS data
+  let computedStatus = row.status;
+  if (row.status !== 'disabled') {
+    if (expiration && new Date(expiration) < new Date()) {
+      computedStatus = 'expired';
+    } else if (activeCount > 0) {
+      computedStatus = 'active';
+    } else if (totalCount > 0) {
+      computedStatus = 'used';
+    } else {
+      computedStatus = 'unused';
+    }
+  }
+
   // Build profile name: from radius_profiles (legacy) or from limit info (new)
   let profileName: string | null = null;
   if (row.group_profile) {
@@ -134,7 +158,7 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
     profileName,
     groupProfile: row.group_profile,
     comment: row.comment,
-    status: row.status,
+    status: computedStatus,
     expiration,
     simultaneousUse,
     limitType: row.limit_type,
@@ -301,7 +325,7 @@ export async function createVouchers(
         `INSERT INTO voucher_meta
          (user_id, router_id, radius_username, group_profile, comment, status,
           limit_type, limit_value, limit_unit, validity_seconds, price)
-         VALUES ($1, $2, $3, NULL, NULL, 'active', $4, $5, $6, $7, $8)
+         VALUES ($1, $2, $3, NULL, NULL, 'unused', $4, $5, $6, $7, $8)
          RETURNING *`,
         [
           userId, routerId, cred.username,
@@ -378,8 +402,24 @@ export async function getVouchersByRouter(
   let paramIndex = 3;
 
   if (options.status) {
-    conditions.push(`vm.status = $${paramIndex++}`);
-    values.push(options.status);
+    if (options.status === 'disabled') {
+      conditions.push(`vm.status = 'disabled'`);
+    } else if (options.status === 'expired') {
+      conditions.push(`vm.status != 'disabled'`);
+      conditions.push(`EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`);
+    } else if (options.status === 'active') {
+      conditions.push(`vm.status != 'disabled'`);
+      conditions.push(`EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username AND ra.acctstoptime IS NULL)`);
+    } else if (options.status === 'used') {
+      conditions.push(`vm.status != 'disabled'`);
+      conditions.push(`NOT EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`);
+      conditions.push(`NOT EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username AND ra.acctstoptime IS NULL)`);
+      conditions.push(`EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username)`);
+    } else if (options.status === 'unused') {
+      conditions.push(`vm.status != 'disabled'`);
+      conditions.push(`NOT EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username)`);
+      conditions.push(`NOT EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`);
+    }
   }
 
   if (options.limitType) {

@@ -50,7 +50,7 @@ export const updateVoucherSchema = z.object({
 );
 
 export const listVouchersQuerySchema = z.object({
-  status: z.enum(['active', 'disabled', 'expired', 'used']).optional(),
+  status: z.enum(['unused', 'active', 'used', 'expired', 'disabled']).optional(),
   limitType: z.enum(['time', 'data']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

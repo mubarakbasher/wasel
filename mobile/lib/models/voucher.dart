@@ -7,7 +7,7 @@ class Voucher {
   final String? profileName;
   final String? groupProfile;
   final String? comment;
-  final String status; // active, disabled, expired, used
+  final String status; // unused, active, used, expired, disabled
   final String? expiration;
   final int? simultaneousUse;
   final String? limitType; // 'time' or 'data'
@@ -27,7 +27,7 @@ class Voucher {
     this.profileName,
     this.groupProfile,
     this.comment,
-    this.status = 'active',
+    this.status = 'unused',
     this.expiration,
     this.simultaneousUse,
     this.limitType,
@@ -39,6 +39,7 @@ class Voucher {
     required this.updatedAt,
   });
 
+  bool get isUnused => status == 'unused';
   bool get isActive => status == 'active';
   bool get isDisabled => status == 'disabled';
   bool get isExpired => status == 'expired';
