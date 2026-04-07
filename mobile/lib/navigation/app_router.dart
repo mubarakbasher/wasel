@@ -142,8 +142,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/vouchers/print',
         builder: (context, state) {
-          final vouchers = state.extra as List<Voucher>;
-          return VoucherPrintScreen(vouchers: vouchers);
+          final extra = state.extra as Map<String, dynamic>;
+          final vouchers = extra['vouchers'] as List<Voucher>;
+          final routerName = extra['routerName'] as String;
+          return VoucherPrintScreen(
+            vouchers: vouchers,
+            routerName: routerName,
+          );
         },
       ),
       // Notification preferences

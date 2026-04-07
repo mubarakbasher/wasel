@@ -96,8 +96,19 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
     final selectedVouchers = allVouchers
         .where((v) => _selectedVoucherIds.contains(v.id))
         .toList();
+
+    // Resolve router name for the print screen header
+    final routersState = ref.read(routersProvider);
+    final router = routersState.routers
+        .where((r) => r.id == _selectedRouterId)
+        .firstOrNull;
+    final routerName = router?.name ?? 'Wi-Fi';
+
     _exitSelectMode();
-    context.push('/vouchers/print', extra: selectedVouchers);
+    context.push('/vouchers/print', extra: {
+      'vouchers': selectedVouchers,
+      'routerName': routerName,
+    });
   }
 
   @override
@@ -266,10 +277,11 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
       onSelected: _onStatusFilterChanged,
       itemBuilder: (context) => [
         const PopupMenuItem(value: null, child: Text('All')),
+        const PopupMenuItem(value: 'unused', child: Text('Unused')),
         const PopupMenuItem(value: 'active', child: Text('Active')),
-        const PopupMenuItem(value: 'disabled', child: Text('Disabled')),
-        const PopupMenuItem(value: 'expired', child: Text('Expired')),
         const PopupMenuItem(value: 'used', child: Text('Used')),
+        const PopupMenuItem(value: 'expired', child: Text('Expired')),
+        const PopupMenuItem(value: 'disabled', child: Text('Disabled')),
       ],
       child: Container(
         height: 40,
@@ -553,14 +565,16 @@ class _StatusBadge extends StatelessWidget {
 
   Color _statusColor(String status) {
     switch (status) {
+      case 'unused':
+        return AppColors.primary;
       case 'active':
         return AppColors.voucherActive;
-      case 'disabled':
-        return AppColors.voucherDisabled;
-      case 'expired':
-        return AppColors.voucherExpired;
       case 'used':
         return AppColors.voucherUsed;
+      case 'expired':
+        return AppColors.voucherExpired;
+      case 'disabled':
+        return AppColors.voucherDisabled;
       default:
         return AppColors.textSecondary;
     }
