@@ -16,6 +16,14 @@ import '../models/voucher.dart';
 /// - Decorated Card: ornamental corners with centered code
 class PrintService {
   // ---------------------------------------------------------------------------
+  // Design colors
+  // ---------------------------------------------------------------------------
+
+  static final _headerDark = PdfColor.fromHex('#1a237e'); // Deep indigo
+  static final _accentTeal = PdfColor.fromHex('#00897b'); // Teal
+  static final _frameBrown = PdfColor.fromHex('#5d4037'); // Warm brown
+
+  // ---------------------------------------------------------------------------
   // Arabic font loading (cached)
   // ---------------------------------------------------------------------------
 
@@ -512,88 +520,120 @@ class PrintService {
     int columns,
   ) {
     // Scale font sizes based on column count
-    final double headerSize = (12 - (columns - 2) * 0.6).clamp(6.0, 14.0);
-    final double labelSize = (8 - (columns - 2) * 0.4).clamp(4.0, 10.0);
+    final double headerSize = (11 - (columns - 2) * 0.5).clamp(5.5, 13.0);
+    final double labelSize = (7 - (columns - 2) * 0.3).clamp(3.5, 9.0);
     final double valueSize = (10 - (columns - 2) * 0.5).clamp(5.0, 12.0);
-    final double pad = (6 - (columns - 2) * 0.3).clamp(2.0, 8.0);
+    final double pad = (5 - (columns - 2) * 0.25).clamp(2.0, 7.0);
+    final double headerBandH = (height * 0.28).clamp(10.0, 30.0);
 
     return pw.Container(
       width: width,
       height: height,
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey800, width: 0.6),
+        border: pw.Border.all(color: PdfColors.grey300, width: 0.4),
+        borderRadius: pw.BorderRadius.circular(3),
       ),
-      child: pw.Padding(
-        padding: pw.EdgeInsets.all(pad),
+      child: pw.ClipRRect(
+        horizontalRadius: 3,
+        verticalRadius: 3,
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            // Business name header
-            pw.Directionality(
-              textDirection: pw.TextDirection.rtl,
-              child: pw.Text(
-                businessName,
-                style: pw.TextStyle(
-                  fontSize: headerSize,
-                  fontWeight: pw.FontWeight.bold,
-                  font: _arabicFont,
+            // Dark header band with business name
+            pw.Container(
+              height: headerBandH,
+              color: _headerDark,
+              alignment: pw.Alignment.center,
+              padding: pw.EdgeInsets.symmetric(horizontal: pad),
+              child: pw.Directionality(
+                textDirection: pw.TextDirection.rtl,
+                child: pw.Text(
+                  businessName,
+                  style: pw.TextStyle(
+                    fontSize: headerSize,
+                    fontWeight: pw.FontWeight.bold,
+                    font: _arabicFont,
+                    color: PdfColors.white,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                  maxLines: 1,
                 ),
-                textAlign: pw.TextAlign.center,
               ),
             ),
-            pw.SizedBox(height: pad * 0.3),
-            pw.Divider(thickness: 0.5, color: PdfColors.grey600),
-            pw.SizedBox(height: pad * 0.3),
 
-            // Username row: code on left, label on right (RTL)
-            pw.Directionality(
-              textDirection: pw.TextDirection.rtl,
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    '\u0627\u0633\u0645 \u0627\u0644\u062f\u062e\u0648\u0644',
-                    style: pw.TextStyle(
-                      fontSize: labelSize,
-                      font: _arabicFont,
-                      color: PdfColors.grey700,
+            // Body content
+            pw.Expanded(
+              child: pw.Padding(
+                padding: pw.EdgeInsets.symmetric(
+                    horizontal: pad, vertical: pad * 0.5),
+                child: pw.Column(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  children: [
+                    // Username row
+                    pw.Directionality(
+                      textDirection: pw.TextDirection.rtl,
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Text(
+                            '\u0627\u0633\u0645 \u0627\u0644\u062f\u062e\u0648\u0644',
+                            style: pw.TextStyle(
+                              fontSize: labelSize,
+                              font: _arabicFont,
+                              color: PdfColors.grey600,
+                            ),
+                          ),
+                          pw.SizedBox(height: pad * 0.15),
+                          pw.Text(
+                            v.username,
+                            style: pw.TextStyle(
+                              fontSize: valueSize,
+                              fontWeight: pw.FontWeight.bold,
+                              font: _arabicFont,
+                              letterSpacing: 0.5,
+                            ),
+                            textAlign: pw.TextAlign.center,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  pw.Text(
-                    v.username,
-                    style: pw.TextStyle(
-                      fontSize: valueSize,
-                      fontWeight: pw.FontWeight.bold,
-                      font: _arabicFont,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            pw.SizedBox(height: pad * 0.3),
 
-            // Time/limit row
-            pw.Directionality(
-              textDirection: pw.TextDirection.rtl,
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    '\u0627\u0644\u0648\u0642\u062a',
-                    style: pw.TextStyle(
-                      fontSize: labelSize,
-                      font: _arabicFont,
-                      color: PdfColors.grey700,
+                    // Accent divider
+                    pw.Container(
+                      height: 0.8,
+                      color: _headerDark,
+                      margin: pw.EdgeInsets.symmetric(
+                          horizontal: width * 0.15),
                     ),
-                  ),
-                  pw.Text(
-                    v.limitDisplayText,
-                    style: pw.TextStyle(
-                      fontSize: valueSize,
-                      font: _arabicFont,
+
+                    // Time/limit row
+                    pw.Directionality(
+                      textDirection: pw.TextDirection.rtl,
+                      child: pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.center,
+                        children: [
+                          pw.Text(
+                            '\u0627\u0644\u0648\u0642\u062a: ',
+                            style: pw.TextStyle(
+                              fontSize: labelSize,
+                              font: _arabicFont,
+                              color: PdfColors.grey600,
+                            ),
+                          ),
+                          pw.Text(
+                            v.limitDisplayText,
+                            style: pw.TextStyle(
+                              fontSize: labelSize,
+                              fontWeight: pw.FontWeight.bold,
+                              font: _arabicFont,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -633,94 +673,140 @@ class PrintService {
     int columns,
   ) {
     final double headerSize = (10 - (columns - 2) * 0.5).clamp(5.0, 12.0);
-    final double labelSize = (7 - (columns - 2) * 0.3).clamp(3.5, 9.0);
+    final double subtitleSize = (7 - (columns - 2) * 0.3).clamp(3.5, 9.0);
+    final double labelSize = (6 - (columns - 2) * 0.25).clamp(3.0, 8.0);
     final double valueSize = (9 - (columns - 2) * 0.4).clamp(4.5, 11.0);
-    final double pad = (5 - (columns - 2) * 0.3).clamp(2.0, 7.0);
-
-    final headerText = '$businessName ${v.limitDisplayText}';
+    final double pad = (5 - (columns - 2) * 0.25).clamp(2.0, 7.0);
+    final double accentWidth = (3.0 - (columns - 2) * 0.15).clamp(1.5, 4.0);
 
     return pw.Container(
       width: width,
       height: height,
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey800, width: 0.6),
+        color: PdfColors.white,
+        border: pw.Border(
+          left: pw.BorderSide(color: _accentTeal, width: accentWidth),
+          top: pw.BorderSide(color: PdfColors.grey300, width: 0.3),
+          right: pw.BorderSide(color: PdfColors.grey300, width: 0.3),
+          bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.3),
+        ),
       ),
       child: pw.Padding(
-        padding: pw.EdgeInsets.all(pad),
+        padding: pw.EdgeInsets.only(
+            left: pad, right: pad, top: pad * 0.6, bottom: pad * 0.4),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            // Header: business name + plan
+            // Header: business name
             pw.Directionality(
               textDirection: pw.TextDirection.rtl,
               child: pw.Text(
-                headerText,
+                businessName,
                 style: pw.TextStyle(
                   fontSize: headerSize,
                   fontWeight: pw.FontWeight.bold,
                   font: _arabicFont,
                 ),
                 textAlign: pw.TextAlign.center,
+                maxLines: 1,
               ),
             ),
-            pw.SizedBox(height: pad * 0.3),
-            pw.Divider(thickness: 0.4, color: PdfColors.grey500),
-            pw.SizedBox(height: pad * 0.3),
-
-            // Username + Password labels row
-            pw.Row(
-              children: [
-                pw.Expanded(
-                  child: pw.Text(
-                    'Username',
-                    style: pw.TextStyle(
-                      fontSize: labelSize,
-                      color: PdfColors.grey700,
-                      font: _arabicFont,
-                    ),
-                  ),
-                ),
-                pw.Expanded(
-                  child: pw.Text(
-                    'Password',
-                    style: pw.TextStyle(
-                      fontSize: labelSize,
-                      color: PdfColors.grey700,
-                      font: _arabicFont,
-                    ),
-                    textAlign: pw.TextAlign.right,
-                  ),
-                ),
-              ],
+            // Subtitle: plan/limit
+            pw.Text(
+              v.limitDisplayText,
+              style: pw.TextStyle(
+                fontSize: subtitleSize,
+                color: _accentTeal,
+                font: _arabicFont,
+              ),
+              textAlign: pw.TextAlign.center,
             ),
-            pw.SizedBox(height: pad * 0.2),
-
-            // Username + Password values row
-            pw.Row(
-              children: [
-                pw.Expanded(
-                  child: pw.Text(
-                    v.username,
-                    style: pw.TextStyle(
-                      fontSize: valueSize,
-                      fontWeight: pw.FontWeight.bold,
-                      font: _arabicFont,
-                    ),
-                  ),
-                ),
-                pw.Expanded(
-                  child: pw.Text(
-                    v.password ?? '',
-                    style: pw.TextStyle(
-                      fontSize: valueSize,
-                      fontWeight: pw.FontWeight.bold,
-                      font: _arabicFont,
-                    ),
-                    textAlign: pw.TextAlign.right,
-                  ),
-                ),
-              ],
+            pw.SizedBox(height: pad * 0.3),
+            pw.Container(
+              height: 0.5,
+              color: PdfColors.grey300,
             ),
+            pw.SizedBox(height: pad * 0.4),
+
+            // Two-column: Username | Password
+            pw.Expanded(
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Username column
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'USERNAME',
+                          style: pw.TextStyle(
+                            fontSize: labelSize,
+                            color: PdfColors.grey500,
+                            fontWeight: pw.FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        pw.SizedBox(height: pad * 0.2),
+                        pw.Text(
+                          v.username,
+                          style: pw.TextStyle(
+                            fontSize: valueSize,
+                            fontWeight: pw.FontWeight.bold,
+                            font: _arabicFont,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Vertical separator
+                  pw.Container(
+                    width: 0.4,
+                    height: height * 0.25,
+                    color: PdfColors.grey300,
+                    margin: pw.EdgeInsets.symmetric(horizontal: pad * 0.3),
+                  ),
+                  // Password column
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text(
+                          'PASSWORD',
+                          style: pw.TextStyle(
+                            fontSize: labelSize,
+                            color: PdfColors.grey500,
+                            fontWeight: pw.FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        pw.SizedBox(height: pad * 0.2),
+                        pw.Text(
+                          v.password ?? '--------',
+                          style: pw.TextStyle(
+                            fontSize: valueSize,
+                            fontWeight: pw.FontWeight.bold,
+                            font: _arabicFont,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Footer: price if available
+            if (v.price != null && v.price! > 0)
+              pw.Text(
+                '${v.price!.toStringAsFixed(0)} \u062c\u0646\u064a\u0647',
+                style: pw.TextStyle(
+                  fontSize: labelSize,
+                  color: PdfColors.grey500,
+                  font: _arabicFont,
+                ),
+                textAlign: pw.TextAlign.right,
+              ),
           ],
         ),
       ),
@@ -759,85 +845,124 @@ class PrintService {
     double height,
     int columns,
   ) {
-    final double headerSize = (11 - (columns - 2) * 0.5).clamp(5.5, 13.0);
-    final double codeSize = (14 - (columns - 2) * 0.7).clamp(7.0, 16.0);
-    final double footerSize = (8 - (columns - 2) * 0.4).clamp(4.0, 10.0);
-    final double cornerLen = (18 - (columns - 2) * 1.0).clamp(8.0, 22.0);
-    final double pad = (8 - (columns - 2) * 0.4).clamp(3.0, 10.0);
+    final double headerSize = (10 - (columns - 2) * 0.5).clamp(5.0, 12.0);
+    final double codeSize = (13 - (columns - 2) * 0.6).clamp(6.5, 15.0);
+    final double footerSize = (7 - (columns - 2) * 0.3).clamp(3.5, 9.0);
+    final double dotSize = (4 - (columns - 2) * 0.2).clamp(1.5, 5.0);
+    final double gap = (3 - (columns - 2) * 0.15).clamp(1.0, 4.0);
+    final double pad = (6 - (columns - 2) * 0.3).clamp(2.5, 8.0);
 
     return pw.Container(
       width: width,
       height: height,
+      // Outer frame
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey400, width: 0.3),
+        border: pw.Border.all(color: _frameBrown, width: 0.8),
       ),
       child: pw.Stack(
         children: [
-          // Corner decorations
-          _buildCornerDecorations(width, height, cornerLen),
+          // Inner frame with gap
+          pw.Positioned(
+            left: gap,
+            top: gap,
+            right: gap,
+            bottom: gap,
+            child: pw.Container(
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: _frameBrown, width: 0.4),
+              ),
+            ),
+          ),
+
+          // Corner dots (between outer and inner frame)
+          ..._buildCornerDots(width, height, gap, dotSize),
 
           // Card content
-          pw.Positioned.fill(
-            child: pw.Padding(
-              padding: pw.EdgeInsets.all(pad + cornerLen * 0.3),
-              child: pw.Column(
-                mainAxisAlignment: pw.MainAxisAlignment.center,
-                children: [
-                  // Business name
-                  pw.Directionality(
-                    textDirection: pw.TextDirection.rtl,
-                    child: pw.Text(
-                      businessName,
-                      style: pw.TextStyle(
-                        fontSize: headerSize,
-                        fontWeight: pw.FontWeight.bold,
-                        font: _arabicFont,
-                      ),
-                      textAlign: pw.TextAlign.center,
-                    ),
-                  ),
-                  pw.SizedBox(height: pad * 0.5),
-
-                  // Voucher code (large, centered)
-                  pw.Text(
-                    v.username,
+          pw.Positioned(
+            left: gap + pad,
+            top: gap + pad * 0.5,
+            right: gap + pad,
+            bottom: gap + pad * 0.5,
+            child: pw.Column(
+              mainAxisAlignment: pw.MainAxisAlignment.center,
+              children: [
+                // Business name
+                pw.Directionality(
+                  textDirection: pw.TextDirection.rtl,
+                  child: pw.Text(
+                    businessName,
                     style: pw.TextStyle(
-                      fontSize: codeSize,
+                      fontSize: headerSize,
                       fontWeight: pw.FontWeight.bold,
                       font: _arabicFont,
+                      color: _frameBrown,
                     ),
                     textAlign: pw.TextAlign.center,
+                    maxLines: 1,
                   ),
-                  pw.SizedBox(height: pad * 0.5),
+                ),
+                pw.SizedBox(height: pad * 0.3),
 
-                  // Bottom row: price + time
-                  pw.Directionality(
-                    textDirection: pw.TextDirection.rtl,
-                    child: pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        if (v.price != null && v.price! > 0)
-                          pw.Text(
-                            '${v.price!.toStringAsFixed(0)} \u062c\u0646\u064a\u0647',
-                            style: pw.TextStyle(
-                              fontSize: footerSize,
-                              font: _arabicFont,
-                            ),
-                          )
-                        else
-                          pw.SizedBox(),
+                // Decorative dot divider
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: List.generate(
+                    3,
+                    (_) => pw.Container(
+                      width: dotSize * 0.5,
+                      height: dotSize * 0.5,
+                      margin: pw.EdgeInsets.symmetric(horizontal: dotSize * 0.4),
+                      decoration: pw.BoxDecoration(
+                        color: _frameBrown,
+                        shape: pw.BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+                pw.SizedBox(height: pad * 0.3),
+
+                // Voucher code (large, centered)
+                pw.Text(
+                  v.username,
+                  style: pw.TextStyle(
+                    fontSize: codeSize,
+                    fontWeight: pw.FontWeight.bold,
+                    font: _arabicFont,
+                    letterSpacing: 1,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+                pw.SizedBox(height: pad * 0.4),
+
+                // Bottom row: price + time
+                pw.Directionality(
+                  textDirection: pw.TextDirection.rtl,
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (v.price != null && v.price! > 0)
                         pw.Text(
-                          v.limitDisplayText,
+                          '${v.price!.toStringAsFixed(0)} \u062c\u0646\u064a\u0647',
                           style: pw.TextStyle(
                             fontSize: footerSize,
                             font: _arabicFont,
+                            color: PdfColors.grey700,
                           ),
+                        )
+                      else
+                        pw.SizedBox(),
+                      pw.Text(
+                        v.limitDisplayText,
+                        style: pw.TextStyle(
+                          fontSize: footerSize,
+                          font: _arabicFont,
+                          color: PdfColors.grey700,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -845,73 +970,56 @@ class PrintService {
     );
   }
 
-  /// Draw elegant ornamental L-shaped corners with curled ends.
-  pw.Widget _buildCornerDecorations(
-      double width, double height, double cornerLen) {
-    return pw.CustomPaint(
-      size: PdfPoint(width, height),
-      painter: (PdfGraphics canvas, PdfPoint size) {
-        final w = size.x;
-        final h = size.y;
-        final len = cornerLen;
-        final curl = len * 0.3;
-
-        canvas.setColor(PdfColors.grey700);
-        canvas.setLineWidth(0.8);
-
-        // Top-left corner
-        _drawCorner(canvas, 0, h, len, curl, 1, -1);
-        // Top-right corner
-        _drawCorner(canvas, w, h, len, curl, -1, -1);
-        // Bottom-left corner
-        _drawCorner(canvas, 0, 0, len, curl, 1, 1);
-        // Bottom-right corner
-        _drawCorner(canvas, w, 0, len, curl, -1, 1);
-
-        // Inner decorative corners (smaller, offset)
-        final innerOffset = len * 0.15;
-        final innerLen = len * 0.6;
-        final innerCurl = innerLen * 0.25;
-        canvas.setLineWidth(0.5);
-
-        _drawCorner(canvas, innerOffset, h - innerOffset, innerLen, innerCurl, 1, -1);
-        _drawCorner(canvas, w - innerOffset, h - innerOffset, innerLen, innerCurl, -1, -1);
-        _drawCorner(canvas, innerOffset, innerOffset, innerLen, innerCurl, 1, 1);
-        _drawCorner(canvas, w - innerOffset, innerOffset, innerLen, innerCurl, -1, 1);
-      },
-    );
-  }
-
-  /// Draw a single corner with L-shape and curled ends.
-  ///
-  /// [x], [y] is the corner point.
-  /// [sx], [sy] are direction multipliers (1 or -1) to mirror the corner.
-  void _drawCorner(
-    PdfGraphics canvas,
-    double x,
-    double y,
-    double len,
-    double curl,
-    double sx,
-    double sy,
-  ) {
-    // Vertical line from corner with curl at end
-    canvas.moveTo(x + sx * curl * 0.5, y + sy * len);
-    canvas.curveTo(
-      x, y + sy * len,
-      x, y + sy * len * 0.8,
-      x, y + sy * len * 0.5,
-    );
-    canvas.lineTo(x, y);
-
-    // Horizontal line from corner with curl at end
-    canvas.lineTo(x + sx * len * 0.5, y);
-    canvas.curveTo(
-      x + sx * len * 0.8, y,
-      x + sx * len, y,
-      x + sx * len, y + sy * curl * 0.5,
-    );
-    canvas.strokePath();
+  /// Build small filled circles at each corner between the double frame.
+  List<pw.Widget> _buildCornerDots(
+      double width, double height, double gap, double dotSize) {
+    final double offset = gap / 2 - dotSize / 2;
+    return [
+      // Top-left
+      pw.Positioned(
+        left: offset,
+        top: offset,
+        child: pw.Container(
+          width: dotSize,
+          height: dotSize,
+          decoration: pw.BoxDecoration(
+              color: _frameBrown, shape: pw.BoxShape.circle),
+        ),
+      ),
+      // Top-right
+      pw.Positioned(
+        right: offset,
+        top: offset,
+        child: pw.Container(
+          width: dotSize,
+          height: dotSize,
+          decoration: pw.BoxDecoration(
+              color: _frameBrown, shape: pw.BoxShape.circle),
+        ),
+      ),
+      // Bottom-left
+      pw.Positioned(
+        left: offset,
+        bottom: offset,
+        child: pw.Container(
+          width: dotSize,
+          height: dotSize,
+          decoration: pw.BoxDecoration(
+              color: _frameBrown, shape: pw.BoxShape.circle),
+        ),
+      ),
+      // Bottom-right
+      pw.Positioned(
+        right: offset,
+        bottom: offset,
+        child: pw.Container(
+          width: dotSize,
+          height: dotSize,
+          decoration: pw.BoxDecoration(
+              color: _frameBrown, shape: pw.BoxShape.circle),
+        ),
+      ),
+    ];
   }
 
   // ---------------------------------------------------------------------------

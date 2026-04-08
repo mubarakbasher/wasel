@@ -9,11 +9,15 @@ import { startQuotaMonitorJob } from './jobs/quotaMonitor';
 import { startValidityExpirationJob } from './jobs/validityExpiration';
 import { startMonitoring } from './services/wireguardMonitor';
 import { syncPeersFromDatabase } from './services/wireguardPeer';
+import { runMigrations } from './migrations/runner';
 
 async function startServer(): Promise<void> {
   try {
     // Test database connection
     await testDbConnection();
+
+    // Run pending database migrations
+    await runMigrations();
 
     // Test Redis connection
     await redis.ping();
