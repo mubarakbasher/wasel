@@ -250,15 +250,8 @@ async function insertRadiusEntriesV2(
     }
   }
 
-  // radcheck: Expiration (if validity period is set)
-  if (validitySeconds) {
-    const expirationDate = new Date(Date.now() + validitySeconds * 1000);
-    const formatted = formatRadiusExpiration(expirationDate.toISOString());
-    await client.query(
-      'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
-      [username, 'Expiration', ':=', formatted],
-    );
-  }
+  // Expiration is NOT set here — the validityExpiration job sets it
+  // after first login (validity from first use, not from creation).
 }
 
 // ----- Service Functions -----

@@ -27,7 +27,7 @@ export function startValidityExpirationJob(): void {
         JOIN radacct ra ON ra.username = vm.radius_username
         WHERE vm.validity_seconds IS NOT NULL
           AND vm.validity_seconds > 0
-          AND vm.status = 'active'
+          AND vm.status != 'disabled'
           AND NOT EXISTS (
             SELECT 1 FROM radcheck rc
             WHERE rc.username = vm.radius_username
