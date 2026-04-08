@@ -39,13 +39,14 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
     final voucher = ref.read(vouchersProvider).selectedVoucher;
     if (voucher == null) return;
 
-    final newStatus = voucher.isActive ? 'Disable' : 'Enable';
+    final isCurrentlyEnabled = !voucher.isDisabled;
+    final newStatus = isCurrentlyEnabled ? 'Disable' : 'Enable';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('$newStatus Voucher?'),
         content: Text(
-          voucher.isActive
+          isCurrentlyEnabled
               ? 'This will prevent the voucher from being used for authentication.'
               : 'This will re-enable the voucher for authentication.',
         ),
@@ -321,18 +322,18 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
     return Column(
       children: [
         // Enable/Disable toggle
-        if (voucher.status == 'active' || voucher.status == 'disabled')
+        if (voucher.status != 'expired')
           SizedBox(
             height: 48,
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _toggleStatus,
               icon: Icon(
-                voucher.isActive ? Icons.block : Icons.check_circle,
+                voucher.isDisabled ? Icons.check_circle : Icons.block,
                 size: 20,
               ),
-              label: Text(voucher.isActive ? 'Disable Voucher' : 'Enable Voucher'),
-              style: voucher.isActive
+              label: Text(voucher.isDisabled ? 'Enable Voucher' : 'Disable Voucher'),
+              style: !voucher.isDisabled
                   ? ElevatedButton.styleFrom(
                       backgroundColor: AppColors.warning,
                       foregroundColor: Colors.white,

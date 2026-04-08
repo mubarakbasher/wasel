@@ -137,10 +137,15 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
                 if (_selectedRouterId != null)
                   IconButton(
                     icon: const Icon(Icons.add),
-                    onPressed: () => context.push(
-                      '/vouchers/create',
-                      extra: _selectedRouterId,
-                    ),
+                    onPressed: () async {
+                      await context.push(
+                        '/vouchers/create',
+                        extra: _selectedRouterId,
+                      );
+                      if (mounted && _selectedRouterId != null) {
+                        ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+                      }
+                    },
                   ),
               ],
             ),
@@ -389,10 +394,15 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
               height: 48,
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => context.push(
-                  '/vouchers/create',
-                  extra: _selectedRouterId,
-                ),
+                onPressed: () async {
+                  await context.push(
+                    '/vouchers/create',
+                    extra: _selectedRouterId,
+                  );
+                  if (mounted && _selectedRouterId != null) {
+                    ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+                  }
+                },
                 icon: const Icon(Icons.add),
                 label: const Text('Create Voucher'),
               ),
@@ -419,10 +429,15 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
             isSelected: _selectedVoucherIds.contains(voucher.id),
             onTap: _isSelectMode
                 ? () => _toggleVoucherSelection(voucher.id)
-                : () => context.push(
-                    '/vouchers/detail',
-                    extra: {'routerId': _selectedRouterId!, 'voucherId': voucher.id},
-                  ),
+                : () async {
+                    await context.push(
+                      '/vouchers/detail',
+                      extra: {'routerId': _selectedRouterId!, 'voucherId': voucher.id},
+                    );
+                    if (mounted && _selectedRouterId != null) {
+                      ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+                    }
+                  },
             onLongPress: () {
               if (!_isSelectMode) {
                 _enterSelectMode(voucher.id);

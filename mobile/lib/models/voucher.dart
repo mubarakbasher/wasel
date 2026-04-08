@@ -83,7 +83,7 @@ class Voucher {
       profileName: json['profileName'] as String?,
       groupProfile: json['groupProfile'] as String?,
       comment: json['comment'] as String?,
-      status: json['status'] as String? ?? 'active',
+      status: json['status'] as String? ?? 'unused',
       expiration: json['expiration'] as String?,
       simultaneousUse: json['simultaneousUse'] != null
           ? int.parse(json['simultaneousUse'].toString())

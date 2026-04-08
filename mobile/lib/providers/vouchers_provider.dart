@@ -162,7 +162,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
   }
 
   Future<bool> toggleVoucherStatus(String routerId, Voucher voucher) async {
-    final newStatus = voucher.isActive ? 'disabled' : 'active';
+    final newStatus = voucher.isDisabled ? 'active' : 'disabled';
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final updated = await _service.updateVoucher(
