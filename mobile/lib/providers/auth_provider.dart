@@ -215,6 +215,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   // -------------------------------------------------------------------------
+  // Resend verification
+  // -------------------------------------------------------------------------
+
+  Future<void> resendVerification({required String email}) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _authService.resendVerification(email: email);
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _extractErrorMessage(e),
+      );
+      rethrow;
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Forgot password
   // -------------------------------------------------------------------------
 

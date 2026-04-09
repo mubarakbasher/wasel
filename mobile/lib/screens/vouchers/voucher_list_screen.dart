@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,25 +18,52 @@ class VoucherListScreen extends ConsumerStatefulWidget {
   ConsumerState<VoucherListScreen> createState() => _VoucherListScreenState();
 }
 
-class _VoucherListScreenState extends ConsumerState<VoucherListScreen> {
+class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
+    with WidgetsBindingObserver {
   String? _selectedRouterId;
   String? _statusFilter;
   final _searchController = TextEditingController();
   bool _isSelectMode = false;
   final Set<String> _selectedVoucherIds = {};
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Future.microtask(() {
       ref.read(routersProvider.notifier).loadRouters();
     });
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_selectedRouterId != null) {
+        ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+      }
+      _startAutoRefresh();
+    } else if (state == AppLifecycleState.paused) {
+      _refreshTimer?.cancel();
+    }
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (_selectedRouterId != null) {
+        ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+      }
+    });
   }
 
   void _onRouterSelected(String? routerId) {

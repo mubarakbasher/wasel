@@ -26,11 +26,30 @@ import '../screens/reports/report_export_screen.dart';
 import '../screens/notification_preferences_screen.dart';
 import '../screens/vouchers/voucher_print_screen.dart';
 import '../models/voucher.dart';
+import '../providers/auth_provider.dart';
 import 'scaffold_with_nav_bar.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(authProvider);
+
   return GoRouter(
     initialLocation: '/login',
+    redirect: (context, state) {
+      final isAuthenticated = authState.isAuthenticated;
+      final isAuthRoute = state.matchedLocation == '/login' ||
+          state.matchedLocation == '/register' ||
+          state.matchedLocation == '/verify-email' ||
+          state.matchedLocation == '/forgot-password' ||
+          state.matchedLocation == '/reset-password';
+
+      if (!isAuthenticated && !isAuthRoute) {
+        return '/login';
+      }
+      if (isAuthenticated && isAuthRoute) {
+        return '/dashboard';
+      }
+      return null;
+    },
     routes: [
       // Auth routes (no bottom nav)
       GoRoute(
@@ -102,21 +121,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/routers/detail',
         builder: (context, state) {
-          final routerId = state.extra as String;
+          final routerId = state.extra as String? ?? '';
           return RouterDetailScreen(routerId: routerId);
         },
       ),
       GoRoute(
         path: '/routers/edit',
         builder: (context, state) {
-          final routerId = state.extra as String;
+          final routerId = state.extra as String? ?? '';
           return EditRouterScreen(routerId: routerId);
         },
       ),
       GoRoute(
         path: '/routers/setup-guide',
         builder: (context, state) {
-          final routerId = state.extra as String;
+          final routerId = state.extra as String? ?? '';
           return SetupGuideScreen(routerId: routerId);
         },
       ),
@@ -124,17 +143,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/vouchers/create',
         builder: (context, state) {
-          final routerId = state.extra as String;
+          final routerId = state.extra as String? ?? '';
           return CreateVoucherWizard(routerId: routerId);
         },
       ),
       GoRoute(
         path: '/vouchers/detail',
         builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>;
+          final extra = state.extra as Map<String, dynamic>? ?? {};
           return VoucherDetailScreen(
-            routerId: extra['routerId'] as String,
-            voucherId: extra['voucherId'] as String,
+            routerId: extra['routerId'] as String? ?? '',
+            voucherId: extra['voucherId'] as String? ?? '',
           );
         },
       ),
@@ -142,9 +161,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/vouchers/print',
         builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>;
-          final vouchers = extra['vouchers'] as List<Voucher>;
-          final routerName = extra['routerName'] as String;
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          final vouchers = extra['vouchers'] as List<Voucher>? ?? [];
+          final routerName = extra['routerName'] as String? ?? 'Wi-Fi';
           return VoucherPrintScreen(
             vouchers: vouchers,
             routerName: routerName,
@@ -164,10 +183,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/reports/export',
         builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>;
+          final extra = state.extra as Map<String, dynamic>? ?? {};
           return ReportExportScreen(
-            reportType: extra['reportType'] as String,
-            exportData: extra['exportData'] as String,
+            reportType: extra['reportType'] as String? ?? '',
+            exportData: extra['exportData'] as String? ?? '',
           );
         },
       ),
@@ -175,14 +194,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sessions/active',
         builder: (context, state) {
-          final routerId = state.extra as String;
+          final routerId = state.extra as String? ?? '';
           return ActiveSessionsScreen(routerId: routerId);
         },
       ),
       GoRoute(
         path: '/sessions/history',
         builder: (context, state) {
-          final routerId = state.extra as String;
+          final routerId = state.extra as String? ?? '';
           return SessionHistoryScreen(routerId: routerId);
         },
       ),

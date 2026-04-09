@@ -66,7 +66,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
 
   Future<void> _resend() async {
     try {
-      await ref.read(authProvider.notifier).forgotPassword(email: widget.email);
+      await ref.read(authProvider.notifier).resendVerification(email: widget.email);
       _startCooldown();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

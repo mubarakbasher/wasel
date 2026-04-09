@@ -55,6 +55,12 @@ class AuthService {
     });
   }
 
+  /// POST /auth/resend-verification
+  /// Body: { email }
+  Future<void> resendVerification({required String email}) async {
+    await _api.post('/auth/resend-verification', data: {'email': email});
+  }
+
   /// POST /auth/forgot-password
   /// Body: { email }
   Future<void> forgotPassword({required String email}) async {

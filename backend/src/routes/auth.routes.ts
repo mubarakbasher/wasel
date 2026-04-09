@@ -8,6 +8,7 @@ import {
   verifyEmailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  resendVerificationSchema,
   logoutSchema,
 } from '../validators/auth.validators';
 import * as authController from '../controllers/auth.controller';
@@ -40,6 +41,13 @@ router.post(
   authLimiter,
   validate({ body: verifyEmailSchema }),
   authController.verifyEmail,
+);
+
+router.post(
+  '/resend-verification',
+  authLimiter,
+  validate({ body: resendVerificationSchema }),
+  authController.resendVerification,
 );
 
 router.post(

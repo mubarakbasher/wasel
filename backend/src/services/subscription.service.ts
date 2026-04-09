@@ -239,7 +239,7 @@ export async function requestSubscription(
 
     const startDate = new Date();
     const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + (durationMonths * 30));
+    endDate.setMonth(endDate.getMonth() + durationMonths);
 
     // Scale quota by duration; enterprise unlimited stays -1
     const voucherQuota = plan.monthlyVouchers === -1 ? -1 : plan.monthlyVouchers * durationMonths;
@@ -443,7 +443,7 @@ export async function changeSubscription(
 
     const startDate = new Date();
     const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + (durationMonths * 30));
+    endDate.setMonth(endDate.getMonth() + durationMonths);
 
     const voucherQuota = plan.monthlyVouchers === -1 ? -1 : plan.monthlyVouchers * durationMonths;
     const totalAmount = plan.price * durationMonths;

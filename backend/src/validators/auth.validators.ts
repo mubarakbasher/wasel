@@ -44,6 +44,10 @@ export const verifyEmailSchema = z.object({
   otp: z.string().length(6, 'OTP must be 6 digits'),
 });
 
+export const resendVerificationSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
 export const logoutSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });

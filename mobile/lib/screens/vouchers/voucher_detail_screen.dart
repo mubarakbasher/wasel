@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,15 +26,41 @@ class VoucherDetailScreen extends ConsumerStatefulWidget {
       _VoucherDetailScreenState();
 }
 
-class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
+class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
+    with WidgetsBindingObserver {
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Future.microtask(() {
       ref
           .read(vouchersProvider.notifier)
           .loadVoucher(widget.routerId, widget.voucherId);
     });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      ref.read(vouchersProvider.notifier).loadVoucher(widget.routerId, widget.voucherId);
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(vouchersProvider.notifier).loadVoucher(widget.routerId, widget.voucherId);
+      _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        ref.read(vouchersProvider.notifier).loadVoucher(widget.routerId, widget.voucherId);
+      });
+    } else if (state == AppLifecycleState.paused) {
+      _refreshTimer?.cancel();
+    }
   }
 
   Future<void> _toggleStatus() async {
@@ -358,6 +386,8 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen> {
 
   Color _statusColor(String status) {
     switch (status) {
+      case 'unused':
+        return AppColors.primary;
       case 'active':
         return AppColors.voucherActive;
       case 'disabled':
@@ -410,6 +440,8 @@ class _StatusBadge extends StatelessWidget {
 
   Color _statusColor(String status) {
     switch (status) {
+      case 'unused':
+        return AppColors.primary;
       case 'active':
         return AppColors.voucherActive;
       case 'disabled':

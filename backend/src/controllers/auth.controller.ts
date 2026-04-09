@@ -63,6 +63,19 @@ export async function verifyEmail(req: Request, res: Response, next: NextFunctio
   }
 }
 
+export async function resendVerification(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email } = req.body;
+    await authService.resendVerification(email);
+    res.status(200).json({
+      success: true,
+      data: { message: 'If that email is registered and unverified, a new code has been sent' },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email } = req.body;

@@ -196,6 +196,28 @@ export async function verifyEmail(email: string, otp: string): Promise<void> {
   logger.info('Email verified', { userId });
 }
 
+export async function resendVerification(email: string): Promise<void> {
+  const result = await pool.query(
+    'SELECT id, name, is_verified FROM users WHERE email = $1 AND is_active = TRUE',
+    [email],
+  );
+
+  if (result.rows.length === 0) {
+    // Always return success to prevent email enumeration
+    return;
+  }
+
+  const user = result.rows[0];
+  if (user.is_verified) {
+    throw new AppError(400, 'Email is already verified', 'ALREADY_VERIFIED');
+  }
+
+  const otp = await tokenService.createVerificationOtp(user.id);
+  await emailService.sendVerificationOtp(email, user.name, otp);
+
+  logger.info('Verification OTP resent', { email });
+}
+
 export async function forgotPassword(email: string): Promise<void> {
   const result = await pool.query(
     'SELECT id, name FROM users WHERE email = $1 AND is_active = TRUE',

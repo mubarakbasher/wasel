@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/app_theme.dart';
 import 'navigation/app_router.dart';
 import 'i18n/app_localizations.dart';
+import 'providers/auth_provider.dart';
 import 'providers/locale_provider.dart';
 
 class WaselApp extends ConsumerStatefulWidget {
@@ -18,8 +19,10 @@ class _WaselAppState extends ConsumerState<WaselApp> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-        () => ref.read(localeProvider.notifier).loadSavedLocale());
+    Future.microtask(() {
+      ref.read(localeProvider.notifier).loadSavedLocale();
+      ref.read(authProvider.notifier).tryRestoreSession();
+    });
   }
 
   @override
