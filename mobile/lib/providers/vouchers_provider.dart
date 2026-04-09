@@ -129,7 +129,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     }
   }
 
-  Future<bool> createVouchers({
+  Future<List<Voucher>?> createVouchers({
     required String routerId,
     required String limitType,
     required int limitValue,
@@ -154,10 +154,10 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
         total: state.total + vouchers.length,
         isLoading: false,
       );
-      return true;
+      return vouchers;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _extractError(e));
-      return false;
+      return null;
     }
   }
 

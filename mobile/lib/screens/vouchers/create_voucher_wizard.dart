@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/voucher.dart';
+import '../../providers/routers_provider.dart';
 import '../../providers/vouchers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -81,7 +83,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     final count = int.parse(_countController.text.trim());
     final price = double.parse(_priceController.text.trim());
 
-    final success = await ref.read(vouchersProvider.notifier).createVouchers(
+    final created = await ref.read(vouchersProvider.notifier).createVouchers(
           routerId: widget.routerId,
           limitType: _limitType,
           limitValue: limitValue,
@@ -94,17 +96,87 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     if (!mounted) return;
     setState(() => _isSubmitting = false);
 
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(count == 1
-              ? 'Voucher created successfully'
-              : '$count vouchers created successfully'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-      context.pop();
+    if (created != null) {
+      _showSuccessDialog(created, count);
     }
+  }
+
+  void _showSuccessDialog(List<Voucher> vouchers, int count) {
+    final routersState = ref.read(routersProvider);
+    final router = routersState.routers
+        .where((r) => r.id == widget.routerId)
+        .firstOrNull;
+    final routerName = router?.name ?? 'Wi-Fi';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        ),
+        contentPadding: const EdgeInsets.all(AppSpacing.xl),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.check_circle, size: 40, color: AppColors.success),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              count == 1
+                  ? 'Voucher Created!'
+                  : '$count Vouchers Created!',
+              style: AppTypography.title2,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              count == 1
+                  ? 'Your voucher is ready to use.'
+                  : 'Your vouchers are ready to use.',
+              style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  this.context.pop();
+                  this.context.push('/vouchers/print', extra: {
+                    'vouchers': vouchers,
+                    'routerName': routerName,
+                  });
+                },
+                icon: const Icon(Icons.print, size: 20),
+                label: const Text('Print Vouchers'),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  this.context.pop();
+                },
+                child: const Text('Go to Vouchers'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
