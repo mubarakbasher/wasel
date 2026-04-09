@@ -123,10 +123,33 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
   const activeCount = sessionResult.rows[0].active_count;
   const totalCount = sessionResult.rows[0].total_count;
 
+  // Check if cumulative usage has exceeded the voucher's limit
+  let usageExceeded = false;
+  if (row.limit_type && row.limit_value) {
+    const limitVal = BigInt(row.limit_value);
+    if (row.limit_type === 'time') {
+      const usageResult = await pool.query(
+        `SELECT COALESCE(SUM(acctsessiontime), 0)::bigint AS total_used
+         FROM radacct WHERE username = $1`,
+        [row.radius_username],
+      );
+      usageExceeded = BigInt(usageResult.rows[0].total_used) >= limitVal;
+    } else if (row.limit_type === 'data') {
+      const usageResult = await pool.query(
+        `SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0)::bigint AS total_used
+         FROM radacct WHERE username = $1`,
+        [row.radius_username],
+      );
+      usageExceeded = BigInt(usageResult.rows[0].total_used) >= limitVal;
+    }
+  }
+
   // Compute effective status from RADIUS data
   let computedStatus = row.status;
   if (row.status !== 'disabled') {
-    if (expiration && new Date(expiration) < new Date()) {
+    if (usageExceeded) {
+      computedStatus = 'expired';
+    } else if (expiration && new Date(expiration) < new Date()) {
       computedStatus = 'expired';
     } else if (activeCount > 0) {
       computedStatus = 'active';
