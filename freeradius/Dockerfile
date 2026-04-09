@@ -8,6 +8,9 @@ RUN apt-get update && \
 # Enable SQL module (symlink from mods-available to mods-enabled)
 RUN ln -sf /etc/freeradius/mods-available/sql /etc/freeradius/mods-enabled/sql
 
+# Enable expiration module so FreeRADIUS enforces the Expiration attribute
+RUN ln -sf /etc/freeradius/mods-available/expiration /etc/freeradius/mods-enabled/expiration
+
 # Copy SQL config as a template (env vars substituted at runtime by entrypoint)
 COPY raddb/mods-enabled/sql /etc/freeradius/sql.template
 

@@ -13,6 +13,7 @@ class Voucher {
   final String? limitType; // 'time' or 'data'
   final int? limitValue; // normalized: seconds or bytes
   final String? limitUnit; // display unit: minutes, hours, days, MB, GB
+  final int? usedValue; // how much time (seconds) or data (bytes) has been used
   final int? validitySeconds;
   final double? price;
   final DateTime createdAt;
@@ -33,6 +34,7 @@ class Voucher {
     this.limitType,
     this.limitValue,
     this.limitUnit,
+    this.usedValue,
     this.validitySeconds,
     this.price,
     required this.createdAt,
@@ -73,6 +75,50 @@ class Voucher {
     return '$displayValue $limitUnit';
   }
 
+  /// Usage percentage (0.0 to 1.0), null if no limit/usage data
+  double? get usagePercent {
+    if (limitValue == null || limitValue == 0 || usedValue == null) return null;
+    return (usedValue! / limitValue!).clamp(0.0, 1.0);
+  }
+
+  /// Human-readable usage text like "1.5 of 2 hours used"
+  String? get usageDisplayText {
+    if (limitType == null || limitValue == null || usedValue == null) return null;
+    final usedDisplay = _formatValue(usedValue!, limitType!, limitUnit);
+    final limitDisplay = _formatValue(limitValue!, limitType!, limitUnit);
+    return '$usedDisplay of $limitDisplay used';
+  }
+
+  static String _formatValue(int value, String type, String? unit) {
+    if (type == 'time') {
+      switch (unit) {
+        case 'minutes':
+          return '${(value / 60).toStringAsFixed(1)} min';
+        case 'hours':
+          return '${(value / 3600).toStringAsFixed(1)} hrs';
+        case 'days':
+          return '${(value / 86400).toStringAsFixed(1)} days';
+        default:
+          // Fallback: auto-format seconds
+          if (value < 3600) return '${(value / 60).toStringAsFixed(0)} min';
+          if (value < 86400) return '${(value / 3600).toStringAsFixed(1)} hrs';
+          return '${(value / 86400).toStringAsFixed(1)} days';
+      }
+    } else {
+      // data
+      switch (unit) {
+        case 'MB':
+          return '${(value / (1024 * 1024)).toStringAsFixed(1)} MB';
+        case 'GB':
+          return '${(value / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+        default:
+          if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(0)} KB';
+          if (value < 1024 * 1024 * 1024) return '${(value / (1024 * 1024)).toStringAsFixed(1)} MB';
+          return '${(value / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+      }
+    }
+  }
+
   factory Voucher.fromJson(Map<String, dynamic> json) {
     return Voucher(
       id: json['id'] as String,
@@ -93,6 +139,9 @@ class Voucher {
           ? int.parse(json['limitValue'].toString())
           : null,
       limitUnit: json['limitUnit'] as String?,
+      usedValue: json['usedValue'] != null
+          ? int.parse(json['usedValue'].toString())
+          : null,
       validitySeconds: json['validitySeconds'] != null
           ? int.parse(json['validitySeconds'].toString())
           : null,
@@ -120,6 +169,7 @@ class Voucher {
       'limitType': limitType,
       'limitValue': limitValue,
       'limitUnit': limitUnit,
+      'usedValue': usedValue,
       'validitySeconds': validitySeconds,
       'price': price,
       'createdAt': createdAt.toIso8601String(),

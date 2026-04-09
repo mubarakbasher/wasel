@@ -556,6 +556,35 @@ class _VoucherCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (voucher.usagePercent != null) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: voucher.usagePercent!,
+                        minHeight: 4,
+                        backgroundColor: AppColors.border,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          voucher.usagePercent! >= 1.0
+                              ? AppColors.error
+                              : voucher.usagePercent! > 0.8
+                                  ? AppColors.warning
+                                  : AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    '${(voucher.usagePercent! * 100).toStringAsFixed(0)}%',
+                    style: AppTypography.caption2,
+                  ),
+                ],
+              ),
+            ],
             if (voucher.comment != null && voucher.comment!.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.xs),
               Text(

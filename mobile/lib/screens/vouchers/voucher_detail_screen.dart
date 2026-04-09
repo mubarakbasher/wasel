@@ -207,6 +207,11 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
                     children: [
                       _buildCredentialsCard(voucher),
                       const SizedBox(height: AppSpacing.lg),
+                      if (voucher.usagePercent != null)
+                        ...[
+                          _buildUsageCard(voucher),
+                          const SizedBox(height: AppSpacing.lg),
+                        ],
                       _buildInfoCard(voucher),
                       const SizedBox(height: AppSpacing.lg),
                       _buildActionsCard(voucher),
@@ -272,6 +277,65 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
               icon: const Icon(Icons.copy_all, size: 18),
               label: const Text('Copy All'),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsageCard(dynamic voucher) {
+    final percent = voucher.usagePercent as double;
+    final usageText = voucher.usageDisplayText as String? ?? '';
+    final isExceeded = percent >= 1.0;
+    final progressColor = isExceeded
+        ? AppColors.error
+        : percent > 0.8
+            ? AppColors.warning
+            : AppColors.primary;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                voucher.limitType == 'time' ? Icons.access_time : Icons.data_usage,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text('Usage', style: AppTypography.title3),
+              const Spacer(),
+              Text(
+                '${(percent * 100).toStringAsFixed(0)}%',
+                style: AppTypography.subhead.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: progressColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            child: LinearProgressIndicator(
+              value: percent,
+              minHeight: 8,
+              backgroundColor: AppColors.border,
+              valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            usageText,
+            style: AppTypography.caption1.copyWith(color: AppColors.textSecondary),
           ),
         ],
       ),

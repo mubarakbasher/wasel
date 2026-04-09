@@ -37,6 +37,7 @@ export interface VoucherInfo {
   limitType: string | null;
   limitValue: number | null;
   limitUnit: string | null;
+  usedValue: number | null;
   validitySeconds: number | null;
   price: number | null;
   createdAt: string;
@@ -125,6 +126,7 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
 
   // Check if cumulative usage has exceeded the voucher's limit
   let usageExceeded = false;
+  let usedValue: number | null = null;
   if (row.limit_type && row.limit_value) {
     const limitVal = BigInt(row.limit_value);
     if (row.limit_type === 'time') {
@@ -133,14 +135,18 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
          FROM radacct WHERE username = $1`,
         [row.radius_username],
       );
-      usageExceeded = BigInt(usageResult.rows[0].total_used) >= limitVal;
+      const totalUsed = BigInt(usageResult.rows[0].total_used);
+      usedValue = Number(totalUsed);
+      usageExceeded = totalUsed >= limitVal;
     } else if (row.limit_type === 'data') {
       const usageResult = await pool.query(
         `SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0)::bigint AS total_used
          FROM radacct WHERE username = $1`,
         [row.radius_username],
       );
-      usageExceeded = BigInt(usageResult.rows[0].total_used) >= limitVal;
+      const totalUsed = BigInt(usageResult.rows[0].total_used);
+      usedValue = Number(totalUsed);
+      usageExceeded = totalUsed >= limitVal;
     }
   }
 
@@ -187,6 +193,7 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
     limitType: row.limit_type,
     limitValue: row.limit_value ? Number(row.limit_value) : null,
     limitUnit: row.limit_unit,
+    usedValue,
     validitySeconds: row.validity_seconds,
     price: row.price ? parseFloat(row.price) : null,
     createdAt: new Date(row.created_at).toISOString(),

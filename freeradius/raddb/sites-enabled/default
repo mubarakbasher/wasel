@@ -56,6 +56,12 @@ server default {
         sql
 
         #
+        #  Check the Expiration attribute loaded from radcheck.
+        #  Rejects the request if the current time is past the expiration date.
+        #
+        expiration
+
+        #
         #  Enforce cumulative time and data limits via sqlcounter.
         #  These compare radacct totals against Max-All-Session and
         #  Max-Total-Octets check attributes.
