@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/voucher.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/vouchers_provider.dart';
+import '../../services/voucher_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
@@ -209,35 +210,58 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
         .where((r) => r.id == _selectedRouterId)
         .firstOrNull;
     final routerName = router?.name ?? 'Wi-Fi';
+    final routerId = _selectedRouterId!;
+
+    // Read filter state once before async gap
+    final vState = ref.read(vouchersProvider);
+    final status = vState.filterStatus;
+    final limitType = vState.filterLimitType;
+    final search = vState.searchQuery;
 
     setState(() => _isPrintLoading = true);
 
-    final vouchers = await ref.read(vouchersProvider.notifier)
-        .fetchAllForPrint(_selectedRouterId!, maxCount: maxCount);
+    try {
+      // Call service directly — avoids any provider state changes
+      final service = VoucherService();
+      final vouchers = await service.getAllVouchers(
+        routerId,
+        status: status,
+        limitType: limitType,
+        search: search,
+        maxCount: maxCount,
+      );
 
-    if (!mounted) return;
-    setState(() => _isPrintLoading = false);
+      if (!mounted) return;
+      setState(() => _isPrintLoading = false);
 
-    if (vouchers != null && vouchers.isNotEmpty) {
-      context.push('/vouchers/print', extra: {
-        'vouchers': vouchers,
-        'routerName': routerName,
-      });
-    } else {
+      if (vouchers.isNotEmpty) {
+        context.push('/vouchers/print', extra: {
+          'vouchers': vouchers,
+          'routerName': routerName,
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No vouchers to print')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isPrintLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No vouchers to print')),
+        SnackBar(content: Text('Failed to load vouchers')),
       );
     }
   }
 
   Future<void> _showPrintCountDialog(int total) async {
-    final controller = TextEditingController();
+    final textController = TextEditingController();
     final count = await showDialog<int>(
       context: context,
-      builder: (context) => AlertDialog(
+      useRootNavigator: true,
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Print Vouchers'),
         content: TextField(
-          controller: controller,
+          controller: textController,
           keyboardType: TextInputType.number,
           decoration: InputDecoration(
             hintText: 'Number of vouchers (max $total)',
@@ -246,14 +270,14 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(null),
+            onPressed: () => Navigator.of(dialogContext).pop(null),
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
-              final value = int.tryParse(controller.text);
+              final value = int.tryParse(textController.text);
               if (value != null && value > 0) {
-                Navigator.of(context).pop(value.clamp(1, total));
+                Navigator.of(dialogContext).pop(value.clamp(1, total));
               }
             },
             child: const Text('Print'),
@@ -261,8 +285,8 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
         ],
       ),
     );
-    controller.dispose();
-    if (count != null) {
+    textController.dispose();
+    if (count != null && mounted) {
       await _onPrintAll(maxCount: count);
     }
   }
