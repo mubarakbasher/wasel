@@ -81,3 +81,15 @@ export async function deleteVoucher(req: AuthenticatedRequest, res: Response, ne
     next(error);
   }
 }
+
+export async function bulkDeleteVouchers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await voucherService.bulkDeleteVouchers(req.user!.id, req.params.id as string, req.body);
+    res.status(200).json({
+      success: true,
+      data: { deletedCount: result.deletedCount },
+    });
+  } catch (error) {
+    next(error);
+  }
+}

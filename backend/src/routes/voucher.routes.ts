@@ -9,6 +9,7 @@ import {
   createVouchersSchema,
   updateVoucherSchema,
   listVouchersQuerySchema,
+  bulkDeleteVouchersSchema,
 } from '../validators/voucher.validators';
 import * as voucherController from '../controllers/voucher.controller';
 import { AuthenticatedRequest } from '../types';
@@ -35,6 +36,15 @@ router.get(
   requireSubscription,
   validate({ params: routerIdParamSchema, query: listVouchersQuerySchema }),
   voucherController.getVouchers,
+);
+
+// Bulk delete vouchers (must be before /:vid routes)
+router.post(
+  '/bulk-delete',
+  authenticate,
+  requireSubscription,
+  validate({ params: routerIdParamSchema, body: bulkDeleteVouchersSchema }),
+  voucherController.bulkDeleteVouchers,
 );
 
 // Get single voucher

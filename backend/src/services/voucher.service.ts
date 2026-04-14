@@ -401,25 +401,14 @@ export async function createVouchers(
 }
 
 /**
- * List vouchers for a router with pagination and filtering.
+ * Build WHERE-clause conditions for voucher queries.
+ * Shared between getVouchersByRouter and bulkDeleteVouchers.
  */
-export async function getVouchersByRouter(
+function buildFilterConditions(
   userId: string,
   routerId: string,
-  options: {
-    status?: string;
-    limitType?: string;
-    page?: number;
-    limit?: number;
-    search?: string;
-  } = {},
-): Promise<VoucherListResult> {
-  await verifyRouterOwnership(userId, routerId);
-
-  const page = Number(options.page) || 1;
-  const limit = Number(options.limit) || 20;
-  const offset = (page - 1) * limit;
-
+  options: { status?: string; limitType?: string; search?: string },
+): { conditions: string[]; values: unknown[]; paramIndex: number } {
   const conditions: string[] = ['vm.user_id = $1', 'vm.router_id = $2'];
   const values: unknown[] = [userId, routerId];
   let paramIndex = 3;
@@ -455,6 +444,30 @@ export async function getVouchersByRouter(
     values.push(`%${options.search}%`);
   }
 
+  return { conditions, values, paramIndex };
+}
+
+/**
+ * List vouchers for a router with pagination and filtering.
+ */
+export async function getVouchersByRouter(
+  userId: string,
+  routerId: string,
+  options: {
+    status?: string;
+    limitType?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+  } = {},
+): Promise<VoucherListResult> {
+  await verifyRouterOwnership(userId, routerId);
+
+  const page = Number(options.page) || 1;
+  const limit = Number(options.limit) || 20;
+  const offset = (page - 1) * limit;
+
+  const { conditions, values, paramIndex } = buildFilterConditions(userId, routerId, options);
   const whereClause = conditions.join(' AND ');
 
   // Count total
@@ -666,6 +679,109 @@ export async function deleteVoucher(
       routerId,
       username,
     });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Bulk delete vouchers by IDs or by filter criteria.
+ * Removes from voucher_meta, radcheck, radreply, radusergroup.
+ * Sends CoA Disconnect-Requests for active sessions (fire-and-forget).
+ */
+export async function bulkDeleteVouchers(
+  userId: string,
+  routerId: string,
+  body: {
+    ids?: string[];
+    filter?: {
+      status?: string;
+      limitType?: string;
+      search?: string;
+      all?: boolean;
+    };
+  },
+): Promise<{ deletedCount: number }> {
+  await verifyRouterOwnership(userId, routerId);
+
+  let voucherRows: Array<{ id: string; radius_username: string }>;
+
+  if (body.ids) {
+    // Mode 1: Delete by explicit IDs
+    const result = await pool.query<{ id: string; radius_username: string }>(
+      `SELECT id, radius_username FROM voucher_meta
+       WHERE id = ANY($1) AND user_id = $2 AND router_id = $3`,
+      [body.ids, userId, routerId],
+    );
+    voucherRows = result.rows;
+  } else if (body.filter) {
+    // Mode 2: Delete by filter criteria (same filters as list endpoint)
+    const { conditions, values } = buildFilterConditions(userId, routerId, {
+      status: body.filter.status,
+      limitType: body.filter.limitType,
+      search: body.filter.search,
+    });
+    const whereClause = conditions.join(' AND ');
+    const result = await pool.query<{ id: string; radius_username: string }>(
+      `SELECT vm.id, vm.radius_username FROM voucher_meta vm WHERE ${whereClause}`,
+      values,
+    );
+    voucherRows = result.rows;
+  } else {
+    throw new AppError(400, 'Either ids or filter must be provided', 'INVALID_REQUEST');
+  }
+
+  if (voucherRows.length === 0) {
+    return { deletedCount: 0 };
+  }
+
+  const ids = voucherRows.map((r) => r.id);
+  const usernames = voucherRows.map((r) => r.radius_username);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Remove RADIUS entries in bulk
+    await client.query('DELETE FROM radcheck WHERE username = ANY($1)', [usernames]);
+    await client.query('DELETE FROM radreply WHERE username = ANY($1)', [usernames]);
+    await client.query('DELETE FROM radusergroup WHERE username = ANY($1)', [usernames]);
+
+    // Remove voucher_meta entries
+    await client.query(
+      'DELETE FROM voucher_meta WHERE id = ANY($1) AND user_id = $2 AND router_id = $3',
+      [ids, userId, routerId],
+    );
+
+    // Decrement vouchers_used in subscription
+    await client.query(
+      `UPDATE subscriptions SET vouchers_used = GREATEST(vouchers_used - $1, 0)
+       WHERE user_id = $2 AND status = 'active'`,
+      [voucherRows.length, userId],
+    );
+
+    await client.query('COMMIT');
+
+    // Fire-and-forget CoA disconnects for active sessions
+    for (const username of usernames) {
+      sendCoaDisconnect(userId, routerId, username).catch((error) => {
+        logger.warn('CoA disconnect failed during bulk delete (non-fatal)', {
+          username,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+
+    logger.info('Vouchers bulk deleted', {
+      userId,
+      routerId,
+      deletedCount: voucherRows.length,
+    });
+
+    return { deletedCount: voucherRows.length };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

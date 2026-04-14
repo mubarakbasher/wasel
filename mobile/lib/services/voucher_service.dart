@@ -89,6 +89,63 @@ class VoucherService {
   Future<void> deleteVoucher(String routerId, String voucherId) async {
     await _api.dio.delete('/routers/$routerId/vouchers/$voucherId');
   }
+
+  Future<int> bulkDeleteVouchers(String routerId, {required List<String> ids}) async {
+    final response = await _api.dio.post(
+      '/routers/$routerId/vouchers/bulk-delete',
+      data: {'ids': ids},
+    );
+    return response.data['data']['deletedCount'] as int;
+  }
+
+  Future<int> deleteAllVouchers(
+    String routerId, {
+    String? status,
+    String? limitType,
+    String? search,
+  }) async {
+    final filter = <String, dynamic>{'all': true};
+    if (status != null) filter['status'] = status;
+    if (limitType != null) filter['limitType'] = limitType;
+    if (search != null && search.isNotEmpty) filter['search'] = search;
+    final response = await _api.dio.post(
+      '/routers/$routerId/vouchers/bulk-delete',
+      data: {'filter': filter},
+    );
+    return response.data['data']['deletedCount'] as int;
+  }
+
+  Future<List<Voucher>> getAllVouchers(
+    String routerId, {
+    String? status,
+    String? limitType,
+    String? search,
+    int? maxCount,
+  }) async {
+    final List<Voucher> allVouchers = [];
+    int page = 1;
+    const limit = 500;
+
+    while (true) {
+      final result = await getVouchers(
+        routerId,
+        status: status,
+        limitType: limitType,
+        search: search,
+        page: page,
+        limit: limit,
+      );
+      allVouchers.addAll(result.vouchers);
+
+      if (maxCount != null && allVouchers.length >= maxCount) {
+        return allVouchers.sublist(0, maxCount);
+      }
+      if (allVouchers.length >= result.total) break;
+      page++;
+    }
+
+    return allVouchers;
+  }
 }
 
 class VoucherListResult {

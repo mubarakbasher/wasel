@@ -119,6 +119,29 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     }
   }
 
+  Future<void> loadMore(String routerId) async {
+    if (!state.hasMore || state.isLoading) return;
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final result = await _service.getVouchers(
+        routerId,
+        status: state.filterStatus,
+        limitType: state.filterLimitType,
+        search: state.searchQuery,
+        page: state.page + 1,
+        limit: state.limit,
+      );
+      state = state.copyWith(
+        vouchers: [...state.vouchers, ...result.vouchers],
+        total: result.total,
+        page: state.page + 1,
+        isLoading: false,
+      );
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: _extractError(e));
+    }
+  }
+
   Future<void> loadVoucher(String routerId, String voucherId) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -201,6 +224,63 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _extractError(e));
       return false;
+    }
+  }
+
+  Future<int?> bulkDeleteVouchers(String routerId, List<String> ids) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final count = await _service.bulkDeleteVouchers(routerId, ids: ids);
+      final updatedList = state.vouchers.where((v) => !ids.contains(v.id)).toList();
+      state = state.copyWith(
+        vouchers: updatedList,
+        total: state.total - count,
+        isLoading: false,
+      );
+      return count;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: _extractError(e));
+      return null;
+    }
+  }
+
+  Future<int?> deleteAllVouchers(String routerId) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final count = await _service.deleteAllVouchers(
+        routerId,
+        status: state.filterStatus,
+        limitType: state.filterLimitType,
+        search: state.searchQuery,
+      );
+      state = state.copyWith(
+        vouchers: [],
+        total: 0,
+        page: 1,
+        isLoading: false,
+      );
+      return count;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: _extractError(e));
+      return null;
+    }
+  }
+
+  Future<List<Voucher>?> fetchAllForPrint(String routerId, {int? maxCount}) async {
+    // Don't set isLoading — the caller shows its own loading dialog.
+    // Modifying state here would trigger a rebuild while the dialog is open,
+    // causing a '_dependents.isEmpty' assertion error.
+    try {
+      return await _service.getAllVouchers(
+        routerId,
+        status: state.filterStatus,
+        limitType: state.filterLimitType,
+        search: state.searchQuery,
+        maxCount: maxCount,
+      );
+    } catch (e) {
+      state = state.copyWith(error: _extractError(e));
+      return null;
     }
   }
 

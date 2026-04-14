@@ -53,6 +53,19 @@ export const listVouchersQuerySchema = z.object({
   status: z.enum(['unused', 'active', 'used', 'expired', 'disabled']).optional(),
   limitType: z.enum(['time', 'data']).optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(500).default(20),
   search: z.string().max(64).optional(),
 });
+
+export const bulkDeleteVouchersSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500).optional(),
+  filter: z.object({
+    status: z.enum(['unused', 'active', 'used', 'expired', 'disabled']).optional(),
+    limitType: z.enum(['time', 'data']).optional(),
+    search: z.string().max(64).optional(),
+    all: z.boolean().optional(),
+  }).optional(),
+}).refine(
+  (data) => data.ids || data.filter,
+  { message: 'Either ids or filter must be provided' },
+);

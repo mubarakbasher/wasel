@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,24 +21,24 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
   String? _selectedRouterId;
   String? _statusFilter;
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
   bool _isSelectMode = false;
   final Set<String> _selectedVoucherIds = {};
-  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _scrollController.addListener(_onScroll);
     Future.microtask(() {
       ref.read(routersProvider.notifier).loadRouters();
     });
-    _startAutoRefresh();
   }
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -51,19 +49,16 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
       if (_selectedRouterId != null) {
         ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
       }
-      _startAutoRefresh();
-    } else if (state == AppLifecycleState.paused) {
-      _refreshTimer?.cancel();
     }
   }
 
-  void _startAutoRefresh() {
-    _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       if (_selectedRouterId != null) {
-        ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+        ref.read(vouchersProvider.notifier).loadMore(_selectedRouterId!);
       }
-    });
+    }
   }
 
   void _onRouterSelected(String? routerId) {
@@ -140,6 +135,140 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     });
   }
 
+  Future<void> _onDeleteSelected() async {
+    final count = _selectedVoucherIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Vouchers?'),
+        content: Text(
+          'Delete $count voucher${count > 1 ? 's' : ''}? Active sessions will be disconnected. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final ids = _selectedVoucherIds.toList();
+    _exitSelectMode();
+    final deleted = await ref.read(vouchersProvider.notifier)
+        .bulkDeleteVouchers(_selectedRouterId!, ids);
+    if (mounted && deleted != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$deleted voucher${deleted > 1 ? 's' : ''} deleted')),
+      );
+    }
+  }
+
+  Future<void> _onDeleteAll(int total) async {
+    final filterLabel = _statusFilter != null ? ' ${_capitalizeStatus(_statusFilter!)}' : '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete All Vouchers?'),
+        content: Text(
+          'Delete all $total$filterLabel voucher${total > 1 ? 's' : ''}? Active sessions will be disconnected. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete All', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    _exitSelectMode();
+    final deleted = await ref.read(vouchersProvider.notifier)
+        .deleteAllVouchers(_selectedRouterId!);
+    if (mounted && deleted != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$deleted voucher${deleted > 1 ? 's' : ''} deleted')),
+      );
+    }
+  }
+
+  Future<void> _onPrintAll({int? maxCount}) async {
+    final routersState = ref.read(routersProvider);
+    final router = routersState.routers
+        .where((r) => r.id == _selectedRouterId)
+        .firstOrNull;
+    final routerName = router?.name ?? 'Wi-Fi';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final vouchers = await ref.read(vouchersProvider.notifier)
+        .fetchAllForPrint(_selectedRouterId!, maxCount: maxCount);
+
+    if (mounted) Navigator.of(context).pop();
+
+    if (vouchers != null && vouchers.isNotEmpty && mounted) {
+      context.push('/vouchers/print', extra: {
+        'vouchers': vouchers,
+        'routerName': routerName,
+      });
+    } else if (mounted && (vouchers == null || vouchers.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No vouchers to print')),
+      );
+    }
+  }
+
+  Future<void> _showPrintCountDialog(int total) async {
+    final controller = TextEditingController();
+    final count = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Print Vouchers'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: 'Number of vouchers (max $total)',
+            labelText: 'Count',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = int.tryParse(controller.text);
+              if (value != null && value > 0) {
+                Navigator.of(context).pop(value.clamp(1, total));
+              }
+            },
+            child: const Text('Print'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (count != null) {
+      await _onPrintAll(maxCount: count);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final routersState = ref.watch(routersProvider);
@@ -158,11 +287,48 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                   onPressed: () => _selectAll(vouchersState.vouchers),
                   child: const Text('Select All'),
                 ),
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'delete_all') {
+                      _onDeleteAll(vouchersState.total);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'delete_all',
+                      child: Text(
+                        'Delete All (${vouchersState.total})',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             )
           : AppBar(
               title: const Text('Vouchers'),
               actions: [
+                if (_selectedRouterId != null && vouchersState.total > 0)
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'print_all') {
+                        _onPrintAll();
+                      } else if (value == 'print_n') {
+                        _showPrintCountDialog(vouchersState.total);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'print_all',
+                        child: Text('Print All (${vouchersState.total})'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'print_n',
+                        child: Text('Print N...'),
+                      ),
+                    ],
+                    icon: const Icon(Icons.print),
+                  ),
                 if (_selectedRouterId != null)
                   IconButton(
                     icon: const Icon(Icons.add),
@@ -191,14 +357,36 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                     top: BorderSide(color: AppColors.border),
                   ),
                 ),
-                child: SizedBox(
-                  height: 48,
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _onPrintSelected(vouchersState.vouchers),
-                    icon: const Icon(Icons.print),
-                    label: Text('Print (${_selectedVoucherIds.length})'),
-                  ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _onDeleteSelected(),
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          label: Text(
+                            'Delete (${_selectedVoucherIds.length})',
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _onPrintSelected(vouchersState.vouchers),
+                          icon: const Icon(Icons.print),
+                          label: Text('Print (${_selectedVoucherIds.length})'),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )
@@ -448,9 +636,16 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
           .read(vouchersProvider.notifier)
           .loadVouchers(_selectedRouterId!, refresh: true),
       child: ListView.builder(
+        controller: _scrollController,
         padding: const EdgeInsets.all(AppSpacing.lg),
-        itemCount: state.vouchers.length,
+        itemCount: state.vouchers.length + (state.hasMore ? 1 : 0),
         itemBuilder: (context, index) {
+          if (index == state.vouchers.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
           final voucher = state.vouchers[index];
           return _VoucherCard(
             voucher: voucher,
