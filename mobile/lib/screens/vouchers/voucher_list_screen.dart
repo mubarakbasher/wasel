@@ -221,7 +221,6 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     setState(() => _isPrintLoading = true);
 
     try {
-      // Call service directly — avoids any provider state changes
       final service = VoucherService();
       final vouchers = await service.getAllVouchers(
         routerId,
@@ -235,6 +234,9 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
       setState(() => _isPrintLoading = false);
 
       if (vouchers.isNotEmpty) {
+        // Defer navigation to next frame so setState rebuild finishes first
+        await Future.delayed(Duration.zero);
+        if (!mounted) return;
         context.push('/vouchers/print', extra: {
           'vouchers': vouchers,
           'routerName': routerName,
@@ -253,9 +255,9 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     }
   }
 
-  Future<void> _showPrintCountDialog(int total) async {
+  void _showPrintCountDialog(int total) {
     final textController = TextEditingController();
-    final count = await showDialog<int>(
+    showDialog<int>(
       context: context,
       useRootNavigator: true,
       builder: (dialogContext) => AlertDialog(
@@ -284,11 +286,15 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
           ),
         ],
       ),
-    );
-    textController.dispose();
-    if (count != null && mounted) {
-      await _onPrintAll(maxCount: count);
-    }
+    ).then((count) {
+      textController.dispose();
+      if (count != null && mounted) {
+        // Defer to next frame so the dialog route is fully removed
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _onPrintAll(maxCount: count);
+        });
+      }
+    });
   }
 
   @override
