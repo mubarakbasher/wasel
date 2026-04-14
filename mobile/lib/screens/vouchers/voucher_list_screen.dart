@@ -23,6 +23,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   bool _isSelectMode = false;
+  bool _isPrintLoading = false;
   final Set<String> _selectedVoucherIds = {};
 
   @override
@@ -209,23 +210,20 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
         .firstOrNull;
     final routerName = router?.name ?? 'Wi-Fi';
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
+    setState(() => _isPrintLoading = true);
 
     final vouchers = await ref.read(vouchersProvider.notifier)
         .fetchAllForPrint(_selectedRouterId!, maxCount: maxCount);
 
-    if (mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    setState(() => _isPrintLoading = false);
 
-    if (vouchers != null && vouchers.isNotEmpty && mounted) {
+    if (vouchers != null && vouchers.isNotEmpty) {
       context.push('/vouchers/print', extra: {
         'vouchers': vouchers,
         'routerName': routerName,
       });
-    } else if (mounted && (vouchers == null || vouchers.isEmpty)) {
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No vouchers to print')),
       );
@@ -391,7 +389,9 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
               ),
             )
           : null,
-      body: Column(
+      body: Stack(
+        children: [
+          Column(
         children: [
           // Router selector
           Padding(
@@ -447,6 +447,13 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                             ? _buildEmpty()
                             : _buildList(vouchersState),
           ),
+        ],
+          ),
+          if (_isPrintLoading)
+            Container(
+              color: Colors.black54,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
         ],
       ),
     );
