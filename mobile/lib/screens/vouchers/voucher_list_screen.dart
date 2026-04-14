@@ -287,9 +287,12 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                 ),
                 PopupMenuButton<String>(
                   onSelected: (value) {
-                    if (value == 'delete_all') {
-                      _onDeleteAll(vouchersState.total);
-                    }
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      if (value == 'delete_all') {
+                        _onDeleteAll(vouchersState.total);
+                      }
+                    });
                   },
                   itemBuilder: (context) => [
                     PopupMenuItem(
@@ -309,11 +312,15 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                 if (_selectedRouterId != null && vouchersState.total > 0)
                   PopupMenuButton<String>(
                     onSelected: (value) {
-                      if (value == 'print_all') {
-                        _onPrintAll();
-                      } else if (value == 'print_n') {
-                        _showPrintCountDialog(vouchersState.total);
-                      }
+                      // Defer to next frame so popup menu fully closes first
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        if (value == 'print_all') {
+                          _onPrintAll();
+                        } else if (value == 'print_n') {
+                          _showPrintCountDialog(vouchersState.total);
+                        }
+                      });
                     },
                     itemBuilder: (context) => [
                       PopupMenuItem(
