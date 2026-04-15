@@ -25,7 +25,7 @@ void main() {
       final mockData = {
         'routers': [{'id': 'r1', 'name': 'Router 1', 'status': 'online'}],
         'subscription': {'planTier': 'starter', 'status': 'active'},
-        'vouchersCreatedToday': 5,
+        'vouchersUsedToday': 5,
         'totalVouchers': 42,
         'dataUsage24h': {'totalInput': 1000, 'totalOutput': 2000},
         'activeSessionsByRouter': [{'routerId': 'r1', 'routerName': 'Router 1', 'activeSessions': 3}],
@@ -37,7 +37,7 @@ void main() {
       expect(notifier.state.data, isNotNull);
       expect(notifier.state.isLoading, false);
       expect(notifier.state.error, isNull);
-      expect(notifier.state.vouchersCreatedToday, 5);
+      expect(notifier.state.vouchersUsedToday, 5);
       expect(notifier.state.totalVouchers, 42);
       expect(notifier.state.totalActiveSessions, 3);
     });
@@ -54,7 +54,7 @@ void main() {
     test('convenience getters work on empty state', () {
       expect(notifier.state.routers, isEmpty);
       expect(notifier.state.subscription, isNull);
-      expect(notifier.state.vouchersCreatedToday, 0);
+      expect(notifier.state.vouchersUsedToday, 0);
       expect(notifier.state.totalVouchers, 0);
       expect(notifier.state.totalActiveSessions, 0);
     });

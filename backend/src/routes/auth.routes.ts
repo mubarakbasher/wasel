@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authLimiter } from '../middleware/rateLimiter';
+import { authenticate } from '../middleware/authenticate';
 import { validate } from '../middleware/validate';
 import {
   registerSchema,
@@ -10,6 +11,8 @@ import {
   resetPasswordSchema,
   resendVerificationSchema,
   logoutSchema,
+  updateProfileSchema,
+  changePasswordSchema,
 } from '../validators/auth.validators';
 import * as authController from '../controllers/auth.controller';
 
@@ -68,6 +71,22 @@ router.post(
   '/logout',
   validate({ body: logoutSchema }),
   authController.logout,
+);
+
+router.get('/me', authenticate, authController.getProfile);
+
+router.put(
+  '/profile',
+  authenticate,
+  validate({ body: updateProfileSchema }),
+  authController.updateProfile,
+);
+
+router.post(
+  '/change-password',
+  authenticate,
+  validate({ body: changePasswordSchema }),
+  authController.changePassword,
 );
 
 export default router;

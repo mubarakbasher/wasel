@@ -366,7 +366,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<String>(
-                  value: _limitUnit,
+                  initialValue: _limitUnit,
                   decoration: const InputDecoration(labelText: 'Unit'),
                   items: _limitType == 'time'
                       ? const [
@@ -566,7 +566,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<String>(
-                  value: _customValidityUnit,
+                  initialValue: _customValidityUnit,
                   decoration: const InputDecoration(labelText: 'Unit'),
                   items: const [
                     DropdownMenuItem(value: 'hours', child: Text('Hours')),

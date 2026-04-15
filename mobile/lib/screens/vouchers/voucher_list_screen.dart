@@ -35,6 +35,14 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     Future.microtask(() {
       ref.read(routersProvider.notifier).loadRouters();
     });
+    // Auto-select first router when routers load
+    Future.microtask(() {
+      ref.listenManual(routersProvider, (previous, next) {
+        if (_selectedRouterId == null && next.routers.isNotEmpty) {
+          _onRouterSelected(next.routers.first.id);
+        }
+      });
+    });
   }
 
   @override
@@ -204,7 +212,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     }
   }
 
-  Future<void> _onPrintAll({int? maxCount}) async {
+  Future<void> _onPrintAll() async {
     final routersState = ref.read(routersProvider);
     final router = routersState.routers
         .where((r) => r.id == _selectedRouterId)
@@ -227,16 +235,12 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
         status: status,
         limitType: limitType,
         search: search,
-        maxCount: maxCount,
       );
 
       if (!mounted) return;
       setState(() => _isPrintLoading = false);
 
       if (vouchers.isNotEmpty) {
-        // Defer navigation to next frame so setState rebuild finishes first
-        await Future.delayed(Duration.zero);
-        if (!mounted) return;
         context.push('/vouchers/print', extra: {
           'vouchers': vouchers,
           'routerName': routerName,
@@ -253,48 +257,6 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
         SnackBar(content: Text('Failed to load vouchers')),
       );
     }
-  }
-
-  void _showPrintCountDialog(int total) {
-    final textController = TextEditingController();
-    showDialog<int>(
-      context: context,
-      useRootNavigator: true,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Print Vouchers'),
-        content: TextField(
-          controller: textController,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            hintText: 'Number of vouchers (max $total)',
-            labelText: 'Count',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(null),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final value = int.tryParse(textController.text);
-              if (value != null && value > 0) {
-                Navigator.of(dialogContext).pop(value.clamp(1, total));
-              }
-            },
-            child: const Text('Print'),
-          ),
-        ],
-      ),
-    ).then((count) {
-      textController.dispose();
-      if (count != null && mounted) {
-        // Defer to next frame so the dialog route is fully removed
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _onPrintAll(maxCount: count);
-        });
-      }
-    });
   }
 
   @override
@@ -317,12 +279,9 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                 ),
                 PopupMenuButton<String>(
                   onSelected: (value) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) return;
-                      if (value == 'delete_all') {
-                        _onDeleteAll(vouchersState.total);
-                      }
-                    });
+                    if (value == 'delete_all') {
+                      _onDeleteAll(vouchersState.total);
+                    }
                   },
                   itemBuilder: (context) => [
                     PopupMenuItem(
@@ -340,29 +299,10 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
               title: const Text('Vouchers'),
               actions: [
                 if (_selectedRouterId != null && vouchersState.total > 0)
-                  PopupMenuButton<String>(
-                    onSelected: (value) {
-                      // Defer to next frame so popup menu fully closes first
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!mounted) return;
-                        if (value == 'print_all') {
-                          _onPrintAll();
-                        } else if (value == 'print_n') {
-                          _showPrintCountDialog(vouchersState.total);
-                        }
-                      });
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: 'print_all',
-                        child: Text('Print All (${vouchersState.total})'),
-                      ),
-                      const PopupMenuItem(
-                        value: 'print_n',
-                        child: Text('Print N...'),
-                      ),
-                    ],
+                  IconButton(
                     icon: const Icon(Icons.print),
+                    tooltip: 'Print All (${vouchersState.total})',
+                    onPressed: () => _onPrintAll(),
                   ),
                 if (_selectedRouterId != null)
                   IconButton(
@@ -487,9 +427,11 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
         ],
           ),
           if (_isPrintLoading)
-            Container(
-              color: Colors.black54,
-              child: const Center(child: CircularProgressIndicator()),
+            Positioned.fill(
+              child: Container(
+                color: Colors.black54,
+                child: const Center(child: CircularProgressIndicator()),
+              ),
             ),
         ],
       ),

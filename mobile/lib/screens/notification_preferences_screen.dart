@@ -121,7 +121,7 @@ class _NotificationPreferencesScreenState
                   ),
                   title: Text(pref.displayName, style: AppTypography.body),
                   value: pref.enabled,
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                   onChanged: (value) =>

@@ -270,3 +270,65 @@ export async function logout(refreshTokenStr: string): Promise<void> {
   await tokenService.revokeRefreshToken(payload.userId, payload.jti);
   logger.info('User logged out', { userId: payload.userId });
 }
+
+export async function getProfile(userId: string) {
+  const result = await pool.query(
+    'SELECT id, name, email, phone, business_name, is_verified FROM users WHERE id = $1 AND is_active = TRUE',
+    [userId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+
+  return result.rows[0];
+}
+
+interface UpdateProfileInput {
+  name: string;
+  phone?: string;
+  business_name?: string;
+}
+
+export async function updateProfile(userId: string, input: UpdateProfileInput) {
+  const result = await pool.query(
+    `UPDATE users SET name = $1, phone = $2, business_name = $3
+     WHERE id = $4 AND is_active = TRUE
+     RETURNING id, name, email, phone, business_name, is_verified`,
+    [input.name, input.phone || null, input.business_name || null, userId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+
+  logger.info('Profile updated', { userId });
+  return result.rows[0];
+}
+
+export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  const result = await pool.query(
+    'SELECT password_hash FROM users WHERE id = $1 AND is_active = TRUE',
+    [userId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+
+  const passwordValid = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
+  if (!passwordValid) {
+    throw new AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD');
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+  await pool.query(
+    'UPDATE users SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL WHERE id = $2',
+    [passwordHash, userId],
+  );
+
+  await tokenService.revokeAllRefreshTokens(userId);
+
+  logger.info('Password changed', { userId });
+}

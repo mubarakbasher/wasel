@@ -51,3 +51,20 @@ export const resendVerificationSchema = z.object({
 export const logoutSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
+
+export const updateProfileSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be at most 100 characters'),
+  phone: z
+    .string()
+    .regex(/^\+[1-9]\d{1,14}$/, 'Phone must be in E.164 format (e.g. +1234567890)')
+    .optional(),
+  business_name: z.string().max(200).optional(),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: passwordSchema,
+});

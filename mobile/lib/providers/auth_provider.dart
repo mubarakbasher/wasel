@@ -292,6 +292,57 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   // -------------------------------------------------------------------------
+  // Update profile
+  // -------------------------------------------------------------------------
+
+  Future<void> updateProfile({
+    required String name,
+    String? phone,
+    String? businessName,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final user = await _authService.updateProfile(
+        name: name,
+        phone: phone,
+        businessName: businessName,
+      );
+      await _storage.setUserData(json.encode(user.toJson()));
+      state = state.copyWith(user: user, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _extractErrorMessage(e),
+      );
+      rethrow;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Change password
+  // -------------------------------------------------------------------------
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _authService.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _extractErrorMessage(e),
+      );
+      rethrow;
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 

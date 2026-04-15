@@ -16,6 +16,8 @@ import '../screens/vouchers/voucher_list_screen.dart';
 import '../screens/vouchers/create_voucher_wizard.dart';
 import '../screens/vouchers/voucher_detail_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/settings/edit_profile_screen.dart';
+import '../screens/settings/change_password_screen.dart';
 import '../screens/sessions/active_sessions_screen.dart';
 import '../screens/sessions/session_history_screen.dart';
 import '../screens/subscription/plans_screen.dart';
@@ -169,6 +171,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             routerName: routerName,
           );
         },
+      ),
+      // Settings sub-routes
+      GoRoute(
+        path: '/settings/profile',
+        builder: (context, state) => const EditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/settings/change-password',
+        builder: (context, state) => const ChangePasswordScreen(),
       ),
       // Notification preferences
       GoRoute(

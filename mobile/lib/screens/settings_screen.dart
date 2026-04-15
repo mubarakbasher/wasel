@@ -124,13 +124,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             icon: Icons.person_outline,
             title: 'Profile',
             subtitle: 'Edit your account details',
-            onTap: () {},
+            onTap: () => context.push('/settings/profile'),
           ),
           _SettingsTile(
             icon: Icons.lock_outline,
             title: 'Change Password',
             subtitle: 'Update your password',
-            onTap: () {},
+            onTap: () => context.push('/settings/change-password'),
           ),
 
           const SizedBox(height: AppSpacing.sm),
@@ -148,7 +148,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             icon: Icons.info_outline,
             title: 'About',
             subtitle: 'Version 1.0.0',
-            onTap: () {},
+            onTap: () {
+              showAboutDialog(
+                context: context,
+                applicationName: 'Wasel',
+                applicationVersion: '1.0.0',
+                applicationIcon: const Icon(
+                  Icons.wifi_tethering,
+                  size: 48,
+                  color: AppColors.primary,
+                ),
+                children: const [
+                  Text(
+                    'Wasel is a WiFi hotspot management platform that helps '
+                    'businesses create, manage, and monitor internet access '
+                    'vouchers for their MikroTik routers.',
+                  ),
+                ],
+              );
+            },
           ),
 
           const SizedBox(height: AppSpacing.xxl),
@@ -252,26 +270,33 @@ class _LanguageTile extends ConsumerWidget {
               child: Text('Select Language', style: AppTypography.title3),
             ),
             const Divider(),
-            for (final lang in _languages)
-              RadioListTile<String?>(
-                value: lang.code,
-                groupValue: currentLocale?.languageCode,
-                title: Text(lang.label, style: AppTypography.body),
-                subtitle: lang.code != null && lang.native != lang.label
-                    ? Text(lang.native, style: AppTypography.footnote)
-                    : null,
-                activeColor: AppColors.primary,
-                onChanged: (code) {
-                  if (code == null) {
-                    ref.read(localeProvider.notifier).clearLocale();
-                  } else {
-                    ref
-                        .read(localeProvider.notifier)
-                        .setLocale(Locale(code));
-                  }
-                  Navigator.pop(context);
-                },
+            RadioGroup<String?>(
+              groupValue: currentLocale?.languageCode,
+              onChanged: (code) {
+                if (code == null) {
+                  ref.read(localeProvider.notifier).clearLocale();
+                } else {
+                  ref
+                      .read(localeProvider.notifier)
+                      .setLocale(Locale(code));
+                }
+                Navigator.pop(context);
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final lang in _languages)
+                    RadioListTile<String?>(
+                      value: lang.code,
+                      title: Text(lang.label, style: AppTypography.body),
+                      subtitle: lang.code != null && lang.native != lang.label
+                          ? Text(lang.native, style: AppTypography.footnote)
+                          : null,
+                      activeColor: AppColors.primary,
+                    ),
+                ],
               ),
+            ),
             const SizedBox(height: AppSpacing.md),
           ],
         ),

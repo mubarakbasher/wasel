@@ -96,6 +96,35 @@ class AuthService {
     final response = await _api.get('/auth/me');
     return User.fromJson(response.data['data'] as Map<String, dynamic>);
   }
+
+  /// PUT /auth/profile
+  /// Body: { name, phone?, business_name? }
+  /// Returns updated User
+  Future<User> updateProfile({
+    required String name,
+    String? phone,
+    String? businessName,
+  }) async {
+    final response = await _api.put('/auth/profile', data: {
+      'name': name,
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+      if (businessName != null && businessName.isNotEmpty)
+        'business_name': businessName,
+    });
+    return User.fromJson(response.data['data'] as Map<String, dynamic>);
+  }
+
+  /// POST /auth/change-password
+  /// Body: { currentPassword, newPassword }
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _api.post('/auth/change-password', data: {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
+  }
 }
 
 class LoginResult {
