@@ -52,7 +52,7 @@ services:
       POSTGRES_USER: wasel
       POSTGRES_PASSWORD: 53094ff06b673713c6392c1573f2ef2fc35fcb6563a55dd2d9eca5ee52e3ec8d
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/init-db:/docker-entrypoint-initdb.d
@@ -65,8 +65,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --requirepass fb456714f3a5df62538fbb1ef88381111af9fb3c597e431a1d461899960d4114
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis_data:/data
     healthcheck:
