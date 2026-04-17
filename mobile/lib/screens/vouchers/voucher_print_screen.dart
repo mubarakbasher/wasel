@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../models/voucher.dart';
 import '../../services/print_service.dart';
 import '../../theme/app_colors.dart';
@@ -40,7 +41,7 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Print Vouchers')),
+      appBar: AppBar(title: Text(context.tr('vouchers.printVouchers'))),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -57,7 +58,7 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
                 Row(
                   children: [
                     Text(
-                      'Columns: $_columnCount',
+                      context.tr('vouchers.columns', [_columnCount.toString()]),
                       style: AppTypography.footnote.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -87,7 +88,7 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  '${widget.vouchers.length} voucher${widget.vouchers.length == 1 ? '' : 's'} ready to print',
+                  context.tr('vouchers.readyToPrint', [widget.vouchers.length.toString()]),
                   style: AppTypography.footnote.copyWith(
                     color: AppColors.textSecondary,
                   ),

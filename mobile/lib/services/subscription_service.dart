@@ -1,3 +1,8 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+
+import '../models/payment_record.dart';
 import '../models/plan.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
@@ -6,7 +11,6 @@ class SubscriptionService {
   final ApiClient _api = ApiClient();
 
   /// GET /subscription/plans
-  /// Returns list of available plans.
   Future<List<Plan>> getPlans() async {
     final response = await _api.get('/subscription/plans');
     final data = response.data['data'] as List<dynamic>;
@@ -16,7 +20,6 @@ class SubscriptionService {
   }
 
   /// GET /subscription/
-  /// Returns current subscription and optional pending change.
   Future<SubscriptionResponse> getSubscription() async {
     final response = await _api.get('/subscription');
     final data = response.data['data'];
@@ -33,8 +36,6 @@ class SubscriptionService {
   }
 
   /// POST /subscription/request
-  /// Body: { planTier, durationMonths }
-  /// Returns subscription + payment info.
   Future<SubscriptionRequestResult> requestSubscription({
     required String planTier,
     int durationMonths = 1,
@@ -55,8 +56,6 @@ class SubscriptionService {
   }
 
   /// POST /subscription/change
-  /// Body: { planTier, durationMonths }
-  /// Returns subscription + payment info for plan change.
   Future<SubscriptionRequestResult> changeSubscription({
     required String planTier,
     int durationMonths = 1,
@@ -76,16 +75,29 @@ class SubscriptionService {
     );
   }
 
-  /// POST /subscription/receipt
-  /// Body: { paymentId, receiptUrl }
+  /// POST /subscription/receipt (multipart)
+  /// Uploads a photo of the payment receipt.
   Future<void> uploadReceipt({
     required String paymentId,
-    required String receiptUrl,
+    required File file,
   }) async {
-    await _api.post('/subscription/receipt', data: {
+    final formData = FormData.fromMap({
       'paymentId': paymentId,
-      'receiptUrl': receiptUrl,
+      'receipt': await MultipartFile.fromFile(
+        file.path,
+        filename: file.path.split(Platform.pathSeparator).last,
+      ),
     });
+    await _api.postMultipart('/subscription/receipt', formData);
+  }
+
+  /// GET /subscription/payments
+  Future<List<PaymentRecord>> getUserPayments() async {
+    final response = await _api.get('/subscription/payments');
+    final data = response.data['data'] as List<dynamic>;
+    return data
+        .map((e) => PaymentRecord.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 }
 

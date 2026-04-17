@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../i18n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/locale_provider.dart';
 import '../providers/subscription_provider.dart';
@@ -32,7 +33,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final sub = subState.subscription;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(context.tr('settings.title'))),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         children: [
@@ -80,13 +81,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: AppSpacing.sm),
 
           // Subscription section
-          _SectionHeader(title: 'Subscription'),
+          _SectionHeader(title: context.tr('settings.subscriptionSection')),
           _SettingsTile(
             icon: Icons.card_membership,
-            title: 'Subscription',
+            title: context.tr('settings.subscriptionSection'),
             subtitle: sub != null
                 ? '${sub.planName} — ${sub.status.toUpperCase()}'
-                : 'No active subscription',
+                : context.tr('settings.noActiveSubscription'),
             trailing: sub != null && sub.isActive
                 ? Container(
                     padding: const EdgeInsets.symmetric(
@@ -99,7 +100,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           BorderRadius.circular(AppSpacing.radiusSm),
                     ),
                     child: Text(
-                      '${sub.daysRemaining}d left',
+                      context.tr('settings.daysLeft', [sub.daysRemaining.toString()]),
                       style: AppTypography.caption1.copyWith(
                         color: AppColors.success,
                         fontWeight: FontWeight.w600,
@@ -110,59 +111,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onTap: () => context.push('/subscription'),
           ),
           _SettingsTile(
-            icon: Icons.shopping_cart_outlined,
-            title: 'View Plans',
-            subtitle: 'Starter, Professional, Enterprise',
-            onTap: () => context.push('/subscription/plans'),
+            icon: Icons.receipt_long,
+            title: context.tr('payments.title'),
+            subtitle: context.tr('payments.subtitle'),
+            onTap: () => context.push('/settings/payments'),
           ),
 
           const SizedBox(height: AppSpacing.sm),
 
           // Account section
-          _SectionHeader(title: 'Account'),
+          _SectionHeader(title: context.tr('settings.account')),
           _SettingsTile(
             icon: Icons.person_outline,
-            title: 'Profile',
-            subtitle: 'Edit your account details',
+            title: context.tr('settings.editProfile'),
+            subtitle: context.tr('settings.profileSubtitle'),
             onTap: () => context.push('/settings/profile'),
           ),
           _SettingsTile(
             icon: Icons.lock_outline,
-            title: 'Change Password',
-            subtitle: 'Update your password',
+            title: context.tr('settings.changePassword'),
+            subtitle: context.tr('settings.changePasswordSubtitle'),
             onTap: () => context.push('/settings/change-password'),
           ),
 
           const SizedBox(height: AppSpacing.sm),
 
           // App section
-          _SectionHeader(title: 'App'),
+          _SectionHeader(title: context.tr('settings.appSection')),
           _SettingsTile(
             icon: Icons.notifications_outlined,
-            title: 'Notifications',
-            subtitle: 'Manage push notification preferences',
+            title: context.tr('settings.notifications'),
+            subtitle: context.tr('settings.notificationsSubtitle'),
             onTap: () => context.push('/notification-preferences'),
           ),
           _LanguageTile(),
           _SettingsTile(
             icon: Icons.info_outline,
-            title: 'About',
-            subtitle: 'Version 1.0.0',
+            title: context.tr('settings.about'),
+            subtitle: context.tr('settings.version', ['1.0.0']),
             onTap: () {
               showAboutDialog(
                 context: context,
-                applicationName: 'Wasel',
+                applicationName: context.tr('common.appName'),
                 applicationVersion: '1.0.0',
                 applicationIcon: const Icon(
                   Icons.wifi_tethering,
                   size: 48,
                   color: AppColors.primary,
                 ),
-                children: const [
+                children: [
                   Text(
-                    'Wasel is a WiFi hotspot management platform that helps '
-                    'businesses create, manage, and monitor internet access '
-                    'vouchers for their MikroTik routers.',
+                    context.tr('settings.aboutDescription'),
                   ),
                 ],
               );
@@ -184,7 +183,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
                 icon: const Icon(Icons.logout, color: AppColors.error),
                 label: Text(
-                  'Logout',
+                  context.tr('settings.logout'),
                   style: TextStyle(color: AppColors.error),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -233,7 +232,7 @@ class _LanguageTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentLocale = ref.watch(localeProvider);
     final currentLabel = currentLocale == null
-        ? 'System Default'
+        ? context.tr('settings.systemDefault')
         : _languages
             .firstWhere(
               (l) => l.code == currentLocale.languageCode,
@@ -243,7 +242,7 @@ class _LanguageTile extends ConsumerWidget {
 
     return ListTile(
       leading: const Icon(Icons.language, color: AppColors.primary),
-      title: Text('Language', style: AppTypography.body),
+      title: Text(context.tr('settings.language'), style: AppTypography.body),
       subtitle: Text(currentLabel, style: AppTypography.footnote),
       trailing: const Icon(Icons.chevron_right, color: AppColors.textTertiary),
       contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -267,7 +266,7 @@ class _LanguageTile extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(
                   AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.sm),
-              child: Text('Select Language', style: AppTypography.title3),
+              child: Text(context.tr('settings.selectLanguage'), style: AppTypography.title3),
             ),
             const Divider(),
             RadioGroup<String?>(

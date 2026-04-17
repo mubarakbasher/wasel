@@ -496,6 +496,60 @@ export async function changeSubscription(
   }
 }
 
+export interface UserPayment {
+  id: string;
+  planTier: string;
+  planName: string;
+  amount: number;
+  currency: string;
+  referenceCode: string | null;
+  receiptUrl: string | null;
+  status: string;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * List the user's most recent payments (up to 50) with joined plan name.
+ */
+export async function getUserPayments(userId: string): Promise<UserPayment[]> {
+  const result = await pool.query<{
+    id: string;
+    plan_tier: string;
+    amount: string;
+    currency: string;
+    reference_code: string | null;
+    receipt_url: string | null;
+    status: string;
+    reviewed_at: Date | null;
+    created_at: Date;
+    plan_name: string | null;
+  }>(
+    `SELECT p.id, p.plan_tier, p.amount, p.currency, p.reference_code,
+            p.receipt_url, p.status, p.reviewed_at, p.created_at,
+            pl.name AS plan_name
+     FROM payments p
+     LEFT JOIN plans pl ON pl.tier = p.plan_tier
+     WHERE p.user_id = $1
+     ORDER BY p.created_at DESC
+     LIMIT 50`,
+    [userId],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    planTier: row.plan_tier,
+    planName: row.plan_name ?? row.plan_tier,
+    amount: parseFloat(row.amount),
+    currency: row.currency,
+    referenceCode: row.reference_code,
+    receiptUrl: row.receipt_url,
+    status: row.status,
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
+    createdAt: new Date(row.created_at).toISOString(),
+  }));
+}
+
 /**
  * Background job: transition active subscriptions past their end_date to 'expired'.
  * Returns the number of subscriptions updated.

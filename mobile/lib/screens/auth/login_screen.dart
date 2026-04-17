@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -75,10 +76,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // Logo area
                 Icon(Icons.wifi_tethering, size: 64, color: AppColors.primary),
                 const SizedBox(height: AppSpacing.lg),
-                Text('Wasel', style: AppTypography.largeTitle, textAlign: TextAlign.center),
+                Text(context.tr('common.appName'), style: AppTypography.largeTitle, textAlign: TextAlign.center),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  'Mikrotik Hotspot Manager',
+                  context.tr('common.appTagline'),
                   style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -114,9 +115,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
                   autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined),
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.email'),
+                    prefixIcon: const Icon(Icons.email_outlined),
                   ),
                   validator: Validators.validateEmail,
                 ),
@@ -129,7 +130,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
-                    labelText: 'Password',
+                    labelText: context.tr('auth.password'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -145,7 +146,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () => context.push('/forgot-password'),
-                    child: Text('Forgot Password?', style: AppTypography.footnote.copyWith(color: AppColors.primary)),
+                    child: Text(context.tr('auth.forgotPassword'), style: AppTypography.footnote.copyWith(color: AppColors.primary)),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -157,7 +158,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Log In'),
+                        : Text(context.tr('auth.login')),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -166,10 +167,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text("Don't have an account? ", style: AppTypography.footnote),
+                    Text(context.tr('auth.noAccount'), style: AppTypography.footnote),
+                    const SizedBox(width: 4),
                     GestureDetector(
                       onTap: () => context.push('/register'),
-                      child: Text('Create Account', style: AppTypography.footnote.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                      child: Text(context.tr('auth.register'), style: AppTypography.footnote.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
                     ),
                   ],
                 ),

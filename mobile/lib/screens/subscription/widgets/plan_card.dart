@@ -1,154 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../models/plan.dart';
-import '../../providers/subscription_provider.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/app_spacing.dart';
-import '../../theme/app_typography.dart';
+import '../../../i18n/app_localizations.dart';
+import '../../../models/plan.dart';
+import '../../../theme/app_colors.dart';
+import '../../../theme/app_spacing.dart';
+import '../../../theme/app_typography.dart';
 
-class PlansScreen extends ConsumerStatefulWidget {
-  const PlansScreen({super.key});
-
-  @override
-  ConsumerState<PlansScreen> createState() => _PlansScreenState();
-}
-
-class _PlansScreenState extends ConsumerState<PlansScreen> {
-  final Map<String, int> _selectedDurations = {};
-
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(() => ref.read(subscriptionProvider.notifier).loadPlans());
-  }
-
-  int _getDuration(Plan plan) =>
-      _selectedDurations[plan.tier] ?? plan.allowedDurations.first;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(subscriptionProvider);
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Choose a Plan')),
-      body: state.isLoading && state.plans.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : state.error != null && state.plans.isEmpty
-              ? _buildError(state.error!)
-              : ListView.builder(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  itemCount: state.plans.length,
-                  itemBuilder: (context, index) {
-                    final plan = state.plans[index];
-                    final isCurrentPlan =
-                        state.subscription?.planTier == plan.tier &&
-                            state.subscription?.isActive == true;
-                    final hasPendingChange = state.pendingChange != null;
-                    return _PlanCard(
-                      plan: plan,
-                      isCurrentPlan: isCurrentPlan,
-                      isLoading: state.isLoading,
-                      hasPendingChange: hasPendingChange,
-                      selectedDuration: _getDuration(plan),
-                      onDurationChanged: (duration) {
-                        setState(() {
-                          _selectedDurations[plan.tier] = duration;
-                        });
-                      },
-                      onSelect: isCurrentPlan || hasPendingChange
-                          ? null
-                          : () => _handleSelectPlan(plan),
-                    );
-                  },
-                ),
-    );
-  }
-
-  Widget _buildError(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: AppColors.error),
-            const SizedBox(height: AppSpacing.lg),
-            Text(error, style: AppTypography.body, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.lg),
-            ElevatedButton(
-              onPressed: () =>
-                  ref.read(subscriptionProvider.notifier).loadPlans(),
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _handleSelectPlan(Plan plan) async {
-    final state = ref.read(subscriptionProvider);
-    final hasActiveSub = state.subscription?.isActive == true;
-    final duration = _getDuration(plan);
-    final totalPrice = plan.totalPriceLabel(duration);
-    final durationLabel = duration == 1 ? '1 month' : '$duration months';
-
-    // Determine if this is an upgrade or downgrade
-    String action = 'Subscribe to';
-    if (hasActiveSub) {
-      final tierOrder = ['starter', 'professional', 'enterprise'];
-      final currentIndex = tierOrder.indexOf(state.subscription!.planTier);
-      final newIndex = tierOrder.indexOf(plan.tier);
-      action = newIndex > currentIndex ? 'Upgrade to' : 'Downgrade to';
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('$action ${plan.name}'),
-        content: Text(
-          'You are requesting the ${plan.name} plan for $durationLabel at $totalPrice. '
-          'After confirmation, you will receive payment instructions.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => ctx.pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => ctx.pop(true),
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    final notifier = ref.read(subscriptionProvider.notifier);
-    final bool success;
-
-    if (hasActiveSub) {
-      success = await notifier.changeSubscription(
-        plan.tier,
-        durationMonths: duration,
-      );
-    } else {
-      success = await notifier.requestSubscription(
-        plan.tier,
-        durationMonths: duration,
-      );
-    }
-
-    if (success && mounted) {
-      context.push('/subscription/payment');
-    }
-  }
-}
-
-class _PlanCard extends StatelessWidget {
+class PlanCard extends StatelessWidget {
   final Plan plan;
   final bool isCurrentPlan;
   final bool isLoading;
@@ -157,7 +15,8 @@ class _PlanCard extends StatelessWidget {
   final ValueChanged<int> onDurationChanged;
   final VoidCallback? onSelect;
 
-  const _PlanCard({
+  const PlanCard({
+    super.key,
     required this.plan,
     required this.isCurrentPlan,
     required this.isLoading,
@@ -195,7 +54,7 @@ class _PlanCard extends StatelessWidget {
                 ),
               ),
               child: Text(
-                'MOST POPULAR',
+                context.tr('subscription.mostPopular'),
                 textAlign: TextAlign.center,
                 style: AppTypography.caption1.copyWith(
                   color: AppColors.textInverse,
@@ -225,7 +84,7 @@ class _PlanCard extends StatelessWidget {
                               BorderRadius.circular(AppSpacing.radiusSm),
                         ),
                         child: Text(
-                          'Current',
+                          context.tr('subscription.currentPlanLabel'),
                           style: AppTypography.caption1.copyWith(
                             color: AppColors.success,
                             fontWeight: FontWeight.w600,
@@ -249,8 +108,9 @@ class _PlanCard extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text(
                         selectedDuration == 1
-                            ? '/month'
-                            : '/$selectedDuration months',
+                            ? context.tr('subscription.perMonth')
+                            : context.tr('subscription.perNMonths',
+                                [selectedDuration.toString()]),
                         style: AppTypography.footnote,
                       ),
                     ),
@@ -300,7 +160,7 @@ class _PlanCard extends StatelessWidget {
                   child: isCurrentPlan
                       ? OutlinedButton(
                           onPressed: null,
-                          child: const Text('Current Plan'),
+                          child: Text(context.tr('subscription.currentPlan')),
                         )
                       : ElevatedButton(
                           onPressed: isLoading || hasPendingChange
@@ -317,8 +177,9 @@ class _PlanCard extends StatelessWidget {
                                 )
                               : Text(
                                   hasPendingChange
-                                      ? 'Change Pending'
-                                      : 'Select ${plan.name}',
+                                      ? context.tr('subscription.changePending')
+                                      : context.tr('subscription.selectPlan',
+                                          [plan.name]),
                                 ),
                         ),
                 ),

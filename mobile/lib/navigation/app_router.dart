@@ -20,9 +20,9 @@ import '../screens/settings/edit_profile_screen.dart';
 import '../screens/settings/change_password_screen.dart';
 import '../screens/sessions/active_sessions_screen.dart';
 import '../screens/sessions/session_history_screen.dart';
-import '../screens/subscription/plans_screen.dart';
 import '../screens/subscription/subscription_status_screen.dart';
 import '../screens/subscription/payment_screen.dart';
+import '../screens/settings/payments_screen.dart';
 import '../screens/reports/reports_screen.dart';
 import '../screens/reports/report_export_screen.dart';
 import '../screens/notification_preferences_screen.dart';
@@ -108,10 +108,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SubscriptionStatusScreen(),
       ),
       GoRoute(
-        path: '/subscription/plans',
-        builder: (context, state) => const PlansScreen(),
-      ),
-      GoRoute(
         path: '/subscription/payment',
         builder: (context, state) => const PaymentScreen(),
       ),
@@ -180,6 +176,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/change-password',
         builder: (context, state) => const ChangePasswordScreen(),
+      ),
+      GoRoute(
+        path: '/settings/payments',
+        builder: (context, state) => const PaymentsScreen(),
       ),
       // Notification preferences
       GoRoute(

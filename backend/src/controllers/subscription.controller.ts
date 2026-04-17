@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
+import { AppError } from '../middleware/errorHandler';
+import { RECEIPTS_PUBLIC_PREFIX } from '../middleware/upload';
 import * as subscriptionService from '../services/subscription.service';
 
 export async function getPlans(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -55,11 +57,28 @@ export async function changeSubscription(req: AuthenticatedRequest, res: Respons
 
 export async function uploadReceipt(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { paymentId, receiptUrl } = req.body;
+    const { paymentId } = req.body;
+    const file = (req as AuthenticatedRequest & { file?: Express.Multer.File }).file;
+    if (!file) {
+      throw new AppError(400, 'Receipt image is required', 'RECEIPT_FILE_REQUIRED');
+    }
+    const receiptUrl = `${RECEIPTS_PUBLIC_PREFIX}/${file.filename}`;
     await subscriptionService.uploadReceipt(req.user!.id, paymentId, receiptUrl);
     res.status(200).json({
       success: true,
-      data: { message: 'Receipt uploaded successfully' },
+      data: { message: 'Receipt uploaded successfully', receiptUrl },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getUserPayments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const payments = await subscriptionService.getUserPayments(req.user!.id);
+    res.status(200).json({
+      success: true,
+      data: payments,
     });
   } catch (error) {
     next(error);

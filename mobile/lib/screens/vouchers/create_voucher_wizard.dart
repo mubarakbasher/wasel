@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../models/voucher.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/vouchers_provider.dart';
@@ -21,8 +22,6 @@ class CreateVoucherWizard extends ConsumerStatefulWidget {
 }
 
 class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
-  static const _stepLabels = ['Limit', 'Validity', 'Count & Price'];
-
   final _pageController = PageController();
   final _step1FormKey = GlobalKey<FormState>();
   final _step3FormKey = GlobalKey<FormState>();
@@ -53,6 +52,12 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     _customValidityController.dispose();
     super.dispose();
   }
+
+  List<String> get _stepLabels => [
+    context.tr('vouchers.stepLimit'),
+    context.tr('vouchers.stepValidity'),
+    context.tr('vouchers.stepCountPrice'),
+  ];
 
   void _goNext() {
     if (_currentStep == 0) {
@@ -111,7 +116,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         ),
@@ -131,16 +136,16 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
             const SizedBox(height: AppSpacing.lg),
             Text(
               count == 1
-                  ? 'Voucher Created!'
-                  : '$count Vouchers Created!',
+                  ? ctx.tr('vouchers.voucherCreated')
+                  : ctx.tr('vouchers.vouchersCreated', [count.toString()]),
               style: AppTypography.title2,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               count == 1
-                  ? 'Your voucher is ready to use.'
-                  : 'Your vouchers are ready to use.',
+                  ? ctx.tr('vouchers.voucherReady')
+                  : ctx.tr('vouchers.vouchersReady'),
               style: AppTypography.body.copyWith(color: AppColors.textSecondary),
               textAlign: TextAlign.center,
             ),
@@ -150,7 +155,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               height: 48,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.of(context).pop();
+                  Navigator.of(ctx).pop();
                   this.context.pop();
                   this.context.push('/vouchers/print', extra: {
                     'vouchers': vouchers,
@@ -158,7 +163,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   });
                 },
                 icon: const Icon(Icons.print, size: 20),
-                label: const Text('Print Vouchers'),
+                label: Text(ctx.tr('vouchers.printVouchers')),
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -167,10 +172,10 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               height: 48,
               child: OutlinedButton(
                 onPressed: () {
-                  Navigator.of(context).pop();
+                  Navigator.of(ctx).pop();
                   this.context.pop();
                 },
-                child: const Text('Go to Vouchers'),
+                child: Text(ctx.tr('vouchers.goToVouchers')),
               ),
             ),
           ],
@@ -185,7 +190,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Voucher'),
+        title: Text(context.tr('vouchers.createVoucher')),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
@@ -311,7 +316,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Text('What type of limit?',
+          Text(context.tr('vouchers.whatLimitType'),
               style: AppTypography.headline
                   .copyWith(color: AppColors.textPrimary)),
           const SizedBox(height: AppSpacing.lg),
@@ -322,7 +327,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Expanded(
                 child: _buildLimitTypeCard(
                   icon: Icons.access_time,
-                  label: 'Time Limit',
+                  label: context.tr('vouchers.timeLimit'),
                   value: 'time',
                   selected: _limitType == 'time',
                 ),
@@ -331,7 +336,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Expanded(
                 child: _buildLimitTypeCard(
                   icon: Icons.data_usage,
-                  label: 'Data Limit',
+                  label: context.tr('vouchers.dataLimit'),
                   value: 'data',
                   selected: _limitType == 'data',
                 ),
@@ -350,14 +355,14 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   controller: _limitValueController,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(
-                    labelText: 'Value',
+                  decoration: InputDecoration(
+                    labelText: context.tr('vouchers.value'),
                     hintText: 'e.g. 2',
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Required';
+                    if (v == null || v.trim().isEmpty) return context.tr('common.required');
                     final n = int.tryParse(v.trim());
-                    if (n == null || n <= 0) return 'Must be > 0';
+                    if (n == null || n <= 0) return context.tr('validation.positive');
                     return null;
                   },
                 ),
@@ -367,15 +372,15 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                 flex: 2,
                 child: DropdownButtonFormField<String>(
                   initialValue: _limitUnit,
-                  decoration: const InputDecoration(labelText: 'Unit'),
+                  decoration: InputDecoration(labelText: context.tr('vouchers.unit')),
                   items: _limitType == 'time'
-                      ? const [
+                      ? [
                           DropdownMenuItem(
-                              value: 'minutes', child: Text('Minutes')),
+                              value: 'minutes', child: Text(context.tr('vouchers.minutes'))),
                           DropdownMenuItem(
-                              value: 'hours', child: Text('Hours')),
+                              value: 'hours', child: Text(context.tr('vouchers.hours'))),
                           DropdownMenuItem(
-                              value: 'days', child: Text('Days')),
+                              value: 'days', child: Text(context.tr('vouchers.days'))),
                         ]
                       : const [
                           DropdownMenuItem(value: 'MB', child: Text('MB')),
@@ -405,8 +410,8 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                 Expanded(
                   child: Text(
                     _limitType == 'time'
-                        ? 'Total online time allowed for this voucher.'
-                        : 'Total data usage allowed for this voucher.',
+                        ? context.tr('vouchers.timeLimitHint')
+                        : context.tr('vouchers.dataLimitHint'),
                     style: AppTypography.subhead
                         .copyWith(color: AppColors.primary),
                   ),
@@ -483,12 +488,12 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: [
-        Text('Voucher validity',
+        Text(context.tr('vouchers.voucherValidity'),
             style: AppTypography.headline
                 .copyWith(color: AppColors.textPrimary)),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'How long after first use should the voucher remain valid?',
+          context.tr('vouchers.validityDescription'),
           style:
               AppTypography.body.copyWith(color: AppColors.textSecondary),
         ),
@@ -522,7 +527,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               );
             }),
             ChoiceChip(
-              label: const Text('Custom'),
+              label: Text(context.tr('vouchers.custom')),
               selected: _isCustomValidity,
               onSelected: (_) {
                 setState(() {
@@ -555,8 +560,8 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   controller: _customValidityController,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(
-                    labelText: 'Value',
+                  decoration: InputDecoration(
+                    labelText: context.tr('vouchers.value'),
                     hintText: 'e.g. 5',
                   ),
                   onChanged: (_) => _updateCustomValidity(),
@@ -567,10 +572,10 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                 flex: 2,
                 child: DropdownButtonFormField<String>(
                   initialValue: _customValidityUnit,
-                  decoration: const InputDecoration(labelText: 'Unit'),
-                  items: const [
-                    DropdownMenuItem(value: 'hours', child: Text('Hours')),
-                    DropdownMenuItem(value: 'days', child: Text('Days')),
+                  decoration: InputDecoration(labelText: context.tr('vouchers.unit')),
+                  items: [
+                    DropdownMenuItem(value: 'hours', child: Text(context.tr('vouchers.hours'))),
+                    DropdownMenuItem(value: 'days', child: Text(context.tr('vouchers.days'))),
                   ],
                   onChanged: (v) {
                     if (v != null) {
@@ -610,8 +615,8 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   Expanded(
                     child: Text(
                       _validitySeconds == null
-                          ? 'Open Voucher'
-                          : 'Validity: ${_formatDuration(_validitySeconds!)}',
+                          ? context.tr('vouchers.openVoucher')
+                          : context.tr('vouchers.validityLabel', [_formatDuration(_validitySeconds!)]),
                       style: AppTypography.subhead.copyWith(
                           fontWeight: FontWeight.w600,
                           color: AppColors.textPrimary),
@@ -622,8 +627,13 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               const SizedBox(height: AppSpacing.xs),
               Text(
                 _validitySeconds == null
-                    ? 'The voucher has no time expiry. It will only expire when the ${_limitType == "time" ? "online time" : "data"} limit is used up.'
-                    : 'The voucher will expire ${_formatDuration(_validitySeconds!)} after the first login, regardless of how much ${_limitType == "time" ? "time" : "data"} is left.',
+                    ? context.tr('vouchers.openVoucherDesc', [
+                        _limitType == 'time' ? context.tr('vouchers.onlineTime') : context.tr('vouchers.data'),
+                      ])
+                    : context.tr('vouchers.validityVoucherDesc', [
+                        _formatDuration(_validitySeconds!),
+                        _limitType == 'time' ? context.tr('vouchers.time') : context.tr('vouchers.data'),
+                      ]),
                 style: AppTypography.caption1
                     .copyWith(color: AppColors.textSecondary),
               ),
@@ -661,7 +671,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
         ? '${_limitValueController.text} $_limitUnit'
         : '';
     final validityText = _validitySeconds == null
-        ? 'Open (no expiry)'
+        ? context.tr('vouchers.openNoExpiry')
         : _formatDuration(_validitySeconds!);
 
     final count = int.tryParse(_countController.text.trim()) ?? 0;
@@ -673,7 +683,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Text('How many vouchers?',
+          Text(context.tr('vouchers.howMany'),
               style: AppTypography.headline
                   .copyWith(color: AppColors.textPrimary)),
           const SizedBox(height: AppSpacing.lg),
@@ -682,15 +692,15 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
             controller: _countController,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: 'Number of vouchers',
+            decoration: InputDecoration(
+              labelText: context.tr('vouchers.numberOfVouchers'),
               hintText: '1',
             ),
             onChanged: (_) => setState(() {}),
             validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Required';
+              if (v == null || v.trim().isEmpty) return context.tr('common.required');
               final n = int.tryParse(v.trim());
-              if (n == null || n < 1) return 'Must be at least 1';
+              if (n == null || n < 1) return context.tr('validation.positive');
               return null;
             },
           ),
@@ -702,15 +712,15 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             ],
-            decoration: const InputDecoration(
-              labelText: 'Price per voucher',
+            decoration: InputDecoration(
+              labelText: context.tr('vouchers.pricePerVoucher'),
               hintText: '0.00',
             ),
             onChanged: (_) => setState(() {}),
             validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Required';
+              if (v == null || v.trim().isEmpty) return context.tr('common.required');
               final n = double.tryParse(v.trim());
-              if (n == null || n < 0) return 'Invalid price';
+              if (n == null || n < 0) return context.tr('validation.numeric');
               return null;
             },
           ),
@@ -727,28 +737,28 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Summary',
+                Text(context.tr('vouchers.summary'),
                     style: AppTypography.subhead.copyWith(
                         fontWeight: FontWeight.w600,
                         color: AppColors.textPrimary)),
                 const SizedBox(height: AppSpacing.md),
                 _buildSummaryRow(
-                  'Limit',
-                  '${_limitType == "time" ? "Time" : "Data"}: $limitText',
+                  context.tr('vouchers.limit'),
+                  '${_limitType == "time" ? context.tr('vouchers.time') : context.tr('vouchers.data')}: $limitText',
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                _buildSummaryRow('Validity', validityText),
+                _buildSummaryRow(context.tr('vouchers.stepValidity'), validityText),
                 const SizedBox(height: AppSpacing.sm),
-                _buildSummaryRow('Count', '$count'),
+                _buildSummaryRow(context.tr('vouchers.count'), '$count'),
                 const SizedBox(height: AppSpacing.sm),
                 _buildSummaryRow(
-                  'Price',
-                  '${price.toStringAsFixed(2)} each',
+                  context.tr('vouchers.price'),
+                  context.tr('vouchers.each', [price.toStringAsFixed(2)]),
                 ),
                 if (count > 1) ...[
                   const Divider(height: AppSpacing.lg),
                   _buildSummaryRow(
-                    'Total',
+                    context.tr('vouchers.total'),
                     totalPrice.toStringAsFixed(2),
                     bold: true,
                   ),
@@ -791,7 +801,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   height: 48,
                   child: OutlinedButton(
                     onPressed: _isSubmitting ? null : _goBack,
-                    child: const Text('Back'),
+                    child: Text(context.tr('common.back')),
                   ),
                 ),
               ),
@@ -803,7 +813,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                 child: _currentStep < 2
                     ? ElevatedButton(
                         onPressed: _goNext,
-                        child: const Text('Next'),
+                        child: Text(context.tr('common.next')),
                       )
                     : ElevatedButton(
                         onPressed: _isSubmitting ? null : _submit,
@@ -816,8 +826,8 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                               )
                             : Text(
                                 int.tryParse(_countController.text.trim()) == 1
-                                    ? 'Create Voucher'
-                                    : 'Create ${_countController.text.trim()} Vouchers',
+                                    ? context.tr('vouchers.createVoucher')
+                                    : context.tr('vouchers.createNVouchers', [_countController.text.trim()]),
                               ),
                       ),
               ),

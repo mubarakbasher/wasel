@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
 import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
@@ -28,7 +29,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Setup guide copied to clipboard')),
+      SnackBar(content: Text(context.tr('routers.guideCopied'))),
     );
   }
 
@@ -39,13 +40,13 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Setup Guide'),
+        title: Text(context.tr('routers.setupGuide')),
         actions: [
           if (guide != null)
             IconButton(
               icon: const Icon(Icons.copy),
               onPressed: () => _copyToClipboard(guide.setupGuide),
-              tooltip: 'Copy all to clipboard',
+              tooltip: context.tr('routers.copyTooltip'),
             ),
         ],
       ),
@@ -55,7 +56,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
               ? _buildError(state.error!)
               : guide == null
                   ? Center(
-                      child: Text('Setup guide not available',
+                      child: Text(context.tr('routers.setupNotAvailable'),
                           style: AppTypography.body
                               .copyWith(color: AppColors.textSecondary)),
                     )
@@ -80,7 +81,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
                 onPressed: () => ref
                     .read(routersProvider.notifier)
                     .loadSetupGuide(widget.routerId),
-                child: const Text('Retry'),
+                child: Text(context.tr('common.retry')),
               ),
             ),
           ],
@@ -96,7 +97,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
         Text(guide.routerName, style: AppTypography.title2),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'Follow these steps to connect your Mikrotik router to Wasel.',
+          context.tr('routers.setupInstructions'),
           style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.lg),
@@ -149,7 +150,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
           child: OutlinedButton.icon(
             onPressed: () => _copyToClipboard(guide.setupGuide),
             icon: const Icon(Icons.copy),
-            label: const Text('Copy All to Clipboard'),
+            label: Text(context.tr('routers.copyAllClipboard')),
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
@@ -247,7 +248,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
                       Clipboard.setData(ClipboardData(text: step.command));
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Step ${step.step} copied'),
+                          content: Text(context.tr('routers.stepCopied', [step.step.toString()])),
                           duration: const Duration(seconds: 1),
                         ),
                       );

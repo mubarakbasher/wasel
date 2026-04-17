@@ -4,6 +4,10 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo of your payment receipt for subscription verification.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select a photo of your payment receipt for subscription verification.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

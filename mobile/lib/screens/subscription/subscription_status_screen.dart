@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
+import '../../models/plan.dart';
 import '../../models/subscription.dart';
 import '../../providers/subscription_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import 'widgets/plan_card.dart';
 
 class SubscriptionStatusScreen extends ConsumerStatefulWidget {
   const SubscriptionStatusScreen({super.key});
@@ -18,11 +21,25 @@ class SubscriptionStatusScreen extends ConsumerStatefulWidget {
 
 class _SubscriptionStatusScreenState
     extends ConsumerState<SubscriptionStatusScreen> {
+  final Map<String, int> _selectedDurations = {};
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-        () => ref.read(subscriptionProvider.notifier).loadSubscription());
+    Future.microtask(() async {
+      final notifier = ref.read(subscriptionProvider.notifier);
+      await notifier.loadSubscription();
+      await notifier.loadPlans();
+    });
+  }
+
+  int _getDuration(Plan plan) =>
+      _selectedDurations[plan.tier] ?? plan.allowedDurations.first;
+
+  Future<void> _refresh() async {
+    final notifier = ref.read(subscriptionProvider.notifier);
+    await notifier.loadSubscription();
+    await notifier.loadPlans();
   }
 
   @override
@@ -32,262 +49,373 @@ class _SubscriptionStatusScreenState
     final pendingChange = state.pendingChange;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Subscription')),
-      body: state.isLoading && sub == null
+      appBar: AppBar(title: Text(context.tr('subscription.title'))),
+      body: state.isLoading && sub == null && state.plans.isEmpty
           ? const Center(child: CircularProgressIndicator())
-          : sub == null
-              ? _buildNoSubscription()
-              : _buildSubscriptionDetails(sub, pendingChange),
+          : RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                children: [
+                  if (sub == null)
+                    _buildNoSubscriptionHeader()
+                  else
+                    ..._buildSubscriptionSections(sub, pendingChange),
+                  const SizedBox(height: AppSpacing.xxl),
+                  Text(
+                    context.tr('subscription.choosePlan'),
+                    style: AppTypography.title2,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  ..._buildPlans(state),
+                ],
+              ),
+            ),
     );
   }
 
-  Widget _buildNoSubscription() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.card_membership,
-                size: 64, color: AppColors.textTertiary),
-            const SizedBox(height: AppSpacing.lg),
-            Text(
-              'No Active Subscription',
-              style: AppTypography.title2,
-              textAlign: TextAlign.center,
+  Widget _buildNoSubscriptionHeader() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.card_membership,
+              size: 32, color: AppColors.primary),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  context.tr('subscription.noActiveSubscription'),
+                  style: AppTypography.subhead
+                      .copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  context.tr('subscription.noActiveSubscriptionDesc'),
+                  style: AppTypography.footnote.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Subscribe to a plan to start managing your routers and creating vouchers.',
-              style: AppTypography.subhead.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-            SizedBox(
-              height: 48,
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => context.push('/subscription/plans'),
-                child: const Text('View Plans'),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildSubscriptionDetails(Subscription sub, Subscription? pendingChange) {
+  List<Widget> _buildSubscriptionSections(
+      Subscription sub, Subscription? pendingChange) {
     final statusColor = _statusColor(sub.status);
     final vouchersRemaining = sub.vouchersRemaining;
     final quotaPercent = sub.voucherQuota == -1
         ? 0.0
         : sub.vouchersUsed / sub.voucherQuota;
 
-    return RefreshIndicator(
-      onRefresh: () =>
-          ref.read(subscriptionProvider.notifier).loadSubscription(),
-      child: ListView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        children: [
-          // Status card
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return [
+      Container(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Text(sub.planName, style: AppTypography.title1),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                  ),
+                  child: Text(
+                    sub.status.toString().toUpperCase(),
+                    style: AppTypography.caption1.copyWith(
+                      color: statusColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            if (sub.isActive) ...[
+              _InfoRow(
+                label: context.tr('subscription.daysRemainingLabel'),
+                value: context.tr('subscription.daysValue',
+                    [sub.daysRemaining.toString()]),
+                icon: Icons.calendar_today,
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            _InfoRow(
+              label: context.tr('subscription.startDate'),
+              value: _formatDate(sub.startDate),
+              icon: Icons.play_arrow,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+              label: context.tr('subscription.endDate'),
+              value: _formatDate(sub.endDate),
+              icon: Icons.stop,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+              label: context.tr('subscription.maxRoutersLabel'),
+              value: '${sub.maxRouters}',
+              icon: Icons.router,
+            ),
+          ],
+        ),
+      ),
+      if (pendingChange != null) ...[
+        const SizedBox(height: AppSpacing.lg),
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border:
+                Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.pending_actions,
+                  color: AppColors.warning, size: 24),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(sub.planName, style: AppTypography.title1),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm,
-                        vertical: AppSpacing.xs,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusSm),
-                      ),
-                      child: Text(
-                        sub.status.toString().toUpperCase(),
-                        style: AppTypography.caption1.copyWith(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                    Text(
+                      context.tr('subscription.planChangePending'),
+                      style: AppTypography.subhead
+                          .copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      context.tr('subscription.upgradePending',
+                          [pendingChange.planName]),
+                      style: AppTypography.footnote
+                          .copyWith(color: AppColors.textSecondary),
                     ),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                if (sub.isActive) ...[
-                  _InfoRow(
-                    label: 'Days Remaining',
-                    value: '${sub.daysRemaining} days',
-                    icon: Icons.calendar_today,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                ],
-                _InfoRow(
-                  label: 'Start Date',
-                  value: _formatDate(sub.startDate),
-                  icon: Icons.play_arrow,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                _InfoRow(
-                  label: 'End Date',
-                  value: _formatDate(sub.endDate),
-                  icon: Icons.stop,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                _InfoRow(
-                  label: 'Max Routers',
-                  value: '${sub.maxRouters}',
-                  icon: Icons.router,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-
-          // Pending change banner
-          if (pendingChange != null) ...[
+        ),
+      ],
+      const SizedBox(height: AppSpacing.lg),
+      Container(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(context.tr('subscription.voucherUsage'),
+                style: AppTypography.title3),
             const SizedBox(height: AppSpacing.lg),
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-              ),
-              child: Row(
+            if (sub.voucherQuota == -1) ...[
+              Row(
                 children: [
-                  const Icon(Icons.pending_actions,
-                      color: AppColors.warning, size: 24),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Plan change pending',
-                          style: AppTypography.subhead.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.xs),
-                        Text(
-                          'Upgrade to ${pendingChange.planName} awaiting payment approval',
-                          style: AppTypography.footnote.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
+                  const Icon(Icons.all_inclusive,
+                      color: AppColors.primary, size: 24),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    context.tr('subscription.unlimitedUsed',
+                        [sub.vouchersUsed.toString()]),
+                    style: AppTypography.body,
                   ),
                 ],
               ),
-            ),
+            ] else ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${sub.vouchersUsed} / ${sub.voucherQuota}',
+                    style: AppTypography.title2
+                        .copyWith(color: AppColors.primary),
+                  ),
+                  Text(
+                    vouchersRemaining == 0
+                        ? context.tr('subscription.quotaReached')
+                        : context.tr('subscription.remaining',
+                            [vouchersRemaining.toString()]),
+                    style: AppTypography.footnote,
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+                child: LinearProgressIndicator(
+                  value: quotaPercent.clamp(0.0, 1.0),
+                  minHeight: 8,
+                  backgroundColor: AppColors.background,
+                  valueColor: AlwaysStoppedAnimation(
+                    quotaPercent > 0.9
+                        ? AppColors.error
+                        : quotaPercent > 0.7
+                            ? AppColors.warning
+                            : AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
           ],
-
-          const SizedBox(height: AppSpacing.lg),
-
-          // Voucher quota card
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Voucher Usage', style: AppTypography.title3),
-                const SizedBox(height: AppSpacing.lg),
-                if (sub.voucherQuota == -1) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.all_inclusive,
-                          color: AppColors.primary, size: 24),
-                      const SizedBox(width: AppSpacing.sm),
-                      Text(
-                        'Unlimited — ${sub.vouchersUsed} used this month',
-                        style: AppTypography.body,
-                      ),
-                    ],
-                  ),
-                ] else ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '${sub.vouchersUsed} / ${sub.voucherQuota}',
-                        style: AppTypography.title2.copyWith(
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      Text(
-                        vouchersRemaining == 0
-                            ? 'Quota reached'
-                            : '$vouchersRemaining remaining',
-                        style: AppTypography.footnote,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(AppSpacing.radiusSm),
-                    child: LinearProgressIndicator(
-                      value: quotaPercent.clamp(0.0, 1.0),
-                      minHeight: 8,
-                      backgroundColor: AppColors.background,
-                      valueColor: AlwaysStoppedAnimation(
-                        quotaPercent > 0.9
-                            ? AppColors.error
-                            : quotaPercent > 0.7
-                                ? AppColors.warning
-                                : AppColors.primary,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+        ),
+      ),
+      if (sub.isPending) ...[
+        const SizedBox(height: AppSpacing.lg),
+        SizedBox(
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: () => context.push('/subscription/payment'),
+            icon: const Icon(Icons.payment),
+            label:
+                Text(context.tr('subscription.viewPaymentInstructions')),
           ),
+        ),
+      ],
+    ];
+  }
 
-          const SizedBox(height: AppSpacing.xxl),
+  List<Widget> _buildPlans(SubscriptionState state) {
+    if (state.isLoading && state.plans.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.all(AppSpacing.xxl),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+    if (state.error != null && state.plans.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Column(
+            children: [
+              const Icon(Icons.error_outline,
+                  size: 48, color: AppColors.error),
+              const SizedBox(height: AppSpacing.lg),
+              Text(state.error!,
+                  style: AppTypography.body, textAlign: TextAlign.center),
+              const SizedBox(height: AppSpacing.lg),
+              ElevatedButton(
+                onPressed: () =>
+                    ref.read(subscriptionProvider.notifier).loadPlans(),
+                child: Text(context.tr('common.retry')),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
 
-          // Actions
-          if (sub.isPending)
-            SizedBox(
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: () => context.push('/subscription/payment'),
-                icon: const Icon(Icons.payment),
-                label: const Text('View Payment Instructions'),
-              ),
-            ),
-          if (sub.isActive)
-            SizedBox(
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: () => context.push('/subscription/plans'),
-                icon: const Icon(Icons.upgrade),
-                label: const Text('Change Plan'),
-              ),
-            ),
+    return state.plans.map((plan) {
+      final isCurrentPlan = state.subscription?.planTier == plan.tier &&
+          state.subscription?.isActive == true;
+      final hasPendingChange = state.pendingChange != null;
+      return PlanCard(
+        plan: plan,
+        isCurrentPlan: isCurrentPlan,
+        isLoading: state.isLoading,
+        hasPendingChange: hasPendingChange,
+        selectedDuration: _getDuration(plan),
+        onDurationChanged: (duration) {
+          setState(() {
+            _selectedDurations[plan.tier] = duration;
+          });
+        },
+        onSelect: isCurrentPlan || hasPendingChange
+            ? null
+            : () => _handleSelectPlan(plan),
+      );
+    }).toList();
+  }
+
+  Future<void> _handleSelectPlan(Plan plan) async {
+    final state = ref.read(subscriptionProvider);
+    final hasActiveSub = state.subscription?.isActive == true;
+    final duration = _getDuration(plan);
+    final totalPrice = plan.totalPriceLabel(duration);
+    final durationLabel = duration == 1
+        ? context.tr('subscription.month1')
+        : context.tr('subscription.monthsN', [duration.toString()]);
+
+    String action;
+    if (hasActiveSub) {
+      final tierOrder = ['starter', 'professional', 'enterprise'];
+      final currentIndex = tierOrder.indexOf(state.subscription!.planTier);
+      final newIndex = tierOrder.indexOf(plan.tier);
+      action = newIndex > currentIndex
+          ? context.tr('subscription.upgradeTo', [plan.name])
+          : context.tr('subscription.downgradeTo', [plan.name]);
+    } else {
+      action = context.tr('subscription.subscribeTo', [plan.name]);
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(action),
+        content: Text(
+          context.tr(
+              'subscription.confirmBody', [plan.name, durationLabel, totalPrice]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => ctx.pop(false),
+            child: Text(context.tr('common.cancel')),
+          ),
+          ElevatedButton(
+            onPressed: () => ctx.pop(true),
+            child: Text(context.tr('common.continue_')),
+          ),
         ],
       ),
     );
+
+    if (confirmed != true || !mounted) return;
+
+    final notifier = ref.read(subscriptionProvider.notifier);
+    final bool success;
+
+    if (hasActiveSub) {
+      success = await notifier.changeSubscription(
+        plan.tier,
+        durationMonths: duration,
+      );
+    } else {
+      success = await notifier.requestSubscription(
+        plan.tier,
+        durationMonths: duration,
+      );
+    }
+
+    if (success && mounted) {
+      context.push('/subscription/payment');
+    }
   }
 
   Color _statusColor(String status) {
@@ -326,13 +454,17 @@ class _InfoRow extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: AppColors.textSecondary),
         const SizedBox(width: AppSpacing.sm),
-        Text(label, style: AppTypography.subhead.copyWith(
-          color: AppColors.textSecondary,
-        )),
+        Text(
+          label,
+          style: AppTypography.subhead
+              .copyWith(color: AppColors.textSecondary),
+        ),
         const Spacer(),
-        Text(value, style: AppTypography.subhead.copyWith(
-          fontWeight: FontWeight.w600,
-        )),
+        Text(
+          value,
+          style:
+              AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }

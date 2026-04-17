@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/payment_record.dart';
 import '../models/plan.dart';
 import '../models/subscription.dart';
 import '../services/subscription_service.dart';
@@ -8,7 +11,9 @@ class SubscriptionState {
   final Subscription? subscription;
   final Subscription? pendingChange;
   final List<Plan> plans;
+  final List<PaymentRecord> payments;
   final bool isLoading;
+  final bool isLoadingPayments;
   final String? error;
   final SubscriptionRequestResult? lastRequest;
 
@@ -16,7 +21,9 @@ class SubscriptionState {
     this.subscription,
     this.pendingChange,
     this.plans = const [],
+    this.payments = const [],
     this.isLoading = false,
+    this.isLoadingPayments = false,
     this.error,
     this.lastRequest,
   });
@@ -25,7 +32,9 @@ class SubscriptionState {
     Subscription? subscription,
     Subscription? pendingChange,
     List<Plan>? plans,
+    List<PaymentRecord>? payments,
     bool? isLoading,
+    bool? isLoadingPayments,
     String? error,
     SubscriptionRequestResult? lastRequest,
     bool clearSubscription = false,
@@ -37,7 +46,9 @@ class SubscriptionState {
       subscription: clearSubscription ? null : (subscription ?? this.subscription),
       pendingChange: clearPendingChange ? null : (pendingChange ?? this.pendingChange),
       plans: plans ?? this.plans,
+      payments: payments ?? this.payments,
       isLoading: isLoading ?? this.isLoading,
+      isLoadingPayments: isLoadingPayments ?? this.isLoadingPayments,
       error: clearError ? null : (error ?? this.error),
       lastRequest: clearLastRequest ? null : (lastRequest ?? this.lastRequest),
     );
@@ -121,19 +132,32 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
   Future<bool> uploadReceipt({
     required String paymentId,
-    required String receiptUrl,
+    required File file,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       await _service.uploadReceipt(
         paymentId: paymentId,
-        receiptUrl: receiptUrl,
+        file: file,
       );
       state = state.copyWith(isLoading: false);
       return true;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _extractError(e));
       return false;
+    }
+  }
+
+  Future<void> loadPayments() async {
+    state = state.copyWith(isLoadingPayments: true, clearError: true);
+    try {
+      final payments = await _service.getUserPayments();
+      state = state.copyWith(payments: payments, isLoadingPayments: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoadingPayments: false,
+        error: _extractError(e),
+      );
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -55,8 +56,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile updated successfully'),
+          SnackBar(
+            content: Text(context.tr('settings.profileUpdated')),
             backgroundColor: AppColors.success,
           ),
         );
@@ -80,7 +81,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final authState = ref.watch(authProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit Profile')),
+      appBar: AppBar(title: Text(context.tr('settings.editProfile'))),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
@@ -115,7 +116,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   controller: _nameController,
                   textInputAction: TextInputAction.next,
                   textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Full Name', prefixIcon: Icon(Icons.person_outlined)),
+                  decoration: InputDecoration(labelText: context.tr('auth.fullName'), prefixIcon: const Icon(Icons.person_outlined)),
                   validator: Validators.validateName,
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -124,10 +125,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 TextFormField(
                   initialValue: authState.user?.email ?? '',
                   enabled: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined),
-                    helperText: 'Email cannot be changed',
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.email'),
+                    prefixIcon: const Icon(Icons.email_outlined),
+                    helperText: context.tr('settings.emailCannotChange'),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -137,7 +138,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(labelText: 'Phone Number', prefixIcon: Icon(Icons.phone_outlined), hintText: '+1234567890'),
+                  decoration: InputDecoration(labelText: context.tr('auth.phone'), prefixIcon: const Icon(Icons.phone_outlined), hintText: context.tr('auth.phoneHint')),
                   validator: (v) => v == null || v.trim().isEmpty ? null : Validators.validatePhone(v),
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -147,7 +148,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   controller: _businessNameController,
                   textInputAction: TextInputAction.done,
                   textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Business Name (optional)', prefixIcon: Icon(Icons.business_outlined)),
+                  decoration: InputDecoration(labelText: context.tr('auth.businessNameOptional'), prefixIcon: const Icon(Icons.business_outlined)),
                   onFieldSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -159,7 +160,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Save Changes'),
+                        : Text(context.tr('settings.saveChanges')),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),

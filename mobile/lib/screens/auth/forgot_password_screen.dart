@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -65,10 +66,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 const SizedBox(height: AppSpacing.xl),
                 const Icon(Icons.lock_reset_outlined, size: 64, color: AppColors.primary),
                 const SizedBox(height: AppSpacing.xxl),
-                Text('Forgot Password', style: AppTypography.title1, textAlign: TextAlign.center),
+                Text(context.tr('auth.forgotPassword'), style: AppTypography.title1, textAlign: TextAlign.center),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  "Enter your email and we'll send you a code to reset your password",
+                  context.tr('auth.forgotPasswordInstructions'),
                   style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -96,7 +97,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.done,
                   autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                  decoration: InputDecoration(labelText: context.tr('auth.email'), prefixIcon: const Icon(Icons.email_outlined)),
                   validator: Validators.validateEmail,
                   onFieldSubmitted: (_) => _submit(),
                 ),
@@ -109,7 +110,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Send Code'),
+                        : Text(context.tr('auth.sendCode')),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -118,10 +119,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('Remember your password? ', style: AppTypography.footnote),
+                    Text(context.tr('auth.rememberPassword'), style: AppTypography.footnote),
+                    const SizedBox(width: 4),
                     GestureDetector(
                       onTap: () => context.pop(),
-                      child: Text('Log In', style: AppTypography.footnote.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                      child: Text(context.tr('auth.login'), style: AppTypography.footnote.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
                     ),
                   ],
                 ),

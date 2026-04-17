@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -87,9 +88,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Create Account', style: AppTypography.title1),
+                Text(context.tr('auth.register'), style: AppTypography.title1),
                 const SizedBox(height: AppSpacing.xs),
-                Text('Set up your Wasel account', style: AppTypography.subhead.copyWith(color: AppColors.textSecondary)),
+                Text(context.tr('auth.registerSubtitle2'), style: AppTypography.subhead.copyWith(color: AppColors.textSecondary)),
                 const SizedBox(height: AppSpacing.xxl),
 
                 // Error display
@@ -116,7 +117,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _nameController,
                   textInputAction: TextInputAction.next,
                   textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Full Name', prefixIcon: Icon(Icons.person_outlined)),
+                  decoration: InputDecoration(labelText: context.tr('auth.fullName'), prefixIcon: const Icon(Icons.person_outlined)),
                   validator: Validators.validateName,
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -127,7 +128,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
                   autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                  decoration: InputDecoration(labelText: context.tr('auth.email'), prefixIcon: const Icon(Icons.email_outlined)),
                   validator: Validators.validateEmail,
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -137,7 +138,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(labelText: 'Phone Number', prefixIcon: Icon(Icons.phone_outlined), hintText: '+1234567890'),
+                  decoration: InputDecoration(labelText: context.tr('auth.phone'), prefixIcon: const Icon(Icons.phone_outlined), hintText: context.tr('auth.phoneHint')),
                   validator: Validators.validatePhone,
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -148,7 +149,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   obscureText: _obscurePassword,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: 'Password',
+                    labelText: context.tr('auth.password'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -165,7 +166,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   obscureText: _obscureConfirm,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: 'Confirm Password',
+                    labelText: context.tr('auth.confirmPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -181,7 +182,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _businessNameController,
                   textInputAction: TextInputAction.done,
                   textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Business Name (optional)', prefixIcon: Icon(Icons.business_outlined)),
+                  decoration: InputDecoration(labelText: context.tr('auth.businessNameOptional'), prefixIcon: const Icon(Icons.business_outlined)),
                   onFieldSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -193,7 +194,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Create Account'),
+                        : Text(context.tr('auth.register')),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -202,10 +203,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('Already have an account? ', style: AppTypography.footnote),
+                    Text(context.tr('auth.hasAccount'), style: AppTypography.footnote),
+                    const SizedBox(width: 4),
                     GestureDetector(
                       onTap: () => context.pop(),
-                      child: Text('Log In', style: AppTypography.footnote.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                      child: Text(context.tr('auth.login'), style: AppTypography.footnote.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
                     ),
                   ],
                 ),

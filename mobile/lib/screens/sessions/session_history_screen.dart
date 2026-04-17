@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../models/session.dart';
 import '../../providers/sessions_provider.dart';
 import '../../theme/theme.dart';
@@ -70,7 +71,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Session History'),
+        title: Text(context.tr('sessions.history')),
       ),
       body: Column(
         children: [
@@ -82,7 +83,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Search username...',
+                      hintText: context.tr('sessions.searchUsername'),
                       prefixIcon: const Icon(Icons.search, size: 20),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(
@@ -114,41 +115,41 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
                         ? AppColors.primary
                         : null,
                   ),
-                  tooltip: 'Filter by terminate cause',
+                  tooltip: context.tr('sessions.filterByTerminateCause'),
                   onSelected: _selectTerminateCause,
                   itemBuilder: (context) => [
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: null,
-                      child: Text('All causes'),
+                      child: Text(context.tr('sessions.allCauses')),
                     ),
                     const PopupMenuDivider(),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'User-Request',
-                      child: Text('User Request'),
+                      child: Text(context.tr('sessions.userRequest')),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'Session-Timeout',
-                      child: Text('Session Timeout'),
+                      child: Text(context.tr('sessions.sessionTimeout')),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'Idle-Timeout',
-                      child: Text('Idle Timeout'),
+                      child: Text(context.tr('sessions.idleTimeout')),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'Admin-Reset',
-                      child: Text('Admin Reset'),
+                      child: Text(context.tr('sessions.adminReset')),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'NAS-Reboot',
-                      child: Text('NAS Reboot'),
+                      child: Text(context.tr('sessions.nasReboot')),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'Port-Error',
-                      child: Text('Port Error'),
+                      child: Text(context.tr('sessions.portError')),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'Lost-Carrier',
-                      child: Text('Lost Carrier'),
+                      child: Text(context.tr('sessions.lostCarrier')),
                     ),
                   ],
                 ),
@@ -180,7 +181,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
             child: Row(
               children: [
                 Text(
-                  '${state.historyTotal} record${state.historyTotal == 1 ? "" : "s"}',
+                  context.tr('sessions.recordsCount', [state.historyTotal.toString()]),
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
@@ -224,7 +225,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
               const SizedBox(height: AppSpacing.md),
               ElevatedButton(
                 onPressed: _onRefresh,
-                child: const Text('Retry'),
+                child: Text(context.tr('common.retry')),
               ),
             ],
           ),
@@ -240,7 +241,7 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
             Icon(Icons.history, size: 64, color: Colors.grey[400]),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'No session history',
+              context.tr('sessions.noSessionHistory'),
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
@@ -310,7 +311,7 @@ class _HistoryCard extends StatelessWidget {
                 Text(
                   session.startTime != null
                       ? _formatDateTime(session.startTime!)
-                      : 'N/A',
+                      : context.tr('sessions.nA'),
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
@@ -322,7 +323,7 @@ class _HistoryCard extends StatelessWidget {
                 Text(
                   session.stopTime != null
                       ? _formatDateTime(session.stopTime!)
-                      : 'Still active',
+                      : context.tr('sessions.stillActive'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: session.stopTime != null
                             ? Colors.grey[600]

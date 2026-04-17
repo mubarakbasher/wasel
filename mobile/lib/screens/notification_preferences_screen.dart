@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../i18n/app_localizations.dart';
 import '../providers/notification_prefs_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -49,7 +50,7 @@ class _NotificationPreferencesScreenState
     final notifier = ref.read(notificationPrefsProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(title: Text(context.tr('notifications.title'))),
       body: _buildBody(state, notifier),
     );
   }
@@ -74,7 +75,7 @@ class _NotificationPreferencesScreenState
               const SizedBox(height: AppSpacing.md),
               ElevatedButton(
                 onPressed: () => notifier.loadPreferences(),
-                child: const Text('Retry'),
+                child: Text(context.tr('common.retry')),
               ),
             ],
           ),

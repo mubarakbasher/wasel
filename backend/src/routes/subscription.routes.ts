@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate';
 import { validate } from '../middleware/validate';
+import { uploadReceipt as uploadReceiptMiddleware } from '../middleware/upload';
 import {
   requestSubscriptionSchema,
   changeSubscriptionSchema,
@@ -15,6 +16,8 @@ router.get('/plans', subscriptionController.getPlans);
 
 // Protected
 router.get('/', authenticate, subscriptionController.getSubscription);
+
+router.get('/payments', authenticate, subscriptionController.getUserPayments);
 
 router.post(
   '/request',
@@ -33,6 +36,7 @@ router.post(
 router.post(
   '/receipt',
   authenticate,
+  uploadReceiptMiddleware.single('receipt'),
   validate({ body: uploadReceiptSchema }),
   subscriptionController.uploadReceipt,
 );

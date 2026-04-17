@@ -57,6 +57,9 @@ dependencies:
   pdf: ^3.11.2
   printing: ^5.13.5
 
+  # Image picking (camera + gallery)
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

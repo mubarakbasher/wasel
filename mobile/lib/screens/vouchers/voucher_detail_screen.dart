@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart' show Share;
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/vouchers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -68,24 +69,22 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     if (voucher == null) return;
 
     final isCurrentlyEnabled = !voucher.isDisabled;
-    final newStatus = isCurrentlyEnabled ? 'Disable' : 'Enable';
+    final titleKey = isCurrentlyEnabled ? 'vouchers.disableVoucherTitle' : 'vouchers.enableVoucherTitle';
+    final bodyKey = isCurrentlyEnabled ? 'vouchers.disableVoucherBody' : 'vouchers.enableVoucherBody';
+    final actionKey = isCurrentlyEnabled ? 'vouchers.disable' : 'vouchers.enable';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('$newStatus Voucher?'),
-        content: Text(
-          isCurrentlyEnabled
-              ? 'This will prevent the voucher from being used for authentication.'
-              : 'This will re-enable the voucher for authentication.',
-        ),
+        title: Text(context.tr(titleKey)),
+        content: Text(context.tr(bodyKey)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.tr('common.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text(newStatus),
+            child: Text(context.tr(actionKey)),
           ),
         ],
       ),
@@ -111,19 +110,17 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Voucher?'),
-        content: const Text(
-          'Are you sure you want to delete this voucher? Active sessions will be disconnected. This action cannot be undone.',
-        ),
+        title: Text(context.tr('vouchers.deleteVoucherTitle')),
+        content: Text(context.tr('vouchers.deleteVoucherBody')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.tr('common.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text(context.tr('common.delete')),
           ),
         ],
       ),
@@ -136,7 +133,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
         .deleteVoucher(widget.routerId, voucher.id);
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Voucher deleted successfully')),
+        SnackBar(content: Text(context.tr('vouchers.deletedSuccessfully'))),
       );
       context.pop();
     }
@@ -146,14 +143,17 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     final voucher = ref.read(vouchersProvider).selectedVoucher;
     if (voucher == null) return;
 
+    final wifiLabel = context.tr('vouchers.wifiVoucher');
+    final codeLabel = context.tr('vouchers.voucherCode');
+    final planLabel = context.tr('vouchers.plan');
     final text = StringBuffer()
-      ..writeln('WiFi Voucher')
+      ..writeln(wifiLabel)
       ..writeln('─────────────')
-      ..writeln('Code: ${voucher.username}')
-      ..writeln('Plan: ${voucher.limitDisplayText}')
+      ..writeln('$codeLabel: ${voucher.username}')
+      ..writeln('$planLabel: ${voucher.limitDisplayText}')
       ..writeln('─────────────');
     if (voucher.expiration != null) {
-      text.writeln('Valid until: ${voucher.expiration}');
+      text.writeln('${context.tr('vouchers.expires')}: ${voucher.expiration}');
     }
 
     Share.share(text.toString());
@@ -165,7 +165,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
 
     Clipboard.setData(ClipboardData(text: voucher.username));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Credentials copied to clipboard')),
+      SnackBar(content: Text(context.tr('vouchers.credentialsCopied'))),
     );
   }
 
@@ -176,7 +176,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Voucher Details'),
+        title: Text(context.tr('vouchers.voucherDetails')),
         actions: [
           if (voucher != null) ...[
             IconButton(
@@ -194,7 +194,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           ? const Center(child: CircularProgressIndicator())
           : voucher == null
               ? Center(
-                  child: Text('Voucher not found',
+                  child: Text(context.tr('vouchers.voucherNotFound'),
                       style: AppTypography.body
                           .copyWith(color: AppColors.textSecondary)),
                 )
@@ -234,14 +234,14 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
         children: [
           Row(
             children: [
-              Text('Credentials', style: AppTypography.title3),
+              Text(context.tr('vouchers.credentials'), style: AppTypography.title3),
               const Spacer(),
               _StatusBadge(status: voucher.status),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
           // Voucher Code
-          Text('Voucher Code',
+          Text(context.tr('vouchers.voucherCode'),
               style: AppTypography.caption1
                   .copyWith(color: AppColors.textSecondary)),
           const SizedBox(height: AppSpacing.xs),
@@ -262,8 +262,8 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
                   Clipboard.setData(
                       ClipboardData(text: voucher.username));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Code copied')),
+                    SnackBar(
+                        content: Text(context.tr('vouchers.codeCopied'))),
                   );
                 },
               ),
@@ -275,7 +275,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
             child: OutlinedButton.icon(
               onPressed: _copyCredentials,
               icon: const Icon(Icons.copy_all, size: 18),
-              label: const Text('Copy All'),
+              label: Text(context.tr('vouchers.copyAll')),
             ),
           ),
         ],
@@ -311,7 +311,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
                 color: AppColors.textSecondary,
               ),
               const SizedBox(width: AppSpacing.sm),
-              Text('Usage', style: AppTypography.title3),
+              Text(context.tr('vouchers.usage'), style: AppTypography.title3),
               const Spacer(),
               Text(
                 '${(percent * 100).toStringAsFixed(0)}%',
@@ -353,24 +353,24 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Details', style: AppTypography.title3),
+          Text(context.tr('vouchers.details'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.lg),
           _InfoRow(
-            label: 'Limit',
+            label: context.tr('vouchers.limit'),
             value: voucher.limitDisplayText,
             icon: Icons.layers,
           ),
           if (voucher.price != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-              label: 'Price',
+              label: context.tr('vouchers.price'),
               value: voucher.price!.toStringAsFixed(2),
               icon: Icons.attach_money,
             ),
           ],
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-            label: 'Status',
+            label: context.tr('vouchers.status'),
             value: _capitalizeStatus(voucher.status),
             icon: Icons.circle,
             valueColor: _statusColor(voucher.status),
@@ -378,7 +378,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           if (voucher.expiration != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-              label: 'Expires',
+              label: context.tr('vouchers.expires'),
               value: voucher.expiration!,
               icon: Icons.timer,
             ),
@@ -386,7 +386,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           if (voucher.simultaneousUse != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-              label: 'Simultaneous Use',
+              label: context.tr('vouchers.simultaneousUse'),
               value: '${voucher.simultaneousUse}',
               icon: Icons.devices,
             ),
@@ -394,14 +394,14 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           if (voucher.comment != null && voucher.comment!.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-              label: 'Comment',
+              label: context.tr('vouchers.comment'),
               value: voucher.comment!,
               icon: Icons.comment,
             ),
           ],
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-            label: 'Created',
+            label: context.tr('vouchers.created'),
             value: _formatDateTime(voucher.createdAt),
             icon: Icons.calendar_today,
           ),
@@ -424,7 +424,9 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
                 voucher.isDisabled ? Icons.check_circle : Icons.block,
                 size: 20,
               ),
-              label: Text(voucher.isDisabled ? 'Enable Voucher' : 'Disable Voucher'),
+              label: Text(voucher.isDisabled
+                  ? context.tr('vouchers.enableVoucher')
+                  : context.tr('vouchers.disableVoucher')),
               style: !voucher.isDisabled
                   ? ElevatedButton.styleFrom(
                       backgroundColor: AppColors.warning,
@@ -441,7 +443,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           child: OutlinedButton.icon(
             onPressed: _shareVoucher,
             icon: const Icon(Icons.share, size: 20),
-            label: const Text('Share Voucher'),
+            label: Text(context.tr('vouchers.shareVoucher')),
           ),
         ),
       ],

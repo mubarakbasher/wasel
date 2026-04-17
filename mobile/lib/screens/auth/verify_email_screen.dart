@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -57,7 +58,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Email verified successfully! Please log in.'), backgroundColor: AppColors.success),
+          SnackBar(content: Text(context.tr('auth.emailVerifiedSuccess')), backgroundColor: AppColors.success),
         );
         context.go('/login');
       }
@@ -70,7 +71,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       _startCooldown();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Verification code resent'), backgroundColor: AppColors.success),
+          SnackBar(content: Text(context.tr('auth.verificationResent')), backgroundColor: AppColors.success),
         );
       }
     } catch (_) {}
@@ -101,10 +102,10 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                 const SizedBox(height: AppSpacing.xl),
                 const Icon(Icons.mark_email_read_outlined, size: 64, color: AppColors.primary),
                 const SizedBox(height: AppSpacing.xxl),
-                Text('Verify Your Email', style: AppTypography.title1, textAlign: TextAlign.center),
+                Text(context.tr('auth.verifyEmail'), style: AppTypography.title1, textAlign: TextAlign.center),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'Enter the 6-digit code sent to\n${widget.email}',
+                  context.tr('auth.enterOtpSent', [widget.email]),
                   style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -133,8 +134,8 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                   textAlign: TextAlign.center,
                   maxLength: 6,
                   style: AppTypography.title1.copyWith(letterSpacing: 12),
-                  decoration: const InputDecoration(
-                    hintText: '000000',
+                  decoration: InputDecoration(
+                    hintText: context.tr('auth.otpHint'),
                     counterText: '',
                   ),
                   validator: Validators.validateOtp,
@@ -149,7 +150,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                     onPressed: authState.isLoading ? null : _verify,
                     child: authState.isLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Verify'),
+                        : Text(context.tr('auth.verify')),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -159,7 +160,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                   child: TextButton(
                     onPressed: _resendCooldown > 0 || authState.isLoading ? null : _resend,
                     child: Text(
-                      _resendCooldown > 0 ? 'Resend Code (${_resendCooldown}s)' : 'Resend Code',
+                      _resendCooldown > 0 ? context.tr('auth.resendOtpCountdown', [_resendCooldown.toString()]) : context.tr('auth.resendOtp'),
                       style: AppTypography.footnote.copyWith(
                         color: _resendCooldown > 0 ? AppColors.textTertiary : AppColors.primary,
                       ),

@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/subscription_provider.dart';
+import '../../services/subscription_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
@@ -16,14 +21,73 @@ class PaymentScreen extends ConsumerStatefulWidget {
 }
 
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
-  final _receiptController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-  bool _receiptSubmitted = false;
+  int _currentStep = 0;
+  File? _receiptFile;
 
-  @override
-  void dispose() {
-    _receiptController.dispose();
-    super.dispose();
+  Future<void> _pickReceipt(ImageSource source) async {
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(
+      source: source,
+      maxWidth: 2000,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
+    setState(() {
+      _receiptFile = File(picked.path);
+    });
+  }
+
+  Future<void> _showSourcePicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: AppColors.primary),
+              title: Text(context.tr('payment.takePhoto')),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickReceipt(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: AppColors.primary),
+              title: Text(context.tr('payment.pickFromGallery')),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickReceipt(ImageSource.gallery);
+              },
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleUpload() async {
+    final request = ref.read(subscriptionProvider).lastRequest;
+    if (request == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('payment.noPendingPayment'))),
+      );
+      return;
+    }
+    if (_receiptFile == null) return;
+
+    final success = await ref.read(subscriptionProvider.notifier).uploadReceipt(
+          paymentId: request.paymentId,
+          file: _receiptFile!,
+        );
+
+    if (success && mounted) {
+      setState(() => _currentStep = 2);
+    }
   }
 
   @override
@@ -33,229 +97,274 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final sub = state.subscription;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Payment')),
-      body: ListView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        children: [
-          // Info banner
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-            ),
+      appBar: AppBar(
+        title: Text(context.tr('payment.title')),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/subscription'),
+        ),
+      ),
+      body: Stepper(
+        currentStep: _currentStep,
+        type: StepperType.vertical,
+        onStepContinue: () {
+          if (_currentStep == 0) {
+            setState(() => _currentStep = 1);
+          } else if (_currentStep == 1) {
+            _handleUpload();
+          }
+        },
+        onStepCancel: () {
+          if (_currentStep > 0 && _currentStep < 2) {
+            setState(() => _currentStep -= 1);
+          }
+        },
+        controlsBuilder: (context, details) {
+          if (_currentStep == 2) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.lg),
             child: Row(
               children: [
-                const Icon(Icons.info_outline, color: AppColors.primary),
-                const SizedBox(width: AppSpacing.md),
                 Expanded(
-                  child: Text(
-                    'Complete a bank transfer using the details below, then upload your receipt.',
-                    style: AppTypography.subhead.copyWith(
-                      color: AppColors.primaryDark,
+                  child: SizedBox(
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _currentStep == 1 &&
+                              (state.isLoading || _receiptFile == null)
+                          ? null
+                          : details.onStepContinue,
+                      child: state.isLoading && _currentStep == 1
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              _currentStep == 0
+                                  ? context.tr('common.continue_')
+                                  : context.tr('payment.submitReceipt'),
+                            ),
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: AppSpacing.xxl),
-
-          // Payment details card
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Payment Details', style: AppTypography.title3),
-                const SizedBox(height: AppSpacing.lg),
-                if (sub != null)
-                  _DetailRow(label: 'Plan', value: sub.planName),
-                if (request != null) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  _DetailRow(
-                    label: 'Amount',
-                    value:
-                        '${request.currency} ${request.amount.toStringAsFixed(2)}',
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  _CopyableRow(
-                    label: 'Reference Code',
-                    value: request.referenceCode,
+                if (_currentStep == 1) ...[
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: details.onStepCancel,
+                        child: Text(context.tr('common.back')),
+                      ),
+                    ),
                   ),
                 ],
-                const SizedBox(height: AppSpacing.lg),
-                const Divider(height: 1),
-                const SizedBox(height: AppSpacing.lg),
-                Text('Bank Details', style: AppTypography.headline),
-                const SizedBox(height: AppSpacing.md),
-                const _DetailRow(label: 'Bank', value: 'Contact admin'),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Include your reference code in the transfer description.',
-                  style: AppTypography.footnote,
-                ),
               ],
             ),
+          );
+        },
+        steps: [
+          Step(
+            title: Text(context.tr('payment.stepBankDetails')),
+            isActive: _currentStep >= 0,
+            state: _currentStep > 0 ? StepState.complete : StepState.indexed,
+            content: _buildBankDetails(sub?.planName, request),
           ),
-
-          const SizedBox(height: AppSpacing.xxl),
-
-          // Receipt upload section
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: _receiptSubmitted
-                ? _buildReceiptSuccess()
-                : _buildReceiptForm(state),
+          Step(
+            title: Text(context.tr('payment.stepUploadReceipt')),
+            isActive: _currentStep >= 1,
+            state: _currentStep > 1
+                ? StepState.complete
+                : _currentStep == 1
+                    ? StepState.indexed
+                    : StepState.disabled,
+            content: _buildUploadStep(state),
           ),
-
-          const SizedBox(height: AppSpacing.xxl),
-
-          // Back to subscription
-          SizedBox(
-            height: 48,
-            child: OutlinedButton(
-              onPressed: () => context.go('/subscription'),
-              child: const Text('Back to Subscription'),
-            ),
+          Step(
+            title: Text(context.tr('payment.stepSuccess')),
+            isActive: _currentStep >= 2,
+            state: _currentStep >= 2 ? StepState.complete : StepState.disabled,
+            content: _buildSuccessStep(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildReceiptSuccess() {
+  Widget _buildBankDetails(String? planName, SubscriptionRequestResult? request) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.check_circle, size: 48, color: AppColors.success),
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.primaryLight,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline,
+                  color: AppColors.primary, size: 20),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  context.tr('payment.bankTransferInfo'),
+                  style: AppTypography.footnote.copyWith(
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Text(context.tr('payment.paymentDetails'),
+            style: AppTypography.headline),
         const SizedBox(height: AppSpacing.md),
-        Text('Receipt Submitted', style: AppTypography.title3),
+        if (planName != null)
+          _DetailRow(
+              label: context.tr('payment.plan'), value: planName),
+        if (request != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _DetailRow(
+            label: context.tr('payment.amount'),
+            value:
+                '${request.currency} ${request.amount.toStringAsFixed(2)}',
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _CopyableRow(
+            label: context.tr('payment.referenceCode'),
+            value: request.referenceCode,
+          ),
+        ],
+        const SizedBox(height: AppSpacing.lg),
+        const Divider(height: 1),
+        const SizedBox(height: AppSpacing.lg),
+        Text(context.tr('payment.bankDetails'),
+            style: AppTypography.headline),
+        const SizedBox(height: AppSpacing.sm),
+        _DetailRow(
+          label: context.tr('payment.bank'),
+          value: context.tr('payment.contactAdmin'),
+        ),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'Your payment is being reviewed. You will be notified once your subscription is activated.',
-          style: AppTypography.subhead.copyWith(
-            color: AppColors.textSecondary,
-          ),
-          textAlign: TextAlign.center,
+          context.tr('payment.includeReference'),
+          style: AppTypography.footnote,
         ),
       ],
     );
   }
 
-  Widget _buildReceiptForm(SubscriptionState state) {
-    return Form(
-      key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Upload Receipt', style: AppTypography.title3),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Provide a URL to your payment receipt (e.g., image upload link or screenshot URL).',
-            style: AppTypography.footnote,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          TextFormField(
-            controller: _receiptController,
-            keyboardType: TextInputType.url,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              labelText: 'Receipt URL',
-              hintText: 'https://...',
-              prefixIcon: Icon(Icons.link),
+  Widget _buildUploadStep(SubscriptionState state) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          context.tr('payment.receiptPhotoDesc'),
+          style: AppTypography.footnote,
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        if (_receiptFile != null) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            child: Image.file(
+              _receiptFile!,
+              height: 220,
+              width: double.infinity,
+              fit: BoxFit.cover,
             ),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Receipt URL is required';
-              }
-              final uri = Uri.tryParse(value.trim());
-              if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-                return 'Enter a valid URL';
-              }
-              return null;
-            },
           ),
-
-          if (state.error != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.errorLight,
-                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline,
-                      color: AppColors.error, size: 20),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      state.error!,
-                      style: AppTypography.footnote.copyWith(
-                        color: AppColors.error,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.md),
+          OutlinedButton.icon(
+            onPressed: _showSourcePicker,
+            icon: const Icon(Icons.refresh),
+            label: Text(context.tr('payment.changePhoto')),
+          ),
+        ] else ...[
           SizedBox(
-            height: 48,
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: state.isLoading ? null : _handleUpload,
-              icon: state.isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.upload),
-              label: const Text('Submit Receipt'),
+            height: 140,
+            child: OutlinedButton.icon(
+              onPressed: _showSourcePicker,
+              icon: const Icon(Icons.add_a_photo, size: 32),
+              label: Text(context.tr('payment.selectReceiptPhoto')),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(
+                    color: AppColors.border, style: BorderStyle.solid),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                ),
+              ),
             ),
           ),
         ],
-      ),
+        if (state.error != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.errorLight,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline,
+                    color: AppColors.error, size: 20),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    state.error!,
+                    style: AppTypography.footnote.copyWith(
+                      color: AppColors.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 
-  Future<void> _handleUpload() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final request = ref.read(subscriptionProvider).lastRequest;
-    if (request == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No pending payment found.')),
-      );
-      return;
-    }
-
-    final success = await ref.read(subscriptionProvider.notifier).uploadReceipt(
-          paymentId: request.paymentId,
-          receiptUrl: _receiptController.text.trim(),
-        );
-
-    if (success && mounted) {
-      setState(() => _receiptSubmitted = true);
-    }
+  Widget _buildSuccessStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: Column(
+            children: [
+              const Icon(Icons.check_circle,
+                  size: 72, color: AppColors.success),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                context.tr('payment.receiptSubmitted'),
+                style: AppTypography.title2,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                context.tr('payment.receiptSubmittedDesc'),
+                style: AppTypography.subhead
+                    .copyWith(color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xxl),
+        SizedBox(
+          height: 48,
+          child: ElevatedButton(
+            onPressed: () => context.go('/subscription'),
+            child: Text(context.tr('payment.backToSubscription')),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -270,12 +379,16 @@ class _DetailRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: AppTypography.subhead.copyWith(
-          color: AppColors.textSecondary,
-        )),
-        Text(value, style: AppTypography.subhead.copyWith(
-          fontWeight: FontWeight.w600,
-        )),
+        Text(
+          label,
+          style: AppTypography.subhead
+              .copyWith(color: AppColors.textSecondary),
+        ),
+        Text(
+          value,
+          style:
+              AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }
@@ -292,9 +405,11 @@ class _CopyableRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: AppTypography.subhead.copyWith(
-          color: AppColors.textSecondary,
-        )),
+        Text(
+          label,
+          style: AppTypography.subhead
+              .copyWith(color: AppColors.textSecondary),
+        ),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -310,13 +425,14 @@ class _CopyableRow extends StatelessWidget {
               onTap: () {
                 Clipboard.setData(ClipboardData(text: value));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Reference code copied'),
-                    duration: Duration(seconds: 2),
+                  SnackBar(
+                    content: Text(context.tr('payment.referenceCopied')),
+                    duration: const Duration(seconds: 2),
                   ),
                 );
               },
-              child: const Icon(Icons.copy, size: 18, color: AppColors.primary),
+              child: const Icon(Icons.copy,
+                  size: 18, color: AppColors.primary),
             ),
           ],
         ),

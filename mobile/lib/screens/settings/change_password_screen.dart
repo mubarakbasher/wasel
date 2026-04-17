@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -47,8 +48,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password changed successfully'),
+          SnackBar(
+            content: Text(context.tr('settings.passwordChanged')),
             backgroundColor: AppColors.success,
           ),
         );
@@ -72,7 +73,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     final authState = ref.watch(authProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Change Password')),
+      appBar: AppBar(title: Text(context.tr('settings.changePassword'))),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
@@ -108,14 +109,14 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                   obscureText: _obscureCurrent,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: 'Current Password',
+                    labelText: context.tr('auth.currentPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined),
                       onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent),
                     ),
                   ),
-                  validator: (v) => v == null || v.isEmpty ? 'Current password is required' : null,
+                  validator: (v) => v == null || v.isEmpty ? context.tr('auth.currentPasswordRequired') : null,
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -125,7 +126,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                   obscureText: _obscureNew,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: 'New Password',
+                    labelText: context.tr('auth.newPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -142,7 +143,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                   obscureText: _obscureConfirm,
                   textInputAction: TextInputAction.done,
                   decoration: InputDecoration(
-                    labelText: 'Confirm New Password',
+                    labelText: context.tr('auth.confirmNewPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -161,7 +162,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Change Password'),
+                        : Text(context.tr('settings.changePassword')),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),

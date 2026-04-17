@@ -131,6 +131,18 @@ class ApiClient {
         cancelToken: cancelToken,
       );
 
+  Future<Response<T>> postMultipart<T>(
+    String path,
+    FormData data, {
+    CancelToken? cancelToken,
+  }) =>
+      _dio.post<T>(
+        path,
+        data: data,
+        options: Options(contentType: 'multipart/form-data'),
+        cancelToken: cancelToken,
+      );
+
   // ---------------------------------------------------------------------------
   // Interceptors
   // ---------------------------------------------------------------------------

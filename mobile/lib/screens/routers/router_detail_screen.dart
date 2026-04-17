@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
 import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
@@ -34,20 +35,20 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Router?'),
+      builder: (ctx) => AlertDialog(
+        title: Text(context.tr('routers.deleteRouter')),
         content: Text(
-          "Are you sure you want to delete '${router.name}'? This will remove the WireGuard tunnel and all associated configuration. This action cannot be undone.",
+          context.tr('routers.deleteConfirmNamed', [router.name]),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(context.tr('common.cancel')),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text(context.tr('common.delete')),
           ),
         ],
       ),
@@ -59,7 +60,7 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
         await ref.read(routersProvider.notifier).deleteRouter(router.id);
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Router deleted successfully')),
+        SnackBar(content: Text(context.tr('routers.deleted'))),
       );
       context.pop();
     }
@@ -73,7 +74,7 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(router?.name ?? 'Router Details'),
+        title: Text(router?.name ?? context.tr('routers.routerDetails')),
         actions: [
           if (router != null) ...[
             IconButton(
@@ -92,7 +93,7 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           ? const Center(child: CircularProgressIndicator())
           : router == null
               ? Center(
-                  child: Text('Router not found',
+                  child: Text(context.tr('routers.notFound'),
                       style: AppTypography.body
                           .copyWith(color: AppColors.textSecondary)),
                 )
@@ -160,14 +161,14 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           _InfoRow(
-            label: 'Last Seen',
-            value: _formatLastSeen(router.lastSeen),
+            label: context.tr('routers.lastSeenLabel'),
+            value: _formatLastSeen(context, router.lastSeen),
             icon: Icons.access_time,
           ),
           if (router.tunnelIp != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-              label: 'Tunnel IP',
+              label: context.tr('routers.tunnelIp'),
               value: router.tunnelIp!,
               icon: Icons.lan,
             ),
@@ -175,7 +176,7 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           if (status?.liveDataAvailable == false) ...[
             const SizedBox(height: AppSpacing.md),
             Text(
-              'Live data unavailable',
+              context.tr('routers.liveDataUnavailable'),
               style: AppTypography.caption1.copyWith(color: AppColors.warning),
             ),
           ],
@@ -199,19 +200,19 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('System Information', style: AppTypography.title3),
+          Text(context.tr('routers.systemInformation'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.lg),
-          _InfoRow(label: 'Identity', value: info.identity, icon: Icons.badge),
+          _InfoRow(label: context.tr('routers.identity'), value: info.identity, icon: Icons.badge),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-              label: 'Uptime', value: info.uptime, icon: Icons.timer),
+              label: context.tr('routers.uptimeLabel'), value: info.uptime, icon: Icons.timer),
           const SizedBox(height: AppSpacing.md),
           // CPU Load with progress bar
           Row(
             children: [
               Icon(Icons.memory, size: 18, color: AppColors.textSecondary),
               const SizedBox(width: AppSpacing.sm),
-              Text('CPU Load',
+              Text(context.tr('routers.cpuLoad'),
                   style: AppTypography.subhead
                       .copyWith(color: AppColors.textSecondary)),
               const Spacer(),
@@ -242,7 +243,7 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
             children: [
               Icon(Icons.storage, size: 18, color: AppColors.textSecondary),
               const SizedBox(width: AppSpacing.sm),
-              Text('Memory',
+              Text(context.tr('routers.memoryLabel'),
                   style: AppTypography.subhead
                       .copyWith(color: AppColors.textSecondary)),
               const Spacer(),
@@ -271,26 +272,26 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-              label: 'Board', value: info.boardName, icon: Icons.developer_board),
+              label: context.tr('routers.board'), value: info.boardName, icon: Icons.developer_board),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-              label: 'Architecture', value: info.architecture, icon: Icons.architecture),
+              label: context.tr('routers.architecture'), value: info.architecture, icon: Icons.architecture),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-              label: 'RouterOS', value: info.version, icon: Icons.info_outline),
+              label: context.tr('routers.routerOS'), value: info.version, icon: Icons.info_outline),
           if (info.model != null) ...[
             const SizedBox(height: AppSpacing.md),
-            _InfoRow(label: 'Model', value: info.model!, icon: Icons.devices),
+            _InfoRow(label: context.tr('routers.model'), value: info.model!, icon: Icons.devices),
           ],
           if (info.serialNumber != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-                label: 'Serial', value: info.serialNumber!, icon: Icons.tag),
+                label: context.tr('routers.serial'), value: info.serialNumber!, icon: Icons.tag),
           ],
           if (info.firmware != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-                label: 'Firmware',
+                label: context.tr('routers.firmwareLabel'),
                 value: info.firmware!,
                 icon: Icons.system_update),
           ],
@@ -310,31 +311,31 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Router Details', style: AppTypography.title3),
+          Text(context.tr('routers.routerDetails'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.lg),
-          _InfoRow(label: 'Name', value: router.name, icon: Icons.label),
+          _InfoRow(label: context.tr('routers.name'), value: router.name, icon: Icons.label),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-            label: 'Model',
+            label: context.tr('routers.model'),
             value: router.model ?? '\u2014',
             icon: Icons.devices,
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-            label: 'RouterOS',
+            label: context.tr('routers.routerOS'),
             value: router.rosVersion ?? '\u2014',
             icon: Icons.info_outline,
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-            label: 'API User',
-            value: router.apiUser ?? 'Not configured',
+            label: context.tr('routers.apiUser'),
+            value: router.apiUser ?? context.tr('routers.notConfigured'),
             icon: Icons.person,
           ),
           if (router.wgPublicKey != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-              label: 'WG Key',
+              label: context.tr('routers.wgKey'),
               value: router.wgPublicKey!.length > 20
                   ? '${router.wgPublicKey!.substring(0, 20)}...'
                   : router.wgPublicKey!,
@@ -344,14 +345,14 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           if (router.nasIdentifier != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-              label: 'NAS ID',
+              label: context.tr('routers.nasId'),
               value: router.nasIdentifier!,
               icon: Icons.fingerprint,
             ),
           ],
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-            label: 'Created',
+            label: context.tr('routers.created'),
             value: _formatDate(router.createdAt),
             icon: Icons.calendar_today,
           ),
@@ -370,7 +371,7 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
             onPressed: () =>
                 context.push('/routers/setup-guide', extra: router.id),
             icon: const Icon(Icons.article),
-            label: const Text('View Setup Guide'),
+            label: Text(context.tr('routers.viewSetupGuide')),
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -381,7 +382,7 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
             onPressed: () =>
                 context.push('/routers/edit', extra: router.id),
             icon: const Icon(Icons.edit),
-            label: const Text('Edit Router'),
+            label: Text(context.tr('routers.editRouter')),
           ),
         ),
       ],
@@ -405,14 +406,14 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
     return status[0].toUpperCase() + status.substring(1);
   }
 
-  String _formatLastSeen(DateTime? lastSeen) {
-    if (lastSeen == null) return 'Never';
+  String _formatLastSeen(BuildContext context, DateTime? lastSeen) {
+    if (lastSeen == null) return context.tr('routers.never');
     final diff = DateTime.now().difference(lastSeen);
-    if (diff.inSeconds < 60) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 30) return '${diff.inDays}d ago';
-    return '${(diff.inDays / 30).floor()}mo ago';
+    if (diff.inSeconds < 60) return context.tr('routers.justNow');
+    if (diff.inMinutes < 60) return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
+    if (diff.inHours < 24) return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
+    if (diff.inDays < 30) return context.tr('routers.daysAgo', [diff.inDays.toString()]);
+    return context.tr('routers.monthsAgo', [(diff.inDays / 30).floor().toString()]);
   }
 
   String _formatDate(DateTime date) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../i18n/app_localizations.dart';
 import '../../providers/reports_provider.dart';
 import '../../providers/routers_provider.dart';
 import '../../theme/theme.dart';
@@ -50,13 +51,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   String _reportTypeLabel(String type) {
     switch (type) {
       case 'voucher-sales':
-        return 'Voucher Sales';
+        return context.tr('reports.voucherSales');
       case 'sessions':
-        return 'Sessions';
+        return context.tr('reports.sessions');
       case 'revenue':
-        return 'Revenue';
+        return context.tr('reports.revenue');
       case 'router-uptime':
-        return 'Router Uptime';
+        return context.tr('reports.routerUptime');
       default:
         return type;
     }
@@ -152,12 +153,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Reports'),
+        title: Text(context.tr('reports.title')),
         actions: [
           if (state.reportData != null)
             IconButton(
               icon: const Icon(Icons.file_download_outlined),
-              tooltip: 'Export CSV',
+              tooltip: context.tr('reports.exportCsv'),
               onPressed: state.isLoading ? null : _exportReport,
             ),
         ],
@@ -199,7 +200,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                         )
                       : const Icon(Icons.bar_chart),
                   label: Text(
-                      state.isLoading ? 'Generating...' : 'Generate Report'),
+                      state.isLoading
+                          ? context.tr('reports.generating')
+                          : context.tr('reports.generateReport')),
                 ),
               ),
               const SizedBox(height: AppSpacing.xxl),
@@ -222,7 +225,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ? FloatingActionButton.extended(
               onPressed: state.isLoading ? null : _exportReport,
               icon: const Icon(Icons.share),
-              label: const Text('Export & Share'),
+              label: Text(context.tr('reports.exportAndShare')),
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.textInverse,
             )
@@ -240,7 +243,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Report Type',
+        Text(context.tr('reports.reportType'),
             style: AppTypography.headline.copyWith(fontSize: 15)),
         const SizedBox(height: AppSpacing.sm),
         Wrap(
@@ -294,7 +297,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Date Range',
+        Text(context.tr('reports.dateRange'),
             style: AppTypography.headline.copyWith(fontSize: 15)),
         const SizedBox(height: AppSpacing.sm),
         InkWell(
@@ -339,7 +342,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Router (Optional)',
+        Text(context.tr('reports.routerOptional'),
             style: AppTypography.headline.copyWith(fontSize: 15)),
         const SizedBox(height: AppSpacing.sm),
         Container(
@@ -352,12 +355,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String?>(
               value: state.routerId,
-              hint: const Text('All routers'),
+              hint: Text(context.tr('reports.allRouters')),
               isExpanded: true,
               items: [
-                const DropdownMenuItem<String?>(
+                DropdownMenuItem<String?>(
                   value: null,
-                  child: Text('All routers'),
+                  child: Text(context.tr('reports.allRouters')),
                 ),
                 ...routersState.routers.map((router) {
                   return DropdownMenuItem<String?>(
@@ -456,20 +459,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Summary', style: AppTypography.title3),
+        Text(context.tr('reports.summary'), style: AppTypography.title3),
         const SizedBox(height: AppSpacing.md),
         Row(
           children: [
             Expanded(
                 child: _SummaryCard(
-                    label: 'Created',
+                    label: context.tr('reports.created'),
                     value: '$created',
                     color: AppColors.primary,
                     icon: Icons.add_circle_outline)),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
                 child: _SummaryCard(
-                    label: 'Used',
+                    label: context.tr('reports.used'),
                     value: '$used',
                     color: AppColors.secondary,
                     icon: Icons.check_circle_outline)),
@@ -480,14 +483,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           children: [
             Expanded(
                 child: _SummaryCard(
-                    label: 'Expired',
+                    label: context.tr('reports.expired'),
                     value: '$expired',
                     color: AppColors.error,
                     icon: Icons.cancel_outlined)),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
                 child: _SummaryCard(
-                    label: 'Active',
+                    label: context.tr('reports.active'),
                     value: '$active',
                     color: AppColors.success,
                     icon: Icons.radio_button_checked)),
@@ -495,11 +498,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ),
         if (dailyBreakdown.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xxl),
-          Text('Daily Breakdown', style: AppTypography.title3),
+          Text(context.tr('reports.dailyBreakdown'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.md),
           ...dailyBreakdown.map((day) => _DailyBreakdownTile(
                 date: day['date'] as String? ?? '',
-                value: '${day['count'] ?? 0} vouchers',
+                value: '${day['count'] ?? 0} ${context.tr('reports.vouchers')}',
                 icon: Icons.confirmation_number_outlined,
               )),
         ],
@@ -523,20 +526,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Summary', style: AppTypography.title3),
+        Text(context.tr('reports.summary'), style: AppTypography.title3),
         const SizedBox(height: AppSpacing.md),
         Row(
           children: [
             Expanded(
                 child: _SummaryCard(
-                    label: 'Total Sessions',
+                    label: context.tr('reports.totalSessions'),
                     value: '$totalSessions',
                     color: AppColors.primary,
                     icon: Icons.wifi)),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
                 child: _SummaryCard(
-                    label: 'Avg Duration',
+                    label: context.tr('reports.avgDuration'),
                     value: _formatDuration(avgDuration),
                     color: AppColors.secondary,
                     icon: Icons.timer)),
@@ -547,14 +550,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           children: [
             Expanded(
                 child: _SummaryCard(
-                    label: 'Data In',
+                    label: context.tr('reports.dataIn'),
                     value: _formatBytes(totalDataIn),
                     color: AppColors.success,
                     icon: Icons.arrow_downward)),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
                 child: _SummaryCard(
-                    label: 'Data Out',
+                    label: context.tr('reports.dataOut'),
                     value: _formatBytes(totalDataOut),
                     color: const Color(0xFF5856D6),
                     icon: Icons.arrow_upward)),
@@ -562,12 +565,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ),
         if (dailyBreakdown.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xxl),
-          Text('Daily Breakdown', style: AppTypography.title3),
+          Text(context.tr('reports.dailyBreakdown'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.md),
           ...dailyBreakdown.map((day) => _DailyBreakdownTile(
                 date: day['date'] as String? ?? '',
                 value:
-                    '${day['sessions'] ?? 0} sessions, ${_formatBytes((day['dataIn'] as int?) ?? 0)} in',
+                    '${day['sessions'] ?? 0} ${context.tr('reports.sessions')}, ${_formatBytes((day['dataIn'] as int?) ?? 0)} in',
                 icon: Icons.wifi,
               )),
         ],
@@ -589,17 +592,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Summary', style: AppTypography.title3),
+        Text(context.tr('reports.summary'), style: AppTypography.title3),
         const SizedBox(height: AppSpacing.md),
         _SummaryCard(
-          label: 'Total Vouchers',
+          label: context.tr('reports.totalVouchers'),
           value: '$totalVouchers',
           color: AppColors.primary,
           icon: Icons.confirmation_number,
         ),
         if (profileBreakdown.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xxl),
-          Text('Breakdown by Profile', style: AppTypography.title3),
+          Text(context.tr('reports.breakdownByProfile'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.md),
           ...profileBreakdown.map((profile) {
             final profileName =
@@ -636,7 +639,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                 BorderRadius.circular(AppSpacing.radiusSm),
                           ),
                           child: Text(
-                            '$count vouchers',
+                            '$count ${context.tr('reports.vouchers')}',
                             style: AppTypography.caption1.copyWith(
                               color: AppColors.primary,
                               fontWeight: FontWeight.w600,
@@ -659,7 +662,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     Text(
-                      '${percentage.toStringAsFixed(1)}% of total',
+                      context.tr('reports.ofTotal', [percentage.toStringAsFixed(1)]),
                       style: AppTypography.caption1,
                     ),
                   ],
@@ -689,7 +692,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               Icon(Icons.router, size: 48, color: Colors.grey[400]),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'No router uptime data available',
+                context.tr('reports.noUptimeData'),
                 style: AppTypography.subhead
                     .copyWith(color: AppColors.textSecondary),
               ),
@@ -702,7 +705,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Router Uptime', style: AppTypography.title3),
+        Text(context.tr('reports.routerUptime'), style: AppTypography.title3),
         const SizedBox(height: AppSpacing.md),
         ...routers.map((router) {
           final name = router['name'] as String? ?? 'Unknown';
@@ -784,13 +787,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     children: [
                       _UptimeChip(
                         icon: Icons.arrow_upward,
-                        label: 'Online: ${_formatDuration(totalOnline.toDouble())}',
+                        label: context.tr('reports.online', [_formatDuration(totalOnline.toDouble())]),
                         color: AppColors.success,
                       ),
                       const SizedBox(width: AppSpacing.md),
                       _UptimeChip(
                         icon: Icons.arrow_downward,
-                        label: 'Offline: ${_formatDuration(totalOffline.toDouble())}',
+                        label: context.tr('reports.offline', [_formatDuration(totalOffline.toDouble())]),
                         color: AppColors.error,
                       ),
                     ],

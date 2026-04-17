@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../models/session.dart';
 import '../../providers/sessions_provider.dart';
 import '../../theme/theme.dart';
@@ -47,14 +48,14 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Disconnect Session'),
+        title: Text(ctx.tr('sessions.disconnectTitle')),
         content: Text(
-          'Disconnect user "${session.username}" (${session.macAddress})?',
+          ctx.tr('sessions.disconnectUser', [session.username, session.macAddress]),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(ctx.tr('common.cancel')),
           ),
           TextButton(
             onPressed: () {
@@ -65,13 +66,13 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
                   .then((ok) {
                 if (ok && mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Session disconnected')),
+                    SnackBar(content: Text(context.tr('sessions.disconnectedSuccessfully'))),
                   );
                 }
               });
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Disconnect'),
+            child: Text(ctx.tr('sessions.disconnect')),
           ),
         ],
       ),
@@ -84,7 +85,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Active Sessions'),
+        title: Text(context.tr('sessions.title')),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -118,7 +119,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
               const SizedBox(height: AppSpacing.md),
               ElevatedButton(
                 onPressed: _onRefresh,
-                child: const Text('Retry'),
+                child: Text(context.tr('common.retry')),
               ),
             ],
           ),
@@ -134,7 +135,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
             Icon(Icons.wifi_off, size: 64, color: Colors.grey[400]),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'No active sessions',
+              context.tr('sessions.noActiveSessions'),
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
@@ -142,7 +143,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'Auto-refreshes every 30 seconds',
+              context.tr('sessions.autoRefresh'),
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -165,7 +166,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
             child: Row(
               children: [
                 Text(
-                  '${state.activeSessions.length} active session${state.activeSessions.length == 1 ? "" : "s"}',
+                  context.tr('sessions.activeSessionsCount', [state.activeSessions.length.toString()]),
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
@@ -242,7 +243,7 @@ class _SessionCard extends StatelessWidget {
                     border: Border.all(color: Colors.green[300]!),
                   ),
                   child: Text(
-                    'Active',
+                    context.tr('sessions.active'),
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.green[700],
@@ -301,7 +302,7 @@ class _SessionCard extends StatelessWidget {
               child: TextButton.icon(
                 onPressed: onDisconnect,
                 icon: const Icon(Icons.power_settings_new, size: 18),
-                label: const Text('Disconnect'),
+                label: Text(context.tr('sessions.disconnect')),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.red,
                   padding: const EdgeInsets.symmetric(horizontal: 12),

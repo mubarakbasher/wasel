@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../i18n/app_localizations.dart';
 import '../providers/dashboard_provider.dart';
 import '../theme/theme.dart';
 
@@ -42,16 +43,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  String _relativeTime(String? isoDate) {
+  String _relativeTime(BuildContext context, String? isoDate) {
     if (isoDate == null || isoDate.isEmpty) return 'N/A';
     try {
       final date = DateTime.parse(isoDate);
       final now = DateTime.now();
       final diff = now.difference(date);
-      if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      if (diff.inHours < 24) return '${diff.inHours}h ago';
-      return '${diff.inDays}d ago';
+      if (diff.inSeconds < 60) return context.tr('routers.justNow');
+      if (diff.inMinutes < 60) return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
+      if (diff.inHours < 24) return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
+      return context.tr('routers.daysAgo', [diff.inDays.toString()]);
     } catch (_) {
       return 'N/A';
     }
@@ -63,14 +64,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: Text(context.tr('dashboard.title')),
         automaticallyImplyLeading: false,
       ),
       body: _buildBody(state),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _onQuickCreate(state),
         icon: const Icon(Icons.add),
-        label: const Text('Quick Create Voucher'),
+        label: Text(context.tr('dashboard.quickCreateVoucher')),
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.textInverse,
       ),
@@ -81,7 +82,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final routers = state.routers;
     if (routers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a router first')),
+        SnackBar(content: Text(context.tr('dashboard.addRouterFirst'))),
       );
       return;
     }
@@ -138,13 +139,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               const Icon(Icons.credit_card_off,
                   size: 40, color: AppColors.textTertiary),
               const SizedBox(height: AppSpacing.sm),
-              const Text('No active subscription',
-                  style: TextStyle(
+              Text(context.tr('dashboard.noActiveSubscription'),
+                  style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: AppSpacing.sm),
               FilledButton(
                 onPressed: () => context.push('/subscription/plans'),
-                child: const Text('View Plans'),
+                child: Text(context.tr('dashboard.viewPlans')),
               ),
             ],
           ),
@@ -207,11 +208,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Vouchers Used',
-                    style: TextStyle(color: AppColors.textSecondary)),
+                Text(context.tr('dashboard.vouchersUsed'),
+                    style: const TextStyle(color: AppColors.textSecondary)),
                 Text(
                   isUnlimited
-                      ? '$vouchersUsed / Unlimited'
+                      ? '$vouchersUsed / ${context.tr('dashboard.unlimited')}'
                       : '$vouchersUsed / $voucherQuota',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
@@ -237,7 +238,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              '$daysRemaining days remaining',
+              context.tr('dashboard.daysRemaining', [daysRemaining.toString()]),
               style: const TextStyle(
                   color: AppColors.textSecondary, fontSize: 13),
             ),
@@ -256,7 +257,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         Expanded(
           child: _buildStatCard(
             icon: Icons.wifi,
-            label: 'Active Sessions',
+            label: context.tr('dashboard.activeSessions'),
             value: '${state.totalActiveSessions}',
             color: AppColors.primary,
           ),
@@ -265,7 +266,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         Expanded(
           child: _buildStatCard(
             icon: Icons.confirmation_number,
-            label: 'Vouchers Today',
+            label: context.tr('dashboard.vouchersToday'),
             value: '${state.vouchersUsedToday}',
             color: AppColors.secondary,
           ),
@@ -285,7 +286,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         Expanded(
           child: _buildStatCard(
             icon: Icons.payments,
-            label: 'Daily Revenue',
+            label: context.tr('dashboard.dailyRevenue'),
             value: revenueText,
             color: AppColors.success,
           ),
@@ -294,7 +295,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         Expanded(
           child: _buildStatCard(
             icon: Icons.router,
-            label: 'Online Routers',
+            label: context.tr('dashboard.onlineRouters'),
             value: '${state.onlineRouters}',
             color: AppColors.online,
           ),
@@ -343,8 +344,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Data Usage (24h)',
-                style: TextStyle(
+            Text(context.tr('dashboard.dataUsage24h'),
+                style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: AppSpacing.md),
             Row(
@@ -358,8 +359,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Download',
-                              style: TextStyle(
+                          Text(context.tr('dashboard.download'),
+                              style: const TextStyle(
                                   color: AppColors.textSecondary,
                                   fontSize: 12)),
                           Text(_formatBytes(totalInput),
@@ -380,8 +381,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Upload',
-                              style: TextStyle(
+                          Text(context.tr('dashboard.upload'),
+                              style: const TextStyle(
                                   color: AppColors.textSecondary,
                                   fontSize: 12)),
                           Text(_formatBytes(totalOutput),
@@ -413,16 +414,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Routers',
-                style: TextStyle(
+            Text(context.tr('dashboard.routers'),
+                style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: AppSpacing.md),
             if (routers.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
                 child: Center(
-                  child: Text('No routers added yet',
-                      style: TextStyle(color: AppColors.textSecondary)),
+                  child: Text(context.tr('dashboard.noRoutersAdded'),
+                      style: const TextStyle(color: AppColors.textSecondary)),
                 ),
               )
             else
@@ -456,7 +457,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               style: const TextStyle(
                                   fontWeight: FontWeight.w500)),
                         ),
-                        Text(_relativeTime(lastSeen),
+                        Text(_relativeTime(context, lastSeen),
                             style: const TextStyle(
                                 color: AppColors.textSecondary,
                                 fontSize: 13)),
@@ -487,16 +488,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Sessions by Router',
-                style: TextStyle(
+            Text(context.tr('dashboard.sessionsByRouter'),
+                style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: AppSpacing.md),
             if (sessions.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
                 child: Center(
-                  child: Text('No active sessions',
-                      style: TextStyle(color: AppColors.textSecondary)),
+                  child: Text(context.tr('dashboard.noActiveSessions'),
+                      style: const TextStyle(color: AppColors.textSecondary)),
                 ),
               )
             else
@@ -605,7 +606,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               onPressed: () =>
                   ref.read(dashboardProvider.notifier).loadDashboard(),
               icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              label: Text(context.tr('common.retry')),
             ),
           ],
         ),

@@ -45,6 +45,9 @@ app.use(requestLogger);
 // Rate limiting
 app.use('/api/', generalLimiter);
 
+// Static uploads (receipts, etc.)
+app.use('/uploads', express.static(process.env.UPLOAD_DIR || '/app/uploads'));
+
 // API v1 routes
 app.use('/api/v1', routes);
 

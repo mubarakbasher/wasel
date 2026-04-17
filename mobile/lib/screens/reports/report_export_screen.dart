@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../theme/theme.dart';
 
 class ReportExportScreen extends StatelessWidget {
@@ -17,10 +18,10 @@ class ReportExportScreen extends StatelessWidget {
   void _copyToClipboard(BuildContext context) {
     Clipboard.setData(ClipboardData(text: exportData));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Copied to clipboard'),
+      SnackBar(
+        content: Text(context.tr('reports.copiedToClipboard')),
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -35,16 +36,16 @@ class ReportExportScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Export - $reportType'),
+        title: Text(context.tr('reports.exportTitle', [reportType])),
         actions: [
           IconButton(
             icon: const Icon(Icons.copy),
-            tooltip: 'Copy to clipboard',
+            tooltip: context.tr('reports.copyToClipboard'),
             onPressed: () => _copyToClipboard(context),
           ),
           IconButton(
             icon: const Icon(Icons.share),
-            tooltip: 'Share',
+            tooltip: context.tr('reports.share'),
             onPressed: _share,
           ),
         ],
@@ -66,7 +67,7 @@ class ReportExportScreen extends StatelessWidget {
                     size: 18, color: AppColors.primary),
                 const SizedBox(width: AppSpacing.sm),
                 Text(
-                  'CSV data  ·  $lineCount lines',
+                  context.tr('reports.csvDataLines', [lineCount.toString()]),
                   style: AppTypography.footnote.copyWith(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w500,
@@ -106,7 +107,7 @@ class ReportExportScreen extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => _copyToClipboard(context),
                   icon: const Icon(Icons.copy, size: 18),
-                  label: const Text('Copy'),
+                  label: Text(context.tr('reports.copy')),
                   style: OutlinedButton.styleFrom(
                     minimumSize:
                         const Size(0, AppSpacing.touchTargetMin),
@@ -119,7 +120,7 @@ class ReportExportScreen extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: _share,
                   icon: const Icon(Icons.share, size: 18),
-                  label: const Text('Share'),
+                  label: Text(context.tr('reports.share')),
                   style: FilledButton.styleFrom(
                     minimumSize:
                         const Size(0, AppSpacing.touchTargetMin),

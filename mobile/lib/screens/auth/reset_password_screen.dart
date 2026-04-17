@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -48,7 +49,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password reset successfully! Please log in.'), backgroundColor: AppColors.success),
+          SnackBar(content: Text(context.tr('auth.resetPasswordSuccess')), backgroundColor: AppColors.success),
         );
         context.go('/login');
       }
@@ -79,10 +80,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: AppSpacing.xl),
-                Text('Reset Password', style: AppTypography.title1, textAlign: TextAlign.center),
+                Text(context.tr('auth.resetPassword'), style: AppTypography.title1, textAlign: TextAlign.center),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'Enter the code sent to\n${widget.email}',
+                  context.tr('auth.enterCodeSent', [widget.email]),
                   style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -111,7 +112,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   textAlign: TextAlign.center,
                   maxLength: 6,
                   style: AppTypography.title1.copyWith(letterSpacing: 12),
-                  decoration: const InputDecoration(hintText: '000000', counterText: ''),
+                  decoration: InputDecoration(hintText: context.tr('auth.otpHint'), counterText: ''),
                   validator: Validators.validateOtp,
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -122,7 +123,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   obscureText: _obscurePassword,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: 'New Password',
+                    labelText: context.tr('auth.newPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -140,7 +141,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
-                    labelText: 'Confirm Password',
+                    labelText: context.tr('auth.confirmPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined),
@@ -158,7 +159,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Reset Password'),
+                        : Text(context.tr('auth.resetPassword')),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xxl),

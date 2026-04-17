@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -27,7 +28,7 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Routers'),
+        title: Text(context.tr('routers.title')),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -61,7 +62,7 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
               child: ElevatedButton(
                 onPressed: () =>
                     ref.read(routersProvider.notifier).loadRouters(),
-                child: const Text('Retry'),
+                child: Text(context.tr('common.retry')),
               ),
             ),
           ],
@@ -79,11 +80,11 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
           children: [
             Icon(Icons.router, size: 64, color: AppColors.textTertiary),
             const SizedBox(height: AppSpacing.lg),
-            Text('No Routers Yet',
+            Text(context.tr('routers.noRouters'),
                 style: AppTypography.title2, textAlign: TextAlign.center),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Add your first router to get started.',
+              context.tr('routers.addFirstRouter'),
               style: AppTypography.subhead
                   .copyWith(color: AppColors.textSecondary),
               textAlign: TextAlign.center,
@@ -95,7 +96,7 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
               child: ElevatedButton.icon(
                 onPressed: () => context.push('/routers/add'),
                 icon: const Icon(Icons.add),
-                label: const Text('Add Router'),
+                label: Text(context.tr('routers.addRouter')),
               ),
             ),
           ],
@@ -184,7 +185,7 @@ class _RouterCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    _formatLastSeen(router.lastSeen),
+                    _formatLastSeen(context, router.lastSeen),
                     style: AppTypography.caption1,
                   ),
                 ],
@@ -224,13 +225,13 @@ class _RouterCard extends StatelessWidget {
     return status[0].toUpperCase() + status.substring(1);
   }
 
-  String _formatLastSeen(DateTime? lastSeen) {
-    if (lastSeen == null) return 'Never';
+  String _formatLastSeen(BuildContext context, DateTime? lastSeen) {
+    if (lastSeen == null) return context.tr('routers.never');
     final diff = DateTime.now().difference(lastSeen);
-    if (diff.inSeconds < 60) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 30) return '${diff.inDays}d ago';
-    return '${(diff.inDays / 30).floor()}mo ago';
+    if (diff.inSeconds < 60) return context.tr('routers.justNow');
+    if (diff.inMinutes < 60) return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
+    if (diff.inHours < 24) return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
+    if (diff.inDays < 30) return context.tr('routers.daysAgo', [diff.inDays.toString()]);
+    return context.tr('routers.monthsAgo', [(diff.inDays / 30).floor().toString()]);
   }
 }

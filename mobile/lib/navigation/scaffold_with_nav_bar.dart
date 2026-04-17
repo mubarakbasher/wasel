@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../i18n/app_localizations.dart';
+
 class ScaffoldWithNavBar extends StatelessWidget {
   final Widget child;
 
@@ -35,26 +37,26 @@ class ScaffoldWithNavBar extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex(context),
         onDestinationSelected: (index) => _onTap(context, index),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
+            icon: const Icon(Icons.dashboard_outlined),
+            selectedIcon: const Icon(Icons.dashboard),
+            label: context.tr('tabs.dashboard'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.router_outlined),
-            selectedIcon: Icon(Icons.router),
-            label: 'Routers',
+            icon: const Icon(Icons.router_outlined),
+            selectedIcon: const Icon(Icons.router),
+            label: context.tr('tabs.routers'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.confirmation_number_outlined),
-            selectedIcon: Icon(Icons.confirmation_number),
-            label: 'Vouchers',
+            icon: const Icon(Icons.confirmation_number_outlined),
+            selectedIcon: const Icon(Icons.confirmation_number),
+            label: context.tr('tabs.vouchers'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: const Icon(Icons.settings),
+            label: context.tr('tabs.settings'),
           ),
         ],
       ),

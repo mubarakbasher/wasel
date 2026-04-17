@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
 import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
@@ -17,7 +18,11 @@ class AddRouterScreen extends ConsumerStatefulWidget {
 }
 
 class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
-  static const _stepLabels = ['Router Info', 'Details', 'Setup Guide'];
+  List<String> _stepLabels(BuildContext context) => [
+        context.tr('routers.stepInfo'),
+        context.tr('routers.stepDetails'),
+        context.tr('routers.setupGuide'),
+      ];
 
   final _pageController = PageController();
   final _step1FormKey = GlobalKey<FormState>();
@@ -120,7 +125,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Setup guide copied to clipboard')),
+      SnackBar(content: Text(context.tr('routers.guideCopied'))),
     );
   }
 
@@ -135,7 +140,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Add Router'),
+          title: Text(context.tr('routers.addRouter')),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () {
@@ -240,7 +245,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(
-          _stepLabels[stepIndex],
+          _stepLabels(context)[stepIndex],
           style: AppTypography.caption2.copyWith(
             color: isActive || isCompleted
                 ? AppColors.textPrimary
@@ -259,10 +264,10 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Text('Basic Information', style: AppTypography.title3),
+          Text(context.tr('routers.basicInfo'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Give your router a name to identify it.',
+            context.tr('routers.basicInfoSubtitle'),
             style:
                 AppTypography.subhead.copyWith(color: AppColors.textSecondary),
           ),
@@ -273,20 +278,20 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
           ],
           TextFormField(
             controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: 'Router Name *',
-              prefixIcon: Icon(Icons.router),
-              hintText: 'e.g. Cafe Main Router',
+            decoration: InputDecoration(
+              labelText: '${context.tr('routers.routerName')} *',
+              prefixIcon: const Icon(Icons.router),
+              hintText: context.tr('routers.routerNameHint'),
             ),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
-                return 'Router name is required';
+                return context.tr('routers.routerNameRequired');
               }
               if (value.trim().length < 2) {
-                return 'Name must be at least 2 characters';
+                return context.tr('routers.nameMinLength');
               }
               if (value.trim().length > 100) {
-                return 'Name must be at most 100 characters';
+                return context.tr('routers.nameMaxLength');
               }
               return null;
             },
@@ -295,14 +300,14 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
           const SizedBox(height: AppSpacing.lg),
           TextFormField(
             controller: _modelController,
-            decoration: const InputDecoration(
-              labelText: 'Model',
-              prefixIcon: Icon(Icons.devices),
-              hintText: 'e.g. hAP ac2',
+            decoration: InputDecoration(
+              labelText: context.tr('routers.model'),
+              prefixIcon: const Icon(Icons.devices),
+              hintText: context.tr('routers.modelHint'),
             ),
             validator: (value) {
               if (value != null && value.length > 100) {
-                return 'Model must be at most 100 characters';
+                return context.tr('routers.modelMaxLength');
               }
               return null;
             },
@@ -318,10 +323,10 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Text('Technical Details', style: AppTypography.title3),
+          Text(context.tr('routers.technicalDetails'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Optional RouterOS API credentials for remote management.',
+            context.tr('routers.technicalDetailsSubtitle'),
             style:
                 AppTypography.subhead.copyWith(color: AppColors.textSecondary),
           ),
@@ -332,14 +337,14 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
           ],
           TextFormField(
             controller: _rosVersionController,
-            decoration: const InputDecoration(
-              labelText: 'RouterOS Version',
-              prefixIcon: Icon(Icons.system_update),
-              hintText: 'e.g. 7.14',
+            decoration: InputDecoration(
+              labelText: context.tr('routers.rosVersion'),
+              prefixIcon: const Icon(Icons.system_update),
+              hintText: context.tr('routers.rosVersionHint'),
             ),
             validator: (value) {
               if (value != null && value.length > 20) {
-                return 'Version must be at most 20 characters';
+                return context.tr('routers.versionMaxLength');
               }
               return null;
             },
@@ -347,14 +352,14 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
           const SizedBox(height: AppSpacing.lg),
           TextFormField(
             controller: _apiUserController,
-            decoration: const InputDecoration(
-              labelText: 'API Username',
-              prefixIcon: Icon(Icons.person),
-              hintText: 'e.g. admin',
+            decoration: InputDecoration(
+              labelText: context.tr('routers.apiUsername'),
+              prefixIcon: const Icon(Icons.person),
+              hintText: context.tr('routers.apiUsernameHint'),
             ),
             validator: (value) {
               if (value != null && value.length > 100) {
-                return 'Username must be at most 100 characters';
+                return context.tr('routers.usernameMaxLength');
               }
               return null;
             },
@@ -364,7 +369,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
             controller: _apiPassController,
             obscureText: _obscurePassword,
             decoration: InputDecoration(
-              labelText: 'API Password',
+              labelText: context.tr('routers.apiPassword'),
               prefixIcon: const Icon(Icons.lock),
               suffixIcon: IconButton(
                 icon: Icon(
@@ -376,7 +381,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
             ),
             validator: (value) {
               if (value != null && value.length > 255) {
-                return 'Password must be at most 255 characters';
+                return context.tr('routers.passwordMaxLength');
               }
               return null;
             },
@@ -415,7 +420,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                           .loadSetupGuide(_createdRouterId!);
                     }
                   },
-                  child: const Text('Retry'),
+                  child: Text(context.tr('common.retry')),
                 ),
               ),
             ],
@@ -426,7 +431,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
 
     if (guide == null) {
       return Center(
-        child: Text('Setup guide not available',
+        child: Text(context.tr('routers.setupNotAvailable'),
             style: AppTypography.body
                 .copyWith(color: AppColors.textSecondary)),
       );
@@ -442,7 +447,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
         Text(guide.routerName, style: AppTypography.title2),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'Follow these steps to connect your Mikrotik router to Wasel.',
+          context.tr('routers.setupInstructions'),
           style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.lg),
@@ -496,7 +501,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
           child: OutlinedButton.icon(
             onPressed: () => _copyToClipboard(guide.setupGuide),
             icon: const Icon(Icons.copy),
-            label: const Text('Copy All to Clipboard'),
+            label: Text(context.tr('routers.copyAllClipboard')),
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
@@ -595,7 +600,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                       Clipboard.setData(ClipboardData(text: step.command));
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Step ${step.step} copied'),
+                          content: Text(context.tr('routers.stepCopied', [step.step.toString()])),
                           duration: const Duration(seconds: 1),
                         ),
                       );
@@ -627,7 +632,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                   height: 48,
                   child: OutlinedButton(
                     onPressed: _isSubmitting ? null : _goBack,
-                    child: const Text('Back'),
+                    child: Text(context.tr('common.back')),
                   ),
                 ),
               ),
@@ -639,7 +644,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                   height: 48,
                   child: ElevatedButton(
                     onPressed: _goNext,
-                    child: const Text('Next'),
+                    child: Text(context.tr('common.next')),
                   ),
                 ),
               ),
@@ -656,7 +661,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                             child:
                                 CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Create Router'),
+                        : Text(context.tr('routers.createRouter')),
                   ),
                 ),
               ),
@@ -666,7 +671,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                   height: 48,
                   child: ElevatedButton(
                     onPressed: _finish,
-                    child: const Text('Done'),
+                    child: Text(context.tr('common.done')),
                   ),
                 ),
               ),

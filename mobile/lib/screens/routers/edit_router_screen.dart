@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -90,7 +91,7 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
         apiUserParam == null &&
         apiPassParam == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No changes to save')),
+        SnackBar(content: Text(context.tr('routers.noChanges'))),
       );
       return;
     }
@@ -108,7 +109,7 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
 
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Router updated successfully')),
+        SnackBar(content: Text(context.tr('routers.routerUpdated'))),
       );
       context.pop();
     }
@@ -125,7 +126,7 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit Router')),
+      appBar: AppBar(title: Text(context.tr('routers.editRouter'))),
       body: state.isLoading && !_initialized
           ? const Center(child: CircularProgressIndicator())
           : Form(
@@ -151,19 +152,19 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
                   ],
                   TextFormField(
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Router Name *',
-                      prefixIcon: Icon(Icons.router),
+                    decoration: InputDecoration(
+                      labelText: '${context.tr('routers.routerName')} *',
+                      prefixIcon: const Icon(Icons.router),
                     ),
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
-                        return 'Router name is required';
+                        return context.tr('routers.routerNameRequired');
                       }
                       if (value.trim().length < 2) {
-                        return 'Name must be at least 2 characters';
+                        return context.tr('routers.nameMinLength');
                       }
                       if (value.trim().length > 100) {
-                        return 'Name must be at most 100 characters';
+                        return context.tr('routers.nameMaxLength');
                       }
                       return null;
                     },
@@ -173,13 +174,13 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
                   const SizedBox(height: AppSpacing.lg),
                   TextFormField(
                     controller: _modelController,
-                    decoration: const InputDecoration(
-                      labelText: 'Model',
-                      prefixIcon: Icon(Icons.devices),
+                    decoration: InputDecoration(
+                      labelText: context.tr('routers.model'),
+                      prefixIcon: const Icon(Icons.devices),
                     ),
                     validator: (value) {
                       if (value != null && value.length > 100) {
-                        return 'Model must be at most 100 characters';
+                        return context.tr('routers.modelMaxLength');
                       }
                       return null;
                     },
@@ -187,13 +188,13 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
                   const SizedBox(height: AppSpacing.lg),
                   TextFormField(
                     controller: _rosVersionController,
-                    decoration: const InputDecoration(
-                      labelText: 'RouterOS Version',
-                      prefixIcon: Icon(Icons.system_update),
+                    decoration: InputDecoration(
+                      labelText: context.tr('routers.rosVersion'),
+                      prefixIcon: const Icon(Icons.system_update),
                     ),
                     validator: (value) {
                       if (value != null && value.length > 20) {
-                        return 'Version must be at most 20 characters';
+                        return context.tr('routers.versionMaxLength');
                       }
                       return null;
                     },
@@ -201,13 +202,13 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
                   const SizedBox(height: AppSpacing.lg),
                   TextFormField(
                     controller: _apiUserController,
-                    decoration: const InputDecoration(
-                      labelText: 'API Username',
-                      prefixIcon: Icon(Icons.person),
+                    decoration: InputDecoration(
+                      labelText: context.tr('routers.apiUsername'),
+                      prefixIcon: const Icon(Icons.person),
                     ),
                     validator: (value) {
                       if (value != null && value.length > 100) {
-                        return 'Username must be at most 100 characters';
+                        return context.tr('routers.usernameMaxLength');
                       }
                       return null;
                     },
@@ -217,9 +218,9 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
                     controller: _apiPassController,
                     obscureText: _obscurePassword,
                     decoration: InputDecoration(
-                      labelText: 'API Password',
+                      labelText: context.tr('routers.apiPassword'),
                       prefixIcon: const Icon(Icons.lock),
-                      hintText: 'Leave blank to keep current',
+                      hintText: context.tr('routers.leaveBlank'),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword
@@ -232,7 +233,7 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
                     ),
                     validator: (value) {
                       if (value != null && value.length > 255) {
-                        return 'Password must be at most 255 characters';
+                        return context.tr('routers.passwordMaxLength');
                       }
                       return null;
                     },
@@ -249,7 +250,7 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
                               child:
                                   CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Save Changes'),
+                          : Text(context.tr('routers.saveChanges')),
                     ),
                   ),
                 ],
