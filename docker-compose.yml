@@ -103,10 +103,16 @@ services:
   admin:
     build: ./admin
     ports:
-      - '5173:5173'
+      - '127.0.0.1:5173:5173'
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:5173/ >/dev/null 2>&1 || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
 volumes:

@@ -71,9 +71,11 @@ sudo ufw allow 80/tcp       # HTTP (for Let's Encrypt)
 sudo ufw allow 443/tcp      # HTTPS
 sudo ufw allow 3000/tcp     # Backend API (direct, or remove if using reverse proxy)
 sudo ufw allow 51820/udp    # WireGuard
-sudo ufw allow 1812/udp     # RADIUS Auth
-sudo ufw allow 1813/udp     # RADIUS Accounting
-sudo ufw allow 3799/udp     # RADIUS CoA
+
+# WARNING: RADIUS ports must never be exposed to the public internet. The rule below restricts them to the WireGuard peer subnet.
+# RADIUS — restricted to WireGuard subnet ONLY. Never allow public.
+sudo ufw allow from 10.10.0.0/16 to any port 1812,1813,3799 proto udp
+
 sudo ufw enable
 ```
 
@@ -461,3 +463,43 @@ docker compose logs wireguard
 | "502 Bad Gateway" from Nginx | Backend container may be down: `docker compose ps`, `docker compose logs backend` |
 | Android blocks HTTP requests | Add `network_security_config.xml` (see section 4.2) or use HTTPS |
 | Health endpoint returns error | DB or Redis may not be ready: `docker compose ps` — check all services are "healthy" |
+
+---
+
+## Backups
+
+Regular PostgreSQL backups are essential. The database holds all user accounts, routers, subscriptions, vouchers, and RADIUS records.
+
+### Manual Backup (one-liner)
+
+```bash
+mkdir -p /opt/wasel-backups
+docker compose exec -T postgres pg_dump -U wasel wasel | gzip > /opt/wasel-backups/$(date +%F).sql.gz
+```
+
+### Automated Daily Backup (crontab)
+
+Edit root's crontab with `sudo crontab -e` and add the following line to run daily at 03:00 and prune backups older than 30 days:
+
+```
+0 3 * * * docker compose -f /opt/wasel/docker-compose.yml exec -T postgres pg_dump -U wasel wasel | gzip > /opt/wasel-backups/$(date +\%F).sql.gz && find /opt/wasel-backups -name "*.sql.gz" -mtime +30 -delete
+```
+
+Note the escaped `\%F` — cron treats unescaped `%` as a newline.
+
+### Restore from Backup
+
+```bash
+gunzip -c /opt/wasel-backups/2026-04-17.sql.gz | docker compose exec -T postgres psql -U wasel -d wasel
+```
+
+### Off-Host Copies
+
+Local backups do not protect against VPS loss. Copy backups to another host on a regular schedule, e.g.:
+
+```bash
+# Push the latest backup to a remote server via scp
+scp /opt/wasel-backups/$(date +%F).sql.gz backup-user@backup-host:/path/to/wasel-backups/
+```
+
+Consider a dedicated offsite target (another VPS, S3-compatible object storage, or a home server) and rotate credentials independently from the production VPS.
