@@ -14,6 +14,10 @@ export function getAccessToken(): string | null {
   return localStorage.getItem('accessToken');
 }
 
+export function getRefreshToken(): string | null {
+  return localStorage.getItem('refreshToken');
+}
+
 export function isAuthenticated(): boolean {
   return !!getAccessToken() && !!getStoredUser();
 }
