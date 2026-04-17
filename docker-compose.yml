@@ -31,6 +31,7 @@ services:
     volumes:
       - /etc/wireguard:/etc/wireguard
       - backend_uploads:/app/uploads
+      - ./backend/secrets:/app/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy

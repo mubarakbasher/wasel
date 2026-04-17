@@ -7,6 +7,7 @@ import 'navigation/app_router.dart';
 import 'i18n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/locale_provider.dart';
+import 'services/push_notification_service.dart';
 
 class WaselApp extends ConsumerStatefulWidget {
   const WaselApp({super.key});
@@ -19,6 +20,7 @@ class _WaselAppState extends ConsumerState<WaselApp> {
   @override
   void initState() {
     super.initState();
+    PushNotificationService().attachRiverpod(ProviderScope.containerOf(context));
     Future.microtask(() {
       ref.read(localeProvider.notifier).loadSavedLocale();
       ref.read(authProvider.notifier).tryRestoreSession();

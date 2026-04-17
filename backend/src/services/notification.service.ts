@@ -4,6 +4,7 @@ import { config } from '../config';
 import { redis } from '../config/redis';
 import * as deviceTokenService from './deviceToken.service';
 import * as notificationPrefsService from './notificationPrefs.service';
+import * as inboxService from './inbox.service';
 
 // Firebase initialization (graceful no-op if credentials missing)
 let fcmAvailable = false;
@@ -51,14 +52,21 @@ async function sendPushToUser(
       await redis.set(dedupKey, '1', 'EX', 86400);
     }
 
-    // 3. Get device tokens
+    // 3. Persist to in-app inbox (source of truth — independent of FCM delivery).
+    try {
+      await inboxService.createNotification({ userId, category, title, body, data });
+    } catch (err) {
+      logger.error('Failed to persist inbox notification', { error: err, userId, category });
+    }
+
+    // 4. Get device tokens
     const tokens = await deviceTokenService.getTokensForUser(userId);
     if (tokens.length === 0) {
       logger.debug('No device tokens for user', { userId });
       return;
     }
 
-    // 4. Send via FCM or log
+    // 5. Send via FCM or log
     if (!fcmAvailable) {
       logger.info('Push notification (FCM unavailable)', { userId, category, title, body });
       return;

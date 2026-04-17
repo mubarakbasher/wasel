@@ -26,6 +26,7 @@ import '../screens/settings/payments_screen.dart';
 import '../screens/reports/reports_screen.dart';
 import '../screens/reports/report_export_screen.dart';
 import '../screens/notification_preferences_screen.dart';
+import '../screens/notifications/notifications_screen.dart';
 import '../screens/vouchers/voucher_print_screen.dart';
 import '../models/voucher.dart';
 import '../providers/auth_provider.dart';
@@ -180,6 +181,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/payments',
         builder: (context, state) => const PaymentsScreen(),
+      ),
+      // Notifications
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
       ),
       // Notification preferences
       GoRoute(

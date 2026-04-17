@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../i18n/app_localizations.dart';
 import '../providers/dashboard_provider.dart';
+import '../providers/notifications_provider.dart';
 import '../theme/theme.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -17,8 +18,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-        () => ref.read(dashboardProvider.notifier).loadDashboard());
+    Future.microtask(() {
+      ref.read(dashboardProvider.notifier).loadDashboard();
+      ref.read(notificationsProvider.notifier).refresh();
+    });
   }
 
   String _formatBytes(int bytes) {
@@ -62,10 +65,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(dashboardProvider);
 
+    final unreadCount = ref.watch(notificationsProvider).unreadCount;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(context.tr('dashboard.title')),
         automaticallyImplyLeading: false,
+        actions: [
+          _NotificationBell(
+            unreadCount: unreadCount,
+            onTap: () => context.push('/notifications'),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+        ],
       ),
       body: _buildBody(state),
       floatingActionButton: FloatingActionButton.extended(
@@ -610,6 +622,49 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _NotificationBell extends StatelessWidget {
+  final int unreadCount;
+  final VoidCallback onTap;
+
+  const _NotificationBell({required this.unreadCount, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onTap,
+      tooltip: context.tr('notifications.title'),
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.notifications_none),
+          if (unreadCount > 0)
+            Positioned(
+              right: -4,
+              top: -4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.error,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  unreadCount > 99 ? '99+' : '$unreadCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
