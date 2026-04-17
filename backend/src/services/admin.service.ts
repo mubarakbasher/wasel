@@ -540,15 +540,16 @@ export async function reviewPayment(
 
     // 1. Update the payment status. On approval, clear any prior rejection_reason
     //    (defensive — payment may have been rejected then resubmitted).
+    const reasonToStore = decision === 'rejected' ? (rejectionReason ?? null) : null;
     const paymentResult = await client.query(
       `UPDATE payments
        SET status = $1,
            reviewed_by = $2,
            reviewed_at = NOW(),
-           rejection_reason = CASE WHEN $1 = 'rejected' THEN $4 ELSE NULL END
+           rejection_reason = $4
        WHERE id = $3 AND status = 'pending'
        RETURNING *`,
-      [decision, adminId, paymentId, rejectionReason ?? null],
+      [decision, adminId, paymentId, reasonToStore],
     );
 
     if (paymentResult.rowCount === 0) {
