@@ -23,21 +23,29 @@ class NotificationsService {
   final ApiClient _api = ApiClient();
 
   Future<NotificationsInboxPage> list({int page = 1, int limit = 20}) async {
-    final response = await _api.get(
-      '/notifications',
+    final response = await _api.get<Map<String, dynamic>>(
+      '/notifications/',
       queryParameters: {'page': page, 'limit': limit},
     );
-    final data = response.data as Map<String, dynamic>;
-    final items = (data['data'] as List<dynamic>)
+    final body = response.data;
+    if (body == null) {
+      throw StateError('Empty notifications response');
+    }
+    final rawData = body['data'];
+    if (rawData is! List) {
+      throw StateError(
+          'Unexpected notifications response shape (data is ${rawData.runtimeType}): $body');
+    }
+    final items = rawData
         .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
         .toList();
-    final meta = data['meta'] as Map<String, dynamic>;
+    final meta = (body['meta'] as Map<String, dynamic>?) ?? const {};
     return NotificationsInboxPage(
       items: items,
-      total: meta['total'] as int,
-      unreadCount: meta['unreadCount'] as int,
-      page: meta['page'] as int,
-      limit: meta['limit'] as int,
+      total: (meta['total'] as num?)?.toInt() ?? items.length,
+      unreadCount: (meta['unreadCount'] as num?)?.toInt() ?? 0,
+      page: (meta['page'] as num?)?.toInt() ?? page,
+      limit: (meta['limit'] as num?)?.toInt() ?? limit,
     );
   }
 
