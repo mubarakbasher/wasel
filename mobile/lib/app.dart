@@ -17,14 +17,25 @@ class WaselApp extends ConsumerStatefulWidget {
 }
 
 class _WaselAppState extends ConsumerState<WaselApp> {
+  bool _pushAttached = false;
+
   @override
   void initState() {
     super.initState();
-    PushNotificationService().attachRiverpod(ProviderScope.containerOf(context));
     Future.microtask(() {
       ref.read(localeProvider.notifier).loadSavedLocale();
       ref.read(authProvider.notifier).tryRestoreSession();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_pushAttached) {
+      _pushAttached = true;
+      PushNotificationService()
+          .attachRiverpod(ProviderScope.containerOf(context, listen: false));
+    }
   }
 
   @override

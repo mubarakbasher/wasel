@@ -30,6 +30,13 @@ interface RouterRow {
 const offlineSince: Map<string, number> = new Map();
 
 /**
+ * Routers we have already fired an offline notification for this session.
+ * Cleared when the router comes back online, so the next offline period
+ * notifies again. Without this, the monitor would re-notify every tick.
+ */
+const notifiedOffline: Set<string> = new Set();
+
+/**
  * Determine the new status for a router based on its WireGuard peer data.
  *
  * - Online: handshake within HANDSHAKE_TIMEOUT_S
@@ -121,8 +128,9 @@ export async function checkRouterStatuses(): Promise<void> {
       }
 
       const offlineDuration = nowMs - offlineSince.get(router.id)!;
-      if (offlineDuration >= OFFLINE_GRACE_PERIOD_MS) {
-        // Grace period exceeded — fire notification (fire-and-forget)
+      if (offlineDuration >= OFFLINE_GRACE_PERIOD_MS && !notifiedOffline.has(router.id)) {
+        // Grace period just exceeded — fire notification once per offline session.
+        notifiedOffline.add(router.id);
         logger.warn('Router offline beyond grace period', {
           routerId: router.id,
           tunnelIp: router.tunnel_ip,
@@ -142,27 +150,33 @@ export async function checkRouterStatuses(): Promise<void> {
         });
       }
     } else {
-      // Router is back online (or was never offline) — clear tracking
+      // Router is back online (or was never offline) — clear tracking.
+      // Only send the "back online" push if we actually fired an offline push,
+      // otherwise a brief blip during the grace period would still notify.
       if (offlineSince.has(router.id)) {
         const wasOfflineFor = nowMs - offlineSince.get(router.id)!;
-        logger.info('Router back online', {
-          routerId: router.id,
-          tunnelIp: router.tunnel_ip,
-          wasOfflineForMs: wasOfflineFor,
-        });
-        notifyRouterOnline({
-          userId: router.user_id,
-          routerId: router.id,
-          routerName: router.name,
-          tunnelIp: router.tunnel_ip,
-          wasOfflineForMs: wasOfflineFor,
-        }).catch((err) => {
-          logger.error('Failed to send router online notification', {
-            routerId: router.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
+        const hadNotified = notifiedOffline.has(router.id);
         offlineSince.delete(router.id);
+        notifiedOffline.delete(router.id);
+        if (hadNotified) {
+          logger.info('Router back online', {
+            routerId: router.id,
+            tunnelIp: router.tunnel_ip,
+            wasOfflineForMs: wasOfflineFor,
+          });
+          notifyRouterOnline({
+            userId: router.user_id,
+            routerId: router.id,
+            routerName: router.name,
+            tunnelIp: router.tunnel_ip,
+            wasOfflineForMs: wasOfflineFor,
+          }).catch((err) => {
+            logger.error('Failed to send router online notification', {
+              routerId: router.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
       }
     }
 
