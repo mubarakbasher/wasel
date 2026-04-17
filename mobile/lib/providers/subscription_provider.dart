@@ -161,6 +161,57 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
   }
 
+  /// Resubmit a new receipt against a rejected (or still pending) payment.
+  /// On success, the backend resets the payment to 'pending' so it reappears
+  /// in the admin queue.
+  Future<bool> resubmitReceipt({
+    required String paymentId,
+    required File file,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _service.uploadReceipt(paymentId: paymentId, file: file);
+      final payments = await _service.getUserPayments();
+      final response = await _service.getSubscription();
+      state = state.copyWith(
+        payments: payments,
+        subscription: response.subscription,
+        pendingChange: response.pendingChange,
+        clearSubscription: response.subscription == null,
+        clearPendingChange: response.pendingChange == null,
+        isLoading: false,
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: _extractError(e));
+      return false;
+    }
+  }
+
+  /// Cancel a rejected or pending payment. The paired pending subscription is
+  /// also cancelled server-side, so the user can pick a fresh plan afterwards.
+  Future<bool> cancelPayment(String paymentId) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _service.cancelPayment(paymentId);
+      final payments = await _service.getUserPayments();
+      final response = await _service.getSubscription();
+      state = state.copyWith(
+        payments: payments,
+        subscription: response.subscription,
+        pendingChange: response.pendingChange,
+        clearSubscription: response.subscription == null,
+        clearPendingChange: response.pendingChange == null,
+        clearLastRequest: true,
+        isLoading: false,
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: _extractError(e));
+      return false;
+    }
+  }
+
   void clearSubscription() {
     state = const SubscriptionState();
   }

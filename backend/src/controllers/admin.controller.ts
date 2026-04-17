@@ -154,11 +154,11 @@ export async function listPayments(req: AuthenticatedRequest, res: Response, nex
 export async function reviewPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { decision } = req.body;
-    const payment = await adminService.reviewPayment(id, req.user!.id, decision);
+    const { decision, rejection_reason } = req.body;
+    const payment = await adminService.reviewPayment(id, req.user!.id, decision, rejection_reason);
     await auditService.logAction({
       adminId: req.user!.id, action: `payment.${decision}`, targetEntity: 'payment',
-      targetId: id, details: { decision }, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+      targetId: id, details: { decision, rejection_reason }, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
     res.status(200).json({ success: true, data: payment });
   } catch (error) {

@@ -99,6 +99,12 @@ class SubscriptionService {
         .map((e) => PaymentRecord.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  /// DELETE /subscription/payments/:id
+  /// Cancel a pending or rejected payment so the user can start a fresh plan.
+  Future<void> cancelPayment(String paymentId) async {
+    await _api.delete('/subscription/payments/$paymentId');
+  }
 }
 
 class SubscriptionResponse {

@@ -296,8 +296,9 @@ export async function requestSubscription(
 }
 
 /**
- * Attach a receipt URL to an existing pending payment.
- * Verifies the payment belongs to the user and is still pending.
+ * Attach a receipt URL to an existing pending or rejected payment.
+ * When the payment was previously rejected, re-uploading resets it back to 'pending'
+ * and clears the rejection reason / reviewer — the admin queue picks it up again.
  */
 export async function uploadReceipt(
   userId: string,
@@ -321,19 +322,80 @@ export async function uploadReceipt(
     throw new AppError(403, 'You do not have access to this payment', 'PAYMENT_FORBIDDEN');
   }
 
-  if (payment.status !== 'pending') {
-    throw new AppError(400, `Cannot upload receipt for a payment with status '${payment.status}'`, 'PAYMENT_NOT_PENDING');
+  if (payment.status !== 'pending' && payment.status !== 'rejected') {
+    throw new AppError(400, `Cannot upload receipt for a payment with status '${payment.status}'`, 'PAYMENT_NOT_RESUBMITTABLE');
   }
 
   await pool.query(
-    `UPDATE payments SET receipt_url = $1 WHERE id = $2`,
+    `UPDATE payments
+     SET receipt_url = $1,
+         status = 'pending',
+         rejection_reason = NULL,
+         reviewed_by = NULL,
+         reviewed_at = NULL
+     WHERE id = $2`,
     [receiptUrl, paymentId],
   );
 
   logger.info('Payment receipt uploaded', {
     userId,
     paymentId,
+    wasRejected: payment.status === 'rejected',
   });
+}
+
+/**
+ * Cancel a pending or rejected payment so the user can start a fresh plan selection.
+ * The associated pending (or pending_change) subscription is also cancelled.
+ */
+export async function cancelPayment(userId: string, paymentId: string): Promise<void> {
+  const result = await pool.query<PaymentRow>(
+    `SELECT id, user_id, status FROM payments WHERE id = $1 LIMIT 1`,
+    [paymentId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'Payment not found', 'PAYMENT_NOT_FOUND');
+  }
+
+  const payment = result.rows[0];
+
+  if (payment.user_id !== userId) {
+    throw new AppError(403, 'You do not have access to this payment', 'PAYMENT_FORBIDDEN');
+  }
+
+  if (payment.status !== 'pending' && payment.status !== 'rejected') {
+    throw new AppError(400, `Cannot cancel a payment with status '${payment.status}'`, 'PAYMENT_NOT_CANCELLABLE');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `UPDATE payments SET status = 'cancelled' WHERE id = $1`,
+      [paymentId],
+    );
+
+    // Cancel any matching pending or pending_change subscription for this user.
+    // Active subscriptions are never touched — a failed plan-change leaves the
+    // original subscription running.
+    await client.query(
+      `UPDATE subscriptions
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE user_id = $1 AND status IN ('pending', 'pending_change')`,
+      [userId],
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  logger.info('Payment cancelled by user', { userId, paymentId });
 }
 
 /**
@@ -505,6 +567,7 @@ export interface UserPayment {
   referenceCode: string | null;
   receiptUrl: string | null;
   status: string;
+  rejectionReason: string | null;
   reviewedAt: string | null;
   createdAt: string;
 }
@@ -521,12 +584,13 @@ export async function getUserPayments(userId: string): Promise<UserPayment[]> {
     reference_code: string | null;
     receipt_url: string | null;
     status: string;
+    rejection_reason: string | null;
     reviewed_at: Date | null;
     created_at: Date;
     plan_name: string | null;
   }>(
     `SELECT p.id, p.plan_tier, p.amount, p.currency, p.reference_code,
-            p.receipt_url, p.status, p.reviewed_at, p.created_at,
+            p.receipt_url, p.status, p.rejection_reason, p.reviewed_at, p.created_at,
             pl.name AS plan_name
      FROM payments p
      LEFT JOIN plans pl ON pl.tier = p.plan_tier
@@ -545,6 +609,7 @@ export async function getUserPayments(userId: string): Promise<UserPayment[]> {
     referenceCode: row.reference_code,
     receiptUrl: row.receipt_url,
     status: row.status,
+    rejectionReason: row.rejection_reason,
     reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
     createdAt: new Date(row.created_at).toISOString(),
   }));

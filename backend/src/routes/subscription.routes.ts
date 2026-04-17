@@ -6,6 +6,7 @@ import {
   requestSubscriptionSchema,
   changeSubscriptionSchema,
   uploadReceiptSchema,
+  cancelPaymentParamsSchema,
 } from '../validators/subscription.validators';
 import * as subscriptionController from '../controllers/subscription.controller';
 
@@ -39,6 +40,13 @@ router.post(
   uploadReceiptMiddleware.single('receipt'),
   validate({ body: uploadReceiptSchema }),
   subscriptionController.uploadReceipt,
+);
+
+router.delete(
+  '/payments/:id',
+  authenticate,
+  validate({ params: cancelPaymentParamsSchema }),
+  subscriptionController.cancelPayment,
 );
 
 export default router;

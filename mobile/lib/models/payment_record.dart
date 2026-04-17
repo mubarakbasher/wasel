@@ -7,6 +7,7 @@ class PaymentRecord {
   final String? referenceCode;
   final String? receiptUrl;
   final String status;
+  final String? rejectionReason;
   final DateTime? reviewedAt;
   final DateTime createdAt;
 
@@ -19,6 +20,7 @@ class PaymentRecord {
     required this.referenceCode,
     required this.receiptUrl,
     required this.status,
+    required this.rejectionReason,
     required this.reviewedAt,
     required this.createdAt,
   });
@@ -32,6 +34,7 @@ class PaymentRecord {
         referenceCode: json['referenceCode'] as String?,
         receiptUrl: json['receiptUrl'] as String?,
         status: json['status'] as String,
+        rejectionReason: json['rejectionReason'] as String?,
         reviewedAt: json['reviewedAt'] != null
             ? DateTime.parse(json['reviewedAt'] as String)
             : null,
@@ -41,4 +44,5 @@ class PaymentRecord {
   bool get isPending => status == 'pending';
   bool get isApproved => status == 'approved';
   bool get isRejected => status == 'rejected';
+  bool get isCancelled => status == 'cancelled';
 }

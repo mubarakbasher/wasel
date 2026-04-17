@@ -43,7 +43,10 @@ interface PaymentRow {
   amount: number;
   status: string;
   plan_tier: string;
-  proof_url: string | null;
+  currency: string;
+  reference_code: string | null;
+  receipt_url: string | null;
+  rejection_reason: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
   created_at: string;
@@ -521,24 +524,31 @@ export async function getPayments(
 
 /**
  * Review a pending payment (approve or reject) and activate subscription if approved.
+ * When rejecting, rejectionReason is persisted and shown to the user so they can fix
+ * the issue and resubmit a new receipt against the same payment.
  */
 export async function reviewPayment(
   paymentId: string,
   adminId: string,
   decision: 'approved' | 'rejected',
+  rejectionReason?: string,
 ): Promise<PaymentRow> {
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    // 1. Update the payment status
+    // 1. Update the payment status. On approval, clear any prior rejection_reason
+    //    (defensive — payment may have been rejected then resubmitted).
     const paymentResult = await client.query(
       `UPDATE payments
-       SET status = $1, reviewed_by = $2, reviewed_at = NOW()
+       SET status = $1,
+           reviewed_by = $2,
+           reviewed_at = NOW(),
+           rejection_reason = CASE WHEN $1 = 'rejected' THEN $4 ELSE NULL END
        WHERE id = $3 AND status = 'pending'
        RETURNING *`,
-      [decision, adminId, paymentId],
+      [decision, adminId, paymentId, rejectionReason ?? null],
     );
 
     if (paymentResult.rowCount === 0) {

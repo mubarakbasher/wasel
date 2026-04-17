@@ -84,3 +84,13 @@ export async function getUserPayments(req: AuthenticatedRequest, res: Response, 
     next(error);
   }
 }
+
+export async function cancelPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const paymentId = req.params.id as string;
+    await subscriptionService.cancelPayment(req.user!.id, paymentId);
+    res.status(200).json({ success: true, data: { message: 'Payment cancelled' } });
+  } catch (error) {
+    next(error);
+  }
+}

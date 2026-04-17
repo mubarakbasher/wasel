@@ -13,3 +13,7 @@ export const changeSubscriptionSchema = z.object({
 export const uploadReceiptSchema = z.object({
   paymentId: z.string().uuid('Invalid payment ID'),
 });
+
+export const cancelPaymentParamsSchema = z.object({
+  id: z.string().uuid('Invalid payment ID'),
+});

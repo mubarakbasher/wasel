@@ -48,9 +48,15 @@ export const listPaymentsQuerySchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected']).optional(),
 });
 
-export const reviewPaymentBodySchema = z.object({
-  decision: z.enum(['approved', 'rejected']),
-});
+export const reviewPaymentBodySchema = z
+  .object({
+    decision: z.enum(['approved', 'rejected']),
+    rejection_reason: z.string().trim().min(1).max(500).optional(),
+  })
+  .refine(
+    (data) => data.decision !== 'rejected' || (data.rejection_reason && data.rejection_reason.length > 0),
+    { message: 'rejection_reason is required when decision is rejected', path: ['rejection_reason'] },
+  );
 
 export const listRoutersQuerySchema = z.object({
   ...paginationSchema,
