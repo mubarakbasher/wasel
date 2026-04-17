@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
-import { Request } from 'express';
+import { Request, Response, NextFunction } from 'express';
+import FileType from 'file-type';
 import { AppError } from './errorHandler';
 
 const UPLOAD_ROOT = process.env.UPLOAD_DIR || '/app/uploads';
@@ -32,5 +33,51 @@ export const uploadReceipt = multer({
     cb(null, true);
   },
 });
+
+/**
+ * After multer has written the uploaded file to disk, sniff the file's magic
+ * bytes to confirm the actual content matches an allowed image type. This
+ * defends against attackers who lie about Content-Type and rename extensions
+ * to bypass the fileFilter check (which only inspects the client-supplied
+ * MIME string and extension).
+ *
+ * On mismatch: delete the file from disk and respond with 400.
+ */
+export async function verifyUploadMagicBytes(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) {
+    next();
+    return;
+  }
+
+  try {
+    // file-type v16 reads just enough of the file to identify the format;
+    // no need to hand-manage a buffer.
+    const detected = await FileType.fromFile(file.path);
+
+    if (!detected || !ALLOWED_MIME.has(detected.mime)) {
+      // Unlink the disk file before rejecting so we don't leave attacker payloads sitting in /uploads.
+      await fs.promises.unlink(file.path).catch(() => {});
+      next(
+        new AppError(
+          400,
+          'Uploaded file content does not match an allowed image type (JPEG, PNG, or WebP)',
+          'INVALID_FILE_CONTENT',
+        ),
+      );
+      return;
+    }
+
+    next();
+  } catch (err) {
+    // Best-effort cleanup on any failure during verification.
+    await fs.promises.unlink(file.path).catch(() => {});
+    next(err instanceof AppError ? err : new AppError(400, 'Could not verify uploaded file', 'UPLOAD_VERIFY_FAILED'));
+  }
+}
 
 export const RECEIPTS_PUBLIC_PREFIX = '/uploads/receipts';

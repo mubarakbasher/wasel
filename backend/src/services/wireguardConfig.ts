@@ -47,21 +47,43 @@ export function generateServerPeerBlock(params: {
   return lines.join('\n');
 }
 
+interface ServerPeerInput {
+  routerPublicKey: string;
+  routerTunnelIp: string;
+  presharedKey?: string;
+  comment?: string;
+}
+
 /**
- * Generate a complete wg0.conf for the VPS WireGuard server.
- * Used for initial setup or full config regeneration.
+ * Generate a complete wg0.conf for the VPS WireGuard server, including the
+ * server private key. Used for initial bootstrap or full config regeneration
+ * on the VPS itself.
+ *
+ * Contains the server private key; treat as SECRET. Never log the return value
+ * or expose it to admin/display endpoints — use generateSafeServerConfig for that.
  */
-export function generateFullServerConfig(
-  peers: Array<{
-    routerPublicKey: string;
-    routerTunnelIp: string;
-    presharedKey?: string;
-    comment?: string;
-  }>
-): string {
+export function generateBootstrapServerConfig(peers: Array<ServerPeerInput>): string {
   const interfaceBlock = [
     '[Interface]',
     `PrivateKey = ${config.WG_SERVER_PRIVATE_KEY}`,
+    `Address = 10.10.0.1/16`,
+    `ListenPort = ${config.WG_SERVER_PORT}`,
+  ].join('\n');
+
+  const peerBlocks = peers.map((peer) => generateServerPeerBlock(peer));
+
+  return [interfaceBlock, '', ...peerBlocks].join('\n') + '\n';
+}
+
+/**
+ * Generate the same wg0.conf shape as generateBootstrapServerConfig but with
+ * the server private key redacted. Safe for logging, admin preview, or sending
+ * to operator-facing UIs.
+ */
+export function generateSafeServerConfig(peers: Array<ServerPeerInput>): string {
+  const interfaceBlock = [
+    '[Interface]',
+    `# PrivateKey = <redacted>`,
     `Address = 10.10.0.1/16`,
     `ListenPort = ${config.WG_SERVER_PORT}`,
   ].join('\n');

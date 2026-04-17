@@ -22,13 +22,13 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
 
   // JWT
-  JWT_ACCESS_SECRET: z.string().min(1),
-  JWT_REFRESH_SECRET: z.string().min(1),
+  JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
+  JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
   // Encryption
-  ENCRYPTION_KEY: z.string().min(1),
+  ENCRYPTION_KEY: z.string().regex(/^[0-9a-f]{64}$/i, 'ENCRYPTION_KEY must be 64 hex characters (32 bytes)'),
 
   // CORS
   CORS_ORIGIN: z.string().default('*'),
@@ -55,6 +55,18 @@ const envSchema = z.object({
   // Firebase (Push Notifications)
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
 });
+
+// Guard against wildcard CORS before we even parse — a misconfigured '*' with
+// credentials:true silently breaks, and more importantly allows any origin to
+// hit authenticated endpoints. Fail loudly at boot so ops must set it explicitly.
+const rawCorsOrigin = process.env.CORS_ORIGIN ?? '';
+const corsOrigins = rawCorsOrigin.split(',').map((s) => s.trim()).filter(Boolean);
+if (rawCorsOrigin.trim() === '*' || corsOrigins.includes('*')) {
+  console.error(
+    'Invalid CORS_ORIGIN: wildcard "*" is not permitted. Set CORS_ORIGIN to an explicit comma-separated list of allowed origins.',
+  );
+  process.exit(1);
+}
 
 const parsed = envSchema.safeParse(process.env);
 

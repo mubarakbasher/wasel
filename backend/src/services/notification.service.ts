@@ -105,7 +105,13 @@ async function sendPushToUser(
     // Cleanup stale tokens
     response.responses.forEach((resp: admin.messaging.SendResponse, idx: number) => {
       if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
-        deviceTokenService.removeStaleTokens(tokens[idx].token).catch(() => {});
+        deviceTokenService
+          .removeStaleTokens(tokens[idx].token)
+          .catch((err) =>
+            logger.warn('Failed to remove stale device token', {
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
       }
     });
   } catch (error) {

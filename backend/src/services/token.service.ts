@@ -3,14 +3,18 @@ import crypto from 'crypto';
 import { config } from '../config';
 import { redis } from '../config/redis';
 import logger from '../config/logger';
+import { AppError } from '../middleware/errorHandler';
 
 const REFRESH_PREFIX = 'refresh';
 const OTP_VERIFY_PREFIX = 'otp:verify';
 const OTP_RESET_PREFIX = 'otp:reset';
+const OTP_ATTEMPTS_PREFIX = 'otp-attempts';
 
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 const OTP_VERIFY_TTL_SECONDS = 24 * 60 * 60;  // 24 hours
 const OTP_RESET_TTL_SECONDS = 15 * 60;         // 15 minutes
+const OTP_ATTEMPTS_TTL_SECONDS = 60 * 60;      // 1 hour
+const OTP_MAX_ATTEMPTS = 5;
 
 export interface AccessTokenPayload {
   userId: string;
@@ -91,18 +95,52 @@ function generateOtp(): string {
   return crypto.randomInt(100000, 999999).toString();
 }
 
+/**
+ * Record a wrong OTP attempt. If the counter crosses the lockout threshold,
+ * delete the OTP key (so the code is unusable) and reset the counter. The
+ * caller must then throw a 429 so the user restarts the flow.
+ *
+ * Returns true when the lockout was triggered by this attempt, false otherwise.
+ */
+async function recordWrongOtpAttempt(otpKey: string, flow: string, subject: string): Promise<boolean> {
+  const attemptsKey = `${OTP_ATTEMPTS_PREFIX}:${subject}:${flow}`;
+  const count = await redis.incr(attemptsKey);
+  if (count === 1) {
+    await redis.expire(attemptsKey, OTP_ATTEMPTS_TTL_SECONDS);
+  }
+  if (count >= OTP_MAX_ATTEMPTS) {
+    await redis.del(otpKey);
+    await redis.del(attemptsKey);
+    return true;
+  }
+  return false;
+}
+
+async function clearOtpAttempts(flow: string, subject: string): Promise<void> {
+  await redis.del(`${OTP_ATTEMPTS_PREFIX}:${subject}:${flow}`);
+}
+
 export async function createVerificationOtp(userId: string): Promise<string> {
   const otp = generateOtp();
   const key = `${OTP_VERIFY_PREFIX}:${userId}`;
   await redis.set(key, otp, 'EX', OTP_VERIFY_TTL_SECONDS);
+  // Reset any prior attempt counter so a fresh OTP gets its own 5-try budget.
+  await clearOtpAttempts('verify', userId);
   return otp;
 }
 
 export async function validateVerificationOtp(userId: string, otp: string): Promise<boolean> {
   const key = `${OTP_VERIFY_PREFIX}:${userId}`;
   const stored = await redis.get(key);
-  if (!stored || stored !== otp) return false;
+  if (!stored || stored !== otp) {
+    const locked = await recordWrongOtpAttempt(key, 'verify', userId);
+    if (locked) {
+      throw new AppError(429, 'Too many wrong codes. Please restart.', 'OTP_LOCKED');
+    }
+    return false;
+  }
   await redis.del(key);
+  await clearOtpAttempts('verify', userId);
   return true;
 }
 
@@ -110,13 +148,22 @@ export async function createPasswordResetOtp(email: string): Promise<string> {
   const otp = generateOtp();
   const key = `${OTP_RESET_PREFIX}:${email}`;
   await redis.set(key, otp, 'EX', OTP_RESET_TTL_SECONDS);
+  await clearOtpAttempts('reset', email.toLowerCase());
   return otp;
 }
 
 export async function validatePasswordResetOtp(email: string, otp: string): Promise<boolean> {
   const key = `${OTP_RESET_PREFIX}:${email}`;
+  const subject = email.toLowerCase();
   const stored = await redis.get(key);
-  if (!stored || stored !== otp) return false;
+  if (!stored || stored !== otp) {
+    const locked = await recordWrongOtpAttempt(key, 'reset', subject);
+    if (locked) {
+      throw new AppError(429, 'Too many wrong codes. Please restart.', 'OTP_LOCKED');
+    }
+    return false;
+  }
   await redis.del(key);
+  await clearOtpAttempts('reset', subject);
   return true;
 }

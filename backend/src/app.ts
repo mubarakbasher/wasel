@@ -21,12 +21,10 @@ app.use(
   })
 );
 
-// CORS
+// CORS — wildcard '*' is rejected at config load time, so this is always a concrete allow-list.
 app.use(
   cors({
-    origin: config.CORS_ORIGIN === '*'
-      ? '*'
-      : config.CORS_ORIGIN.split(',').map(s => s.trim()),
+    origin: config.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean),
     credentials: true,
   })
 );
@@ -45,8 +43,17 @@ app.use(requestLogger);
 // Rate limiting
 app.use('/api/', generalLimiter);
 
-// Static uploads (receipts, etc.)
-app.use('/uploads', express.static(process.env.UPLOAD_DIR || '/app/uploads'));
+// Static uploads (receipts, etc.).
+// Force download + nosniff so a malicious upload cannot be rendered inline by a browser.
+app.use(
+  '/uploads',
+  express.static(process.env.UPLOAD_DIR || '/app/uploads', {
+    setHeaders: (res) => {
+      res.setHeader('Content-Disposition', 'attachment');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  }),
+);
 
 // API v1 routes
 app.use('/api/v1', routes);

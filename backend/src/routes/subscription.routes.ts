@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate';
 import { validate } from '../middleware/validate';
-import { uploadReceipt as uploadReceiptMiddleware } from '../middleware/upload';
+import { uploadReceipt as uploadReceiptMiddleware, verifyUploadMagicBytes } from '../middleware/upload';
 import {
   requestSubscriptionSchema,
   changeSubscriptionSchema,
@@ -40,6 +40,7 @@ router.post(
   '/receipt',
   authenticate,
   uploadReceiptMiddleware.single('receipt'),
+  verifyUploadMagicBytes,
   validate({ body: uploadReceiptSchema }),
   subscriptionController.uploadReceipt,
 );
