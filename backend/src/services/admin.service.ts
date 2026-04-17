@@ -4,7 +4,7 @@ import { redis } from '../config/redis';
 import { config } from '../config';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
-import { notifyPaymentConfirmed, isFcmAvailable } from './notification.service';
+import { notifyPaymentConfirmed, isFcmAvailable, getFcmInitError } from './notification.service';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -945,7 +945,11 @@ export async function resetAdminPassword(adminId: string, newPassword: string): 
 export interface SystemStatus {
   database: { status: 'ok' | 'error'; responseMs: number };
   redis: { status: 'ok' | 'error'; responseMs: number };
-  fcm: { enabled: boolean; serviceAccountPath: string | null };
+  fcm: {
+    status: 'ok' | 'disabled' | 'error';
+    serviceAccountPath: string | null;
+    message?: string;
+  };
   process: { uptimeSeconds: number; nodeVersion: string; memoryMb: number };
 }
 
@@ -982,13 +986,24 @@ export async function getSystemStatus(): Promise<SystemStatus> {
 
   const memoryBytes = process.memoryUsage().rss;
 
+  const fcmPath = config.FIREBASE_SERVICE_ACCOUNT_PATH ?? null;
+  const fcmErr = getFcmInitError();
+  const fcmStatus: 'ok' | 'disabled' | 'error' = isFcmAvailable()
+    ? 'ok'
+    : fcmErr
+      ? 'error'
+      : 'disabled';
+  const fcmMessage =
+    fcmStatus === 'disabled'
+      ? 'FIREBASE_SERVICE_ACCOUNT_PATH not set'
+      : fcmStatus === 'error'
+        ? (fcmErr ?? 'Firebase init failed')
+        : undefined;
+
   return {
     database: { status: dbStatus, responseMs: dbMs },
     redis: { status: redisStatus, responseMs: redisMs },
-    fcm: {
-      enabled: isFcmAvailable(),
-      serviceAccountPath: config.FIREBASE_SERVICE_ACCOUNT_PATH ?? null,
-    },
+    fcm: { status: fcmStatus, serviceAccountPath: fcmPath, message: fcmMessage },
     process: {
       uptimeSeconds: Math.floor(process.uptime()),
       nodeVersion: process.version,

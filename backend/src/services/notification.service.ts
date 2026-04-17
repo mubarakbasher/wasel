@@ -8,6 +8,7 @@ import * as inboxService from './inbox.service';
 
 // Firebase initialization (graceful no-op if credentials missing)
 let fcmAvailable = false;
+let fcmInitError: string | null = null;
 
 try {
   if (config.FIREBASE_SERVICE_ACCOUNT_PATH) {
@@ -20,6 +21,7 @@ try {
     logger.warn('FIREBASE_SERVICE_ACCOUNT_PATH not set — push notifications disabled');
   }
 } catch (err) {
+  fcmInitError = err instanceof Error ? err.message : String(err);
   logger.error('Failed to initialize Firebase Admin SDK', { error: err });
 }
 
@@ -29,6 +31,15 @@ try {
  */
 export function isFcmAvailable(): boolean {
   return fcmAvailable;
+}
+
+/**
+ * Returns the init error message if Firebase init threw during startup
+ * (bad service account, missing file, etc). Null when init either
+ * succeeded or was skipped because the env var was unset.
+ */
+export function getFcmInitError(): string | null {
+  return fcmInitError;
 }
 
 // Dedup categories (prevent repeated notifications for same event within 24h)
