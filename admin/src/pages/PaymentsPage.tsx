@@ -130,6 +130,26 @@ export default function PaymentsPage() {
       ),
     },
     {
+      key: 'receipt_url',
+      header: 'Receipt',
+      render: (row) => {
+        const url = resolveAssetUrl(row.receipt_url);
+        return url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            View
+          </a>
+        ) : (
+          <span className="text-xs text-gray-400">—</span>
+        );
+      },
+    },
+    {
       key: 'created_at',
       header: 'Date',
       render: (row) => new Date(row.created_at).toLocaleString(),
@@ -137,46 +157,25 @@ export default function PaymentsPage() {
     {
       key: 'actions',
       header: 'Actions',
-      render: (row) => {
-        const resolved = resolveAssetUrl(row.receipt_url);
-        return (
+      render: (row) =>
+        row.status === 'pending' ? (
           <div className="flex items-center gap-2">
-            {resolved ? (
-              <a
-                href={resolved}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                View
-              </a>
-            ) : (
-              <span className="inline-flex items-center px-2.5 py-1 text-xs text-gray-400 border border-dashed border-gray-300 rounded">
-                No receipt
-              </span>
-            )}
-            {row.status === 'pending' && (
-              <>
-                <button
-                  onClick={() => setConfirmAction({ id: row.id, decision: 'approved' })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 transition-colors"
-                >
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  Approve
-                </button>
-                <button
-                  onClick={() => setConfirmAction({ id: row.id, decision: 'rejected' })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
-                >
-                  <XCircle className="w-3.5 h-3.5" />
-                  Reject
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => setConfirmAction({ id: row.id, decision: 'approved' })}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 transition-colors"
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              Approve
+            </button>
+            <button
+              onClick={() => setConfirmAction({ id: row.id, decision: 'rejected' })}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              Reject
+            </button>
           </div>
-        );
-      },
+        ) : null,
     },
   ];
 
