@@ -4,7 +4,15 @@ import { requireAdmin } from '../middleware/requireAdmin';
 import { validate } from '../middleware/validate';
 import * as validators from '../validators/admin.validators';
 import * as adminController from '../controllers/admin.controller';
+import * as settingsController from '../controllers/settings.controller';
 import * as supportController from '../controllers/support.controller';
+import {
+  updateBankSettingsSchema,
+  createAdminSchema,
+  resetAdminPasswordSchema,
+  adminIdParamSchema,
+  setAdminActiveBodySchema,
+} from '../validators/settings.validators';
 import {
   sendMessageSchema,
   listMessagesQuerySchema,
@@ -40,6 +48,36 @@ router.put('/payments/:id', validate({ params: validators.paymentIdParamSchema, 
 router.get('/stats', adminController.getStats);
 router.get('/routers', validate({ query: validators.listRoutersQuerySchema }), adminController.listRouters);
 router.get('/audit-logs', validate({ query: validators.listAuditLogsQuerySchema }), adminController.listAuditLogs);
+
+// Settings — bank details
+router.get('/settings/bank', settingsController.getBankSettings);
+router.put(
+  '/settings/bank',
+  validate({ body: updateBankSettingsSchema }),
+  settingsController.updateBankSettings,
+);
+
+// Admin management
+router.get('/admins', adminController.listAdmins);
+router.post('/admins', validate({ body: createAdminSchema }), adminController.createAdmin);
+router.put(
+  '/admins/:id/active',
+  validate({ params: adminIdParamSchema, body: setAdminActiveBodySchema }),
+  adminController.setAdminActive,
+);
+router.put(
+  '/admins/:id/password',
+  validate({ params: adminIdParamSchema, body: resetAdminPasswordSchema }),
+  adminController.resetAdminPassword,
+);
+router.delete(
+  '/admins/:id',
+  validate({ params: adminIdParamSchema }),
+  adminController.deleteAdmin,
+);
+
+// System status
+router.get('/system-status', adminController.getSystemStatus);
 
 // Support messages
 router.get('/support/unread-count', supportController.adminUnreadCount);

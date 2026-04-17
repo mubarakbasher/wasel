@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import '../models/bank_info.dart';
 import '../models/payment_record.dart';
 import '../models/plan.dart';
 import '../models/subscription.dart';
@@ -104,6 +105,13 @@ class SubscriptionService {
   /// Cancel a pending or rejected payment so the user can start a fresh plan.
   Future<void> cancelPayment(String paymentId) async {
     await _api.delete('/subscription/payments/$paymentId');
+  }
+
+  /// GET /subscription/bank-info
+  Future<BankInfo> getBankInfo() async {
+    final response = await _api.get('/subscription/bank-info');
+    final data = response.data['data'] as Map<String, dynamic>;
+    return BankInfo.fromJson(data);
   }
 }
 

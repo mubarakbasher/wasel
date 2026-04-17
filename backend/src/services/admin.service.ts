@@ -1,7 +1,12 @@
+import bcrypt from 'bcrypt';
 import { pool } from '../config/database';
+import { redis } from '../config/redis';
+import { config } from '../config';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
-import { notifyPaymentConfirmed } from './notification.service';
+import { notifyPaymentConfirmed, isFcmAvailable } from './notification.service';
+
+const BCRYPT_ROUNDS = 12;
 
 // ----- Interfaces -----
 
@@ -789,4 +794,205 @@ export async function getAuditLogs(
   logger.info('Admin fetched audit logs', { page, limit, adminId, action, targetEntity, total });
 
   return { logs: dataResult.rows, total, page, limit };
+}
+
+// ----- Admin management -----
+
+export interface AdminRow {
+  id: string;
+  name: string;
+  email: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+/**
+ * List all admin users, newest first.
+ */
+export async function listAdmins(): Promise<AdminRow[]> {
+  const result = await pool.query<AdminRow>(
+    `SELECT id, name, email, is_active, created_at
+     FROM users
+     WHERE role = 'admin'
+     ORDER BY created_at DESC`,
+  );
+  return result.rows;
+}
+
+/**
+ * Create a new admin. Throws 409 EMAIL_EXISTS if the email is already registered
+ * (to any role). The new admin is created already verified + active.
+ */
+export async function createAdmin(input: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<AdminRow> {
+  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [input.email]);
+  if (existing.rows.length > 0) {
+    throw new AppError(409, 'Email already registered', 'EMAIL_EXISTS');
+  }
+
+  const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+
+  const result = await pool.query<AdminRow>(
+    `INSERT INTO users (name, email, password_hash, role, is_verified, is_active)
+     VALUES ($1, $2, $3, 'admin', TRUE, TRUE)
+     RETURNING id, name, email, is_active, created_at`,
+    [input.name, input.email, passwordHash],
+  );
+
+  logger.info('Admin created new admin', { adminId: result.rows[0].id, email: input.email });
+  return result.rows[0];
+}
+
+/**
+ * Ensure at least one other ACTIVE admin would remain after the pending op on `targetId`.
+ * Throws 400 LAST_ADMIN if the target is the last active admin.
+ */
+async function assertNotLastActiveAdmin(targetId: string): Promise<void> {
+  const result = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM users
+     WHERE role = 'admin' AND is_active = TRUE AND id <> $1`,
+    [targetId],
+  );
+  if (parseInt(result.rows[0].count, 10) < 1) {
+    throw new AppError(
+      400,
+      'Cannot deactivate or delete the last active admin',
+      'LAST_ADMIN',
+    );
+  }
+}
+
+/**
+ * Toggle admin active state. Blocks self-modification and last-admin deactivation.
+ */
+export async function deactivateAdmin(
+  adminId: string,
+  isActive: boolean,
+  actingAdminId: string,
+): Promise<AdminRow> {
+  if (adminId === actingAdminId) {
+    throw new AppError(400, 'You cannot modify your own active state', 'CANNOT_MODIFY_SELF');
+  }
+
+  if (!isActive) {
+    await assertNotLastActiveAdmin(adminId);
+  }
+
+  const result = await pool.query<AdminRow>(
+    `UPDATE users
+     SET is_active = $1, updated_at = NOW()
+     WHERE id = $2 AND role = 'admin'
+     RETURNING id, name, email, is_active, created_at`,
+    [isActive, adminId],
+  );
+
+  if (result.rowCount === 0) {
+    throw new AppError(404, 'Admin not found', 'ADMIN_NOT_FOUND');
+  }
+
+  logger.info('Admin set admin active state', { adminId, isActive, actingAdminId });
+  return result.rows[0];
+}
+
+/**
+ * Hard-delete an admin. Blocks self-delete and last-active-admin delete.
+ */
+export async function deleteAdmin(adminId: string, actingAdminId: string): Promise<void> {
+  if (adminId === actingAdminId) {
+    throw new AppError(400, 'You cannot delete your own account', 'CANNOT_DELETE_SELF');
+  }
+
+  await assertNotLastActiveAdmin(adminId);
+
+  const result = await pool.query(
+    `DELETE FROM users WHERE id = $1 AND role = 'admin'`,
+    [adminId],
+  );
+
+  if (result.rowCount === 0) {
+    throw new AppError(404, 'Admin not found', 'ADMIN_NOT_FOUND');
+  }
+
+  logger.info('Admin deleted admin', { adminId, actingAdminId });
+}
+
+/**
+ * Reset another admin's password. Clears lockout fields (same pattern as auth.service).
+ */
+export async function resetAdminPassword(adminId: string, newPassword: string): Promise<void> {
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+  const result = await pool.query(
+    `UPDATE users
+     SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL
+     WHERE id = $2 AND role = 'admin'
+     RETURNING id`,
+    [passwordHash, adminId],
+  );
+
+  if (result.rowCount === 0) {
+    throw new AppError(404, 'Admin not found', 'ADMIN_NOT_FOUND');
+  }
+
+  logger.info('Admin password reset', { adminId });
+}
+
+// ----- System status -----
+
+export interface SystemStatus {
+  database: { status: 'ok' | 'error'; responseMs: number };
+  redis: { status: 'ok' | 'error'; responseMs: number };
+  fcm: { enabled: boolean; serviceAccountPath: string | null };
+  process: { uptimeSeconds: number; nodeVersion: string; memoryMb: number };
+}
+
+export async function getSystemStatus(): Promise<SystemStatus> {
+  // Database ping
+  let dbStatus: 'ok' | 'error' = 'ok';
+  let dbMs = 0;
+  {
+    const start = Date.now();
+    try {
+      await pool.query('SELECT 1');
+      dbMs = Date.now() - start;
+    } catch (err) {
+      dbMs = Date.now() - start;
+      dbStatus = 'error';
+      logger.warn('System status: database ping failed', { error: err });
+    }
+  }
+
+  // Redis ping
+  let redisStatus: 'ok' | 'error' = 'ok';
+  let redisMs = 0;
+  {
+    const start = Date.now();
+    try {
+      await redis.ping();
+      redisMs = Date.now() - start;
+    } catch (err) {
+      redisMs = Date.now() - start;
+      redisStatus = 'error';
+      logger.warn('System status: redis ping failed', { error: err });
+    }
+  }
+
+  const memoryBytes = process.memoryUsage().rss;
+
+  return {
+    database: { status: dbStatus, responseMs: dbMs },
+    redis: { status: redisStatus, responseMs: redisMs },
+    fcm: {
+      enabled: isFcmAvailable(),
+      serviceAccountPath: config.FIREBASE_SERVICE_ACCOUNT_PATH ?? null,
+    },
+    process: {
+      uptimeSeconds: Math.floor(process.uptime()),
+      nodeVersion: process.version,
+      memoryMb: Math.round(memoryBytes / 1e6),
+    },
+  };
 }

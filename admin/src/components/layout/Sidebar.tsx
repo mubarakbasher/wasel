@@ -10,6 +10,7 @@ import {
   Wifi,
   Package,
   MessageCircle,
+  Settings,
 } from 'lucide-react';
 import api from '../../lib/api';
 
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/messages', label: 'Messages', icon: MessageCircle },
   { to: '/routers', label: 'Routers', icon: Router },
   { to: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function Sidebar() {

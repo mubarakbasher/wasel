@@ -204,3 +204,81 @@ export async function listAuditLogs(req: AuthenticatedRequest, res: Response, ne
     next(error);
   }
 }
+
+// ----- Admin management -----
+
+export async function listAdmins(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const admins = await adminService.listAdmins();
+    res.status(200).json({ success: true, data: admins });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { name, email, password } = req.body as { name: string; email: string; password: string };
+    const admin = await adminService.createAdmin({ name, email, password });
+    await auditService.logAction({
+      adminId: req.user!.id, action: 'admin.create', targetEntity: 'admin',
+      targetId: admin.id, details: { name, email }, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(201).json({ success: true, data: admin });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function setAdminActive(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { is_active } = req.body as { is_active: boolean };
+    const admin = await adminService.deactivateAdmin(id, is_active, req.user!.id);
+    await auditService.logAction({
+      adminId: req.user!.id, action: is_active ? 'admin.activate' : 'admin.deactivate', targetEntity: 'admin',
+      targetId: id, details: { is_active }, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: admin });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetAdminPassword(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { password } = req.body as { password: string };
+    await adminService.resetAdminPassword(id, password);
+    await auditService.logAction({
+      adminId: req.user!.id, action: 'admin.password_reset', targetEntity: 'admin',
+      targetId: id, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: { message: 'Password reset successfully' } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    await adminService.deleteAdmin(id, req.user!.id);
+    await auditService.logAction({
+      adminId: req.user!.id, action: 'admin.delete', targetEntity: 'admin',
+      targetId: id, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: { message: 'Admin deleted successfully' } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getSystemStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const status = await adminService.getSystemStatus();
+    res.status(200).json({ success: true, data: status });
+  } catch (error) {
+    next(error);
+  }
+}

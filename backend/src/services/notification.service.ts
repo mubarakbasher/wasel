@@ -23,6 +23,14 @@ try {
   logger.error('Failed to initialize Firebase Admin SDK', { error: err });
 }
 
+/**
+ * Exposes FCM availability to other services (e.g. admin system-status endpoint)
+ * without leaking the module-local mutable boolean.
+ */
+export function isFcmAvailable(): boolean {
+  return fcmAvailable;
+}
+
 // Dedup categories (prevent repeated notifications for same event within 24h)
 const DEDUP_CATEGORIES = ['subscription_expiring', 'subscription_expired', 'voucher_quota_low'];
 

@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../types';
 import { AppError } from '../middleware/errorHandler';
 import { RECEIPTS_PUBLIC_PREFIX } from '../middleware/upload';
 import * as subscriptionService from '../services/subscription.service';
+import * as settingsService from '../services/settings.service';
 
 export async function getPlans(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -90,6 +91,15 @@ export async function cancelPayment(req: AuthenticatedRequest, res: Response, ne
     const paymentId = req.params.id as string;
     await subscriptionService.cancelPayment(req.user!.id, paymentId);
     res.status(200).json({ success: true, data: { message: 'Payment cancelled' } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getBankInfo(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const data = await settingsService.getBankInfo();
+    res.status(200).json({ success: true, data });
   } catch (error) {
     next(error);
   }

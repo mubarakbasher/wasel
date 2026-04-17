@@ -18,6 +18,8 @@ router.get('/plans', subscriptionController.getPlans);
 // Protected
 router.get('/', authenticate, subscriptionController.getSubscription);
 
+router.get('/bank-info', authenticate, subscriptionController.getBankInfo);
+
 router.get('/payments', authenticate, subscriptionController.getUserPayments);
 
 router.post(

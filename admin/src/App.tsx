@@ -12,6 +12,7 @@ import AuditLogsPage from './pages/AuditLogsPage';
 import PlansPage from './pages/PlansPage';
 import MessagesPage from './pages/MessagesPage';
 import ConversationPage from './pages/ConversationPage';
+import SettingsPage from './pages/SettingsPage';
 import type { ReactNode } from 'react';
 
 const queryClient = new QueryClient({
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="/messages/:userId" element={<ConversationPage />} />
               <Route path="/routers" element={<RoutersPage />} />
               <Route path="/audit-logs" element={<AuditLogsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

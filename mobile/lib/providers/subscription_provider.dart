@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/bank_info.dart';
 import '../models/payment_record.dart';
 import '../models/plan.dart';
 import '../models/subscription.dart';
@@ -16,6 +17,7 @@ class SubscriptionState {
   final bool isLoadingPayments;
   final String? error;
   final SubscriptionRequestResult? lastRequest;
+  final BankInfo? bankInfo;
 
   const SubscriptionState({
     this.subscription,
@@ -26,6 +28,7 @@ class SubscriptionState {
     this.isLoadingPayments = false,
     this.error,
     this.lastRequest,
+    this.bankInfo,
   });
 
   SubscriptionState copyWith({
@@ -37,6 +40,7 @@ class SubscriptionState {
     bool? isLoadingPayments,
     String? error,
     SubscriptionRequestResult? lastRequest,
+    BankInfo? bankInfo,
     bool clearSubscription = false,
     bool clearPendingChange = false,
     bool clearError = false,
@@ -51,6 +55,7 @@ class SubscriptionState {
       isLoadingPayments: isLoadingPayments ?? this.isLoadingPayments,
       error: clearError ? null : (error ?? this.error),
       lastRequest: clearLastRequest ? null : (lastRequest ?? this.lastRequest),
+      bankInfo: bankInfo ?? this.bankInfo,
     );
   }
 }
@@ -209,6 +214,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _extractError(e));
       return false;
+    }
+  }
+
+  /// Fetches bank transfer details from the backend. Errors are swallowed
+  /// silently — the payment screen falls back to the "contact admin"
+  /// placeholder when bank info cannot be loaded.
+  Future<void> loadBankInfo() async {
+    try {
+      final info = await _service.getBankInfo();
+      state = state.copyWith(bankInfo: info);
+    } catch (_) {
+      // Silent fallback — UI handles null/unconfigured state gracefully.
     }
   }
 

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../models/bank_info.dart';
 import '../../providers/subscription_provider.dart';
 import '../../services/subscription_service.dart';
 import '../../theme/app_colors.dart';
@@ -23,6 +24,14 @@ class PaymentScreen extends ConsumerStatefulWidget {
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   int _currentStep = 0;
   File? _receiptFile;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref.read(subscriptionProvider.notifier).loadBankInfo(),
+    );
+  }
 
   Future<void> _pickReceipt(ImageSource source) async {
     final picker = ImagePicker();
@@ -171,7 +180,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             title: Text(context.tr('payment.stepBankDetails')),
             isActive: _currentStep >= 0,
             state: _currentStep > 0 ? StepState.complete : StepState.indexed,
-            content: _buildBankDetails(sub?.planName, request),
+            content: _buildBankDetails(sub?.planName, request, state.bankInfo),
           ),
           Step(
             title: Text(context.tr('payment.stepUploadReceipt')),
@@ -194,7 +203,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     );
   }
 
-  Widget _buildBankDetails(String? planName, SubscriptionRequestResult? request) {
+  Widget _buildBankDetails(
+    String? planName,
+    SubscriptionRequestResult? request,
+    BankInfo? bankInfo,
+  ) {
+    final hasBankInfo = bankInfo != null && bankInfo.isConfigured;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -246,10 +260,58 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         Text(context.tr('payment.bankDetails'),
             style: AppTypography.headline),
         const SizedBox(height: AppSpacing.sm),
-        _DetailRow(
-          label: context.tr('payment.bank'),
-          value: context.tr('payment.contactAdmin'),
-        ),
+        if (!hasBankInfo)
+          _DetailRow(
+            label: context.tr('payment.bank'),
+            value: context.tr('payment.bankNotConfigured'),
+          )
+        else ...[
+          _DetailRow(
+            label: context.tr('payment.bank'),
+            value: bankInfo.bankName,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _CopyableRow(
+            label: context.tr('payment.accountNumber'),
+            value: bankInfo.accountNumber,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _DetailRow(
+            label: context.tr('payment.accountHolder'),
+            value: bankInfo.accountHolder,
+          ),
+          if (bankInfo.instructions.trim().isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.tr('payment.transferInstructions'),
+                    style: AppTypography.footnote.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    bankInfo.instructions,
+                    style: AppTypography.footnote.copyWith(
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
         const SizedBox(height: AppSpacing.sm),
         Text(
           context.tr('payment.includeReference'),
