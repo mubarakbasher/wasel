@@ -152,3 +152,10 @@ export async function notifyBulkCreationComplete(userId: string, count: number, 
     `${count} vouchers created for ${routerName}.`,
   );
 }
+
+export async function notifySupportReply(userId: string, preview: string): Promise<void> {
+  await sendPushToUser(userId, 'support_reply',
+    'Support replied',
+    preview,
+  );
+}

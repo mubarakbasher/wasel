@@ -8,6 +8,7 @@ import sessionRoutes from './session.routes';
 import dashboardRoutes from './dashboard.routes';
 import reportRoutes from './report.routes';
 import notificationRoutes from './notification.routes';
+import supportRoutes from './support.routes';
 import adminRoutes from './admin.routes';
 
 const router = Router();
@@ -27,6 +28,7 @@ router.use('/routers/:id/sessions', sessionRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/reports', reportRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/support', supportRoutes);
 router.use('/admin', adminRoutes);
 
 export default router;

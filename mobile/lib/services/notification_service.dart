@@ -6,8 +6,11 @@ class NotificationApiService {
 
   Future<List<NotificationPreference>> getPreferences() async {
     final response = await _api.dio.get('/notifications/preferences');
-    final list = response.data['data'] as List;
-    return list.map((e) => NotificationPreference.fromJson(e as Map<String, dynamic>)).toList();
+    final data = response.data['data'] as Map<String, dynamic>;
+    final list = data['preferences'] as List;
+    return list
+        .map((e) => NotificationPreference.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> updatePreferences(List<NotificationPreference> prefs) async {

@@ -4,6 +4,12 @@ import { requireAdmin } from '../middleware/requireAdmin';
 import { validate } from '../middleware/validate';
 import * as validators from '../validators/admin.validators';
 import * as adminController from '../controllers/admin.controller';
+import * as supportController from '../controllers/support.controller';
+import {
+  sendMessageSchema,
+  listMessagesQuerySchema,
+  conversationUserIdParamSchema,
+} from '../validators/support.validators';
 
 const router = Router();
 
@@ -34,5 +40,24 @@ router.put('/payments/:id', validate({ params: validators.paymentIdParamSchema, 
 router.get('/stats', adminController.getStats);
 router.get('/routers', validate({ query: validators.listRoutersQuerySchema }), adminController.listRouters);
 router.get('/audit-logs', validate({ query: validators.listAuditLogsQuerySchema }), adminController.listAuditLogs);
+
+// Support messages
+router.get('/support/unread-count', supportController.adminUnreadCount);
+router.get('/support/conversations', supportController.listConversations);
+router.get(
+  '/support/conversations/:userId',
+  validate({ params: conversationUserIdParamSchema, query: listMessagesQuerySchema }),
+  supportController.listConversationMessages,
+);
+router.post(
+  '/support/conversations/:userId/messages',
+  validate({ params: conversationUserIdParamSchema, body: sendMessageSchema }),
+  supportController.adminReply,
+);
+router.post(
+  '/support/conversations/:userId/read',
+  validate({ params: conversationUserIdParamSchema }),
+  supportController.adminMarkRead,
+);
 
 export default router;

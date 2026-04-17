@@ -41,6 +41,7 @@ export async function getPreferences(req: AuthenticatedRequest, res: Response, n
       'payment_confirmed',
       'voucher_quota_low',
       'bulk_creation_complete',
+      'support_reply',
     ];
 
     const prefsMap = new Map(preferences.map(p => [p.category, p.enabled]));

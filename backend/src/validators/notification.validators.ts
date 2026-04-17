@@ -17,6 +17,7 @@ const notificationCategorySchema = z.enum([
   'router_online',
   'voucher_quota_low',
   'bulk_creation_complete',
+  'support_reply',
 ]);
 
 export const updatePreferencesSchema = z.object({

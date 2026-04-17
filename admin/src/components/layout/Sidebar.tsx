@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Users,
@@ -8,7 +9,9 @@ import {
   ScrollText,
   Wifi,
   Package,
+  MessageCircle,
 } from 'lucide-react';
+import api from '../../lib/api';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -16,11 +19,22 @@ const navItems = [
   { to: '/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { to: '/plans', label: 'Plans', icon: Package },
   { to: '/payments', label: 'Payments', icon: Banknote },
+  { to: '/messages', label: 'Messages', icon: MessageCircle },
   { to: '/routers', label: 'Routers', icon: Router },
   { to: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
 ];
 
 export default function Sidebar() {
+  const { data: unread } = useQuery({
+    queryKey: ['admin-support-unread'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/support/unread-count');
+      return (data?.data?.unreadCount as number) ?? 0;
+    },
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-64 bg-slate-900 text-white flex flex-col z-50">
       <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-700">
@@ -45,7 +59,12 @@ export default function Sidebar() {
             }
           >
             <Icon className="w-5 h-5 shrink-0" />
-            {label}
+            <span className="flex-1">{label}</span>
+            {to === '/messages' && unread && unread > 0 ? (
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[10px] font-bold">
+                {unread > 99 ? '99+' : unread}
+              </span>
+            ) : null}
           </NavLink>
         ))}
       </nav>

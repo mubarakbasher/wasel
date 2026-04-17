@@ -23,6 +23,7 @@ import '../screens/sessions/session_history_screen.dart';
 import '../screens/subscription/subscription_status_screen.dart';
 import '../screens/subscription/payment_screen.dart';
 import '../screens/settings/payments_screen.dart';
+import '../screens/settings/contact_screen.dart';
 import '../screens/reports/reports_screen.dart';
 import '../screens/reports/report_export_screen.dart';
 import '../screens/notification_preferences_screen.dart';
@@ -181,6 +182,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/payments',
         builder: (context, state) => const PaymentsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/contact',
+        builder: (context, state) => const ContactScreen(),
       ),
       // Notifications
       GoRoute(

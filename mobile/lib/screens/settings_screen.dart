@@ -144,6 +144,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             subtitle: context.tr('settings.notificationsSubtitle'),
             onTap: () => context.push('/notification-preferences'),
           ),
+          _SettingsTile(
+            icon: Icons.support_agent,
+            title: context.tr('settings.contact'),
+            subtitle: context.tr('settings.contactSubtitle'),
+            onTap: () => context.push('/settings/contact'),
+          ),
           _LanguageTile(),
           _SettingsTile(
             icon: Icons.info_outline,
