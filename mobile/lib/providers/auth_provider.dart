@@ -8,6 +8,9 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
 import '../services/secure_storage.dart';
+import 'notifications_provider.dart';
+import 'subscription_provider.dart';
+import 'support_provider.dart';
 
 // ---------------------------------------------------------------------------
 // State
@@ -58,17 +61,42 @@ class AuthState {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier({
+    Ref? ref,
     AuthService? authService,
     SecureStorageService? storageService,
-  })  : _authService = authService ?? AuthService(),
+  })  : _ref = ref,
+        _authService = authService ?? AuthService(),
         _storage = storageService ?? SecureStorageService(),
         super(const AuthState()) {
     // Auto-logout when the API client detects an unrecoverable 401.
     ApiClient().onSessionExpired = _handleSessionExpired;
   }
 
+  final Ref? _ref;
   final AuthService _authService;
   final SecureStorageService _storage;
+
+  /// Reset every user-scoped provider so stale data from the previous user
+  /// can't leak into the next session. Called before tokens are cleared.
+  void _resetUserScopedProviders() {
+    final ref = _ref;
+    if (ref == null) return;
+    try {
+      ref.read(notificationsProvider.notifier).reset();
+    } catch (_) {
+      // Provider may not be initialised yet — safe to ignore.
+    }
+    try {
+      ref.read(supportProvider.notifier).reset();
+    } catch (_) {
+      // Same.
+    }
+    try {
+      ref.read(subscriptionProvider.notifier).clearSubscription();
+    } catch (_) {
+      // Same.
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Session restore (call on app start)
@@ -286,6 +314,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await PushNotificationService().unregisterCurrentToken();
       await _authService.logout();
     } finally {
+      _resetUserScopedProviders();
       await _storage.clearAll();
       state = const AuthState();
     }
@@ -353,6 +382,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Called by [ApiClient.onSessionExpired] when token refresh fails.
   void _handleSessionExpired() {
+    _resetUserScopedProviders();
     _storage.clearAll();
     state = const AuthState(error: 'Session expired. Please log in again.');
   }
@@ -389,5 +419,5 @@ class AuthNotifier extends StateNotifier<AuthState> {
 // ---------------------------------------------------------------------------
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>(
-  (ref) => AuthNotifier(),
+  (ref) => AuthNotifier(ref: ref),
 );

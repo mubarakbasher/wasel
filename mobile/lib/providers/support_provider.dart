@@ -116,6 +116,12 @@ class SupportNotifier extends StateNotifier<SupportState> {
     }
   }
 
+  /// Wipe the cached support conversation. Called on logout so the next
+  /// user's session doesn't see the previous user's messages.
+  void reset() {
+    state = const SupportState();
+  }
+
   String _extractError(dynamic e) {
     if (e is DioException) {
       final data = e.response?.data;

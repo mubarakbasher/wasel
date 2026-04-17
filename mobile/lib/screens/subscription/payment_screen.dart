@@ -41,6 +41,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       imageQuality: 85,
     );
     if (picked == null) return;
+    if (!mounted) return;
     setState(() {
       _receiptFile = File(picked.path);
     });

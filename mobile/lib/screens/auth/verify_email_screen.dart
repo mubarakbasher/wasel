@@ -68,12 +68,11 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
   Future<void> _resend() async {
     try {
       await ref.read(authProvider.notifier).resendVerification(email: widget.email);
+      if (!mounted) return;
       _startCooldown();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('auth.verificationResent')), backgroundColor: AppColors.success),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('auth.verificationResent')), backgroundColor: AppColors.success),
+      );
     } catch (_) {}
   }
 
