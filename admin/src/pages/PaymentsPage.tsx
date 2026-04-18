@@ -4,6 +4,7 @@ import { CheckCircle, ExternalLink, XCircle } from 'lucide-react';
 import api, { resolveAssetUrl } from '../lib/api';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
+import ErrorPanel from '../components/ErrorPanel';
 
 interface Payment {
   id: string;
@@ -39,7 +40,7 @@ export default function PaymentsPage() {
     setErrorMsg('');
   }, [confirmAction]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['payments', page, statusFilter],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 20 };
@@ -214,17 +215,24 @@ export default function PaymentsPage() {
         ))}
       </div>
 
-      <div className="bg-white rounded-lg border shadow-sm">
-        <DataTable
-          columns={columns}
-          data={payments}
-          total={total}
-          page={page}
-          limit={20}
-          onPageChange={setPage}
-          isLoading={isLoading}
+      {isError ? (
+        <ErrorPanel
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => refetch()}
         />
-      </div>
+      ) : (
+        <div className="bg-white rounded-lg border shadow-sm">
+          <DataTable
+            columns={columns}
+            data={payments}
+            total={total}
+            page={page}
+            limit={20}
+            onPageChange={setPage}
+            isLoading={isLoading}
+          />
+        </div>
+      )}
 
       {/* Confirm dialog */}
       {confirmAction && (

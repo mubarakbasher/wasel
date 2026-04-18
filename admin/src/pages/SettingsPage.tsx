@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import StatusBadge from '../components/StatusBadge';
+import ErrorPanel from '../components/ErrorPanel';
 import { useAuth } from '../hooks/useAuth';
 
 const TABS = ['bank', 'admins', 'system'] as const;
@@ -119,7 +120,7 @@ function BankDetailsTab() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-settings-bank'],
     queryFn: async () => {
       const { data: res } = await api.get('/admin/settings/bank');
@@ -166,6 +167,17 @@ function BankDetailsTab() {
   );
 
   const disabled = mutation.isPending || !dirty;
+
+  if (isError) {
+    return (
+      <div className="max-w-2xl">
+        <ErrorPanel
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => refetch()}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl">
@@ -288,7 +300,7 @@ function AdminsTab() {
   const [successMsg, setSuccessMsg] = useState('');
   const [rowErrorMsg, setRowErrorMsg] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-admins'],
     queryFn: async () => {
       const { data: res } = await api.get('/admin/admins');
@@ -318,6 +330,15 @@ function AdminsTab() {
     },
     onError: (err) => setRowErrorMsg(extractErr(err)),
   });
+
+  if (isError) {
+    return (
+      <ErrorPanel
+        message={error instanceof Error ? error.message : undefined}
+        onRetry={() => refetch()}
+      />
+    );
+  }
 
   return (
     <div>
@@ -722,7 +743,7 @@ function ModalActions({
 // ---------------------------------------------------------------------------
 
 function SystemStatusTab() {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-system-status'],
     queryFn: async () => {
       const { data: res } = await api.get('/admin/system-status');
@@ -736,9 +757,10 @@ function SystemStatusTab() {
   }
   if (isError || !data) {
     return (
-      <div className="px-4 py-3 rounded-lg bg-red-50 text-red-700 text-sm">
-        Failed to load system status.
-      </div>
+      <ErrorPanel
+        message={error instanceof Error ? error.message : undefined}
+        onRetry={() => refetch()}
+      />
     );
   }
 

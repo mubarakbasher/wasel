@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import StatCard from '../components/StatCard';
+import ErrorPanel from '../components/ErrorPanel';
 
 interface Stats {
   totalUsers: number;
@@ -21,13 +22,22 @@ interface Stats {
 }
 
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: async () => {
       const { data: res } = await api.get('/admin/stats');
       return res.data as Stats;
     },
   });
+
+  if (isError) {
+    return (
+      <ErrorPanel
+        message={error instanceof Error ? error.message : undefined}
+        onRetry={() => refetch()}
+      />
+    );
+  }
 
   const cards = [
     { title: 'Total Users', value: data?.totalUsers ?? 0, icon: <Users className="w-6 h-6" />, color: 'text-blue-600' },

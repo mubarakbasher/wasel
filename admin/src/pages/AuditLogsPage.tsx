@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, ChevronDown, ChevronUp } from 'lucide-react';
 import api from '../lib/api';
 import DataTable, { type Column } from '../components/DataTable';
+import ErrorPanel from '../components/ErrorPanel';
 
 interface AuditLog {
   id: string;
@@ -37,7 +38,7 @@ export default function AuditLogsPage() {
     }, 400);
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['audit-logs', page, debouncedAction, targetEntity, fromDate, toDate],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 20 };
@@ -204,17 +205,24 @@ export default function AuditLogsPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border shadow-sm">
-        <DataTable
-          columns={columns}
-          data={logs}
-          total={total}
-          page={page}
-          limit={20}
-          onPageChange={setPage}
-          isLoading={isLoading}
+      {isError ? (
+        <ErrorPanel
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => refetch()}
         />
-      </div>
+      ) : (
+        <div className="bg-white rounded-lg border shadow-sm">
+          <DataTable
+            columns={columns}
+            data={logs}
+            total={total}
+            page={page}
+            limit={20}
+            onPageChange={setPage}
+            isLoading={isLoading}
+          />
+        </div>
+      )}
     </div>
   );
 }

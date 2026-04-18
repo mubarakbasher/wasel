@@ -4,6 +4,7 @@ import { MoreVertical, Loader2 } from 'lucide-react';
 import api from '../lib/api';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
+import ErrorPanel from '../components/ErrorPanel';
 
 interface Subscription {
   id: string;
@@ -45,7 +46,7 @@ export default function SubscriptionsPage() {
 
   const limit = 20;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'subscriptions', page, limit, status],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit };
@@ -275,17 +276,24 @@ export default function SubscriptionsPage() {
         </select>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200">
-        <DataTable
-          columns={columns}
-          data={subscriptions}
-          total={total}
-          page={page}
-          limit={limit}
-          onPageChange={setPage}
-          isLoading={isLoading}
+      {isError ? (
+        <ErrorPanel
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => refetch()}
         />
-      </div>
+      ) : (
+        <div className="bg-white rounded-lg border border-slate-200">
+          <DataTable
+            columns={columns}
+            data={subscriptions}
+            total={total}
+            page={page}
+            limit={limit}
+            onPageChange={setPage}
+            isLoading={isLoading}
+          />
+        </div>
+      )}
 
       {/* Edit Modal */}
       {editSub && (

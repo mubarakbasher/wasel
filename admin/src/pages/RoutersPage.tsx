@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import api from '../lib/api';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
+import ErrorPanel from '../components/ErrorPanel';
 
 interface Router {
   id: string;
@@ -48,7 +49,7 @@ export default function RoutersPage() {
     }, 400);
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['routers', page, statusFilter, debouncedSearch],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 20 };
@@ -152,17 +153,24 @@ export default function RoutersPage() {
         </select>
       </div>
 
-      <div className="bg-white rounded-lg border shadow-sm">
-        <DataTable
-          columns={columns}
-          data={routers}
-          total={total}
-          page={page}
-          limit={20}
-          onPageChange={setPage}
-          isLoading={isLoading}
+      {isError ? (
+        <ErrorPanel
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => refetch()}
         />
-      </div>
+      ) : (
+        <div className="bg-white rounded-lg border shadow-sm">
+          <DataTable
+            columns={columns}
+            data={routers}
+            total={total}
+            page={page}
+            limit={20}
+            onPageChange={setPage}
+            isLoading={isLoading}
+          />
+        </div>
+      )}
     </div>
   );
 }

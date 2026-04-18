@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import api from '../lib/api';
+import ErrorPanel from '../components/ErrorPanel';
 
 interface Conversation {
   userId: string;
@@ -20,7 +21,7 @@ export default function MessagesPage() {
   const [search, setSearch] = useState('');
   const limit = 20;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-conversations', page, search],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit };
@@ -54,6 +55,15 @@ export default function MessagesPage() {
           />
         </div>
       </div>
+
+      {isError && (
+        <div className="mb-4">
+          <ErrorPanel
+            message={error instanceof Error ? error.message : undefined}
+            onRetry={() => refetch()}
+          />
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MoreVertical, Plus, Loader2 } from 'lucide-react';
 import api from '../lib/api';
 import DataTable, { type Column } from '../components/DataTable';
+import ErrorPanel from '../components/ErrorPanel';
 
 interface Plan {
   id: string;
@@ -44,7 +45,7 @@ export default function PlansPage() {
   const [form, setForm] = useState<PlanForm>(emptyForm);
   const [confirmDelete, setConfirmDelete] = useState<Plan | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'plans'],
     queryFn: async () => {
       const { data: res } = await api.get('/admin/plans');
@@ -234,17 +235,24 @@ export default function PlansPage() {
         </button>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200">
-        <DataTable
-          columns={columns}
-          data={plans}
-          total={plans.length}
-          page={1}
-          limit={100}
-          onPageChange={() => {}}
-          isLoading={isLoading}
+      {isError ? (
+        <ErrorPanel
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => refetch()}
         />
-      </div>
+      ) : (
+        <div className="bg-white rounded-lg border border-slate-200">
+          <DataTable
+            columns={columns}
+            data={plans}
+            total={plans.length}
+            page={1}
+            limit={100}
+            onPageChange={() => {}}
+            isLoading={isLoading}
+          />
+        </div>
+      )}
 
       {/* Create / Edit Modal */}
       {isModalOpen && (

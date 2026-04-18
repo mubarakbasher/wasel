@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Send } from 'lucide-react';
 import api from '../lib/api';
+import ErrorPanel from '../components/ErrorPanel';
 
 interface SupportMessage {
   id: string;
@@ -30,7 +31,7 @@ export default function ConversationPage() {
   const [page] = useState(1);
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-conversation', userId, page],
     queryFn: async () => {
       const { data: res } = await api.get<ThreadResponse>(
@@ -94,6 +95,11 @@ export default function ConversationPage() {
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
           {isLoading ? (
             <div className="text-sm text-slate-400">Loading...</div>
+          ) : isError ? (
+            <ErrorPanel
+              message={error instanceof Error ? error.message : undefined}
+              onRetry={() => refetch()}
+            />
           ) : messages.length === 0 ? (
             <div className="text-sm text-slate-400 text-center py-16">
               No messages yet.
