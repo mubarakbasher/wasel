@@ -77,21 +77,24 @@ function toRouterInfo(row: RouterRow): RouterInfo {
 export async function createRouter(
   userId: string,
   data: { name: string; model?: string; rosVersion?: string; apiUser?: string; apiPass?: string },
+  opts?: { skipQuotaCheck?: boolean },
 ): Promise<RouterInfo> {
-  // Check router limit against subscription
-  const routerLimit = await getRouterLimit(userId);
-  const countResult = await pool.query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM routers WHERE user_id = $1',
-    [userId],
-  );
-  const currentCount = parseInt(countResult.rows[0].count, 10);
-
-  if (currentCount >= routerLimit) {
-    throw new AppError(
-      403,
-      `Router limit reached. Your plan allows ${routerLimit} router(s).`,
-      'ROUTER_LIMIT_REACHED',
+  // Check router limit against subscription (can be skipped by admin override)
+  if (!opts?.skipQuotaCheck) {
+    const routerLimit = await getRouterLimit(userId);
+    const countResult = await pool.query<{ count: string }>(
+      'SELECT COUNT(*) as count FROM routers WHERE user_id = $1',
+      [userId],
     );
+    const currentCount = parseInt(countResult.rows[0].count, 10);
+
+    if (currentCount >= routerLimit) {
+      throw new AppError(
+        403,
+        `Router limit reached. Your plan allows ${routerLimit} router(s).`,
+        'ROUTER_LIMIT_REACHED',
+      );
+    }
   }
 
   // Generate WireGuard keys

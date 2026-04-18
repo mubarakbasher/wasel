@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import * as adminService from '../services/admin.service';
 import * as auditService from '../services/audit.service';
+import * as routerService from '../services/router.service';
 import { redact } from '../utils/redact';
 
 export async function listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -270,6 +271,46 @@ export async function deleteAdmin(req: AuthenticatedRequest, res: Response, next
       targetId: id, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
     res.status(200).json({ success: true, data: { message: 'Admin deleted successfully' } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getUserDetail(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const detail = await adminService.getUserDetail(id);
+    res.status(200).json({ success: true, data: detail });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createRouterForUser(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const targetUserId = req.params.id as string;
+    const { overrideQuota, ...routerBody } = req.body as {
+      name: string;
+      model?: string;
+      rosVersion?: string;
+      apiUser?: string;
+      apiPass?: string;
+      overrideQuota?: boolean;
+    };
+    const router = await routerService.createRouter(
+      targetUserId,
+      routerBody,
+      { skipQuotaCheck: overrideQuota === true },
+    );
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'router.create_for_user',
+      targetEntity: 'router',
+      targetId: router.id,
+      details: { userId: targetUserId, name: routerBody.name, overrideQuota: !!overrideQuota },
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(201).json({ success: true, data: router });
   } catch (error) {
     next(error);
   }

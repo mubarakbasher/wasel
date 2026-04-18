@@ -26,8 +26,14 @@ router.use(authenticate, requireAdmin);
 
 // Users
 router.get('/users', validate({ query: validators.listUsersQuerySchema }), adminController.listUsers);
+router.get('/users/:id', validate({ params: validators.userIdParamSchema }), adminController.getUserDetail);
 router.put('/users/:id', validate({ params: validators.userIdParamSchema, body: validators.updateUserBodySchema }), adminController.updateUser);
 router.delete('/users/:id', validate({ params: validators.userIdParamSchema }), adminController.deleteUser);
+router.post(
+  '/users/:id/routers',
+  validate({ params: validators.userIdParamSchema, body: validators.createRouterForUserBodySchema }),
+  adminController.createRouterForUser,
+);
 
 // Subscriptions
 router.get('/subscriptions', validate({ query: validators.listSubscriptionsQuerySchema }), adminController.listSubscriptions);

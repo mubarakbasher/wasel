@@ -5,6 +5,7 @@ import { config } from '../config';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import { notifyPaymentConfirmed, isFcmAvailable, getFcmInitError } from './notification.service';
+import { getActiveSubscription, SubscriptionInfo } from './subscription.service';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -212,6 +213,58 @@ export async function deleteUser(userId: string): Promise<void> {
   await pool.query(`DELETE FROM users WHERE id = $1`, [userId]);
 
   logger.info('Admin deleted user', { userId });
+}
+
+interface UserDetailRouterRow {
+  id: string;
+  name: string;
+  model: string | null;
+  status: string;
+  tunnel_ip: string | null;
+  created_at: string;
+}
+
+interface UserDetailResult {
+  user: UserRow;
+  subscription: SubscriptionInfo | null;
+  routers: UserDetailRouterRow[];
+  routerCount: number;
+}
+
+/**
+ * Get full detail for a single user: profile, active subscription, and routers list.
+ * Throws 404 if the user does not exist.
+ */
+export async function getUserDetail(userId: string): Promise<UserDetailResult> {
+  const userResult = await pool.query<UserRow>(
+    `SELECT id, name, email, phone, business_name, is_verified, is_active, role, created_at
+     FROM users
+     WHERE id = $1`,
+    [userId],
+  );
+
+  if (userResult.rows.length === 0) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+
+  const user = userResult.rows[0];
+
+  const [subscription, routersResult] = await Promise.all([
+    getActiveSubscription(userId),
+    pool.query<UserDetailRouterRow>(
+      `SELECT id, name, model, status, tunnel_ip, created_at
+       FROM routers
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [userId],
+    ),
+  ]);
+
+  const routers = routersResult.rows;
+
+  logger.info('Admin fetched user detail', { userId, routerCount: routers.length });
+
+  return { user, subscription, routers, routerCount: routers.length };
 }
 
 /**

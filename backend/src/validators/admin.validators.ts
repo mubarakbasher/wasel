@@ -92,6 +92,15 @@ export const createPlanBodySchema = z.object({
   is_active: z.boolean().default(true),
 });
 
+export const createRouterForUserBodySchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100, 'Name must be at most 100 characters'),
+  model: z.string().max(100, 'Model must be at most 100 characters').optional(),
+  rosVersion: z.string().max(20, 'ROS version must be at most 20 characters').optional(),
+  apiUser: z.string().max(100, 'API user must be at most 100 characters').optional(),
+  apiPass: z.string().max(255, 'API password must be at most 255 characters').optional(),
+  overrideQuota: z.boolean().optional(),
+});
+
 export const updatePlanBodySchema = z.object({
   tier: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, 'Tier must be lowercase alphanumeric with underscores').optional(),
   name: z.string().min(1).max(100).optional(),
