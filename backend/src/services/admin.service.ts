@@ -563,13 +563,16 @@ export async function reviewPayment(
 
     const payment = paymentResult.rows[0];
 
-    // 2. If approved, activate the matching pending subscription
+    // 2. If approved, activate the matching pending subscription.
+    // SELECT FOR UPDATE locks the row so concurrent approval calls on the same
+    // payment cannot race and double-activate.
     if (decision === 'approved') {
-      // Check for pending_change (upgrade/downgrade) first
+      // Check for pending_change (upgrade/downgrade) first — lock it immediately.
       const pendingChange = await client.query(
         `SELECT id, previous_subscription_id FROM subscriptions
          WHERE user_id = $1 AND status = 'pending_change'
-         ORDER BY created_at DESC LIMIT 1`,
+         ORDER BY created_at DESC LIMIT 1
+         FOR UPDATE`,
         [payment.user_id],
       );
 
@@ -595,15 +598,25 @@ export async function reviewPayment(
           [change.id],
         );
       } else {
-        // Regular new subscription activation
-        await client.query(
-          `UPDATE subscriptions
-           SET status = 'active', start_date = NOW(),
-               end_date = NOW() + (duration_months * INTERVAL '30 days'),
-               updated_at = NOW()
-           WHERE user_id = $1 AND status = 'pending'`,
+        // Regular new subscription activation — lock the pending row first.
+        const pendingSub = await client.query(
+          `SELECT id FROM subscriptions
+           WHERE user_id = $1 AND status = 'pending'
+           ORDER BY created_at DESC LIMIT 1
+           FOR UPDATE`,
           [payment.user_id],
         );
+
+        if (pendingSub.rows.length > 0) {
+          await client.query(
+            `UPDATE subscriptions
+             SET status = 'active', start_date = NOW(),
+                 end_date = NOW() + (duration_months * INTERVAL '30 days'),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [pendingSub.rows[0].id],
+          );
+        }
       }
     }
 

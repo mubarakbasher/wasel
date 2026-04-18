@@ -32,6 +32,56 @@ export interface HotspotUser {
   loginBy: string;
 }
 
+// ----- Circuit breaker -------------------------------------------------------
+//
+// Tracks per-router failure counts. After 3 failures within 60 s, the router
+// is "open" (offline) for 30 s and all connection attempts are rejected
+// immediately without trying to reach the device.
+
+interface CircuitState {
+  failures: number;
+  firstFailureAt: number; // ms epoch
+  openUntil: number;       // ms epoch; 0 = closed
+}
+
+const circuitMap = new Map<string, CircuitState>();
+
+const CB_MAX_FAILURES   = 3;
+const CB_WINDOW_MS      = 60_000;  // 60 s window for counting failures
+const CB_OPEN_DURATION_MS = 30_000; // open for 30 s after tripping
+
+function circuitIsOpen(routerId: string): boolean {
+  const state = circuitMap.get(routerId);
+  if (!state) return false;
+  if (state.openUntil && Date.now() < state.openUntil) return true;
+  // Half-open — let through; failure counter will be reset on success
+  return false;
+}
+
+function recordCircuitFailure(routerId: string): void {
+  const now = Date.now();
+  const state = circuitMap.get(routerId) ?? { failures: 0, firstFailureAt: now, openUntil: 0 };
+
+  // Reset window if it has elapsed
+  if (now - state.firstFailureAt > CB_WINDOW_MS) {
+    state.failures = 0;
+    state.firstFailureAt = now;
+    state.openUntil = 0;
+  }
+
+  state.failures++;
+  if (state.failures >= CB_MAX_FAILURES) {
+    state.openUntil = now + CB_OPEN_DURATION_MS;
+    logger.warn('RouterOS circuit breaker tripped', { routerId, openUntilMs: state.openUntil });
+  }
+
+  circuitMap.set(routerId, state);
+}
+
+function recordCircuitSuccess(routerId: string): void {
+  circuitMap.delete(routerId);
+}
+
 // ----- Helper -----
 
 /**
@@ -66,42 +116,73 @@ async function fetchRouterRecord(routerId: string, userId: string) {
 /**
  * Connect to a Mikrotik router via its WireGuard tunnel IP.
  *
- * Looks up the router in the database, decrypts credentials, and establishes
- * a RouterOS API connection on port 8728.
+ * - Timeout bumped to 30 s (routers behind WireGuard can be slow to respond).
+ * - Retried twice with exponential back-off (500 ms, 1 500 ms).
+ * - Per-router in-memory circuit breaker: after 3 failures within 60 s the
+ *   call is rejected immediately for 30 s without touching the device.
  *
  * IMPORTANT: The caller is responsible for disconnecting the client when done.
  */
 export async function connectToRouter(
   routerId: string,
   userId: string
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ client: RouterOSClient; api: any }> {
-  const router = await fetchRouterRecord(routerId, userId);
-
-  const password = decrypt(router.api_pass_enc);
-
-  const client = new RouterOSClient({
-    host: router.tunnel_ip,
-    user: router.api_user,
-    password,
-    port: 8728,
-    timeout: 10,
-  });
-
-  try {
-    const api = await client.connect();
-    return { client, api };
-  } catch (error: any) {
-    logger.error('Failed to connect to router', {
-      routerId,
-      tunnelIp: router.tunnel_ip,
-      error: error.message,
-    });
+  if (circuitIsOpen(routerId)) {
     throw new AppError(
       502,
-      'Unable to reach the router — it may be offline or unreachable',
+      'Router is temporarily unreachable — circuit breaker open',
       'ROUTER_UNREACHABLE'
     );
   }
+
+  const router = await fetchRouterRecord(routerId, userId);
+  const password = decrypt(router.api_pass_enc);
+
+  const RETRY_DELAYS = [500, 1500];
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    const client = new RouterOSClient({
+      host: router.tunnel_ip,
+      user: router.api_user,
+      password,
+      port: 8728,
+      timeout: 30, // seconds
+    });
+
+    try {
+      const api = await client.connect();
+      recordCircuitSuccess(routerId);
+      return { client, api };
+    } catch (err: unknown) {
+      lastError = err;
+
+      if (attempt < RETRY_DELAYS.length) {
+        const delay = RETRY_DELAYS[attempt];
+        logger.warn('RouterOS connect failed, retrying', {
+          routerId,
+          attempt: attempt + 1,
+          delayMs: delay,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  recordCircuitFailure(routerId);
+
+  logger.error('Failed to connect to router after retries', {
+    routerId,
+    tunnelIp: router.tunnel_ip,
+    error: lastError instanceof Error ? lastError.message : String(lastError),
+  });
+  throw new AppError(
+    502,
+    'Unable to reach the router — it may be offline or unreachable',
+    'ROUTER_UNREACHABLE'
+  );
 }
 
 /**
@@ -117,15 +198,22 @@ export async function getSystemInfo(
   const { client, api } = await connectToRouter(routerId, userId);
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [resourceResult, identityResult, routerboardResult] = await Promise.all([
-      api.menu('/system/resource').get(),
-      api.menu('/system/identity').get(),
-      api.menu('/system/routerboard').get().catch(() => []),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (api as any).menu('/system/resource').get(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (api as any).menu('/system/identity').get(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (api as any).menu('/system/routerboard').get().catch(() => []),
     ]);
 
-    const resource = resourceResult[0] || {};
-    const identity = identityResult[0] || {};
-    const routerboard = routerboardResult[0] || null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resource = (resourceResult as any[])[0] || {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const identity = (identityResult as any[])[0] || {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const routerboard = (routerboardResult as any[])[0] || null;
 
     return {
       identity: identity.name || 'Unknown',
@@ -140,11 +228,11 @@ export async function getSystemInfo(
       serialNumber: routerboard?.['serial-number'] || null,
       firmware: routerboard?.firmware || null,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof AppError) throw error;
     logger.error('Failed to get system info from router', {
       routerId,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
     throw new AppError(502, 'Failed to retrieve system information from the router', 'ROUTER_UNREACHABLE');
   } finally {
@@ -166,8 +254,10 @@ export async function getActiveHotspotUsers(
   const { client, api } = await connectToRouter(routerId, userId);
 
   try {
-    const activeUsers = await api.menu('/ip/hotspot/active').get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const activeUsers = await (api as any).menu('/ip/hotspot/active').get();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (activeUsers || []).map((entry: any) => ({
       id: entry['.id'] || '',
       username: entry.user || '',
@@ -179,11 +269,11 @@ export async function getActiveHotspotUsers(
       idleTime: entry['idle-time'] || '0s',
       loginBy: entry['login-by'] || '',
     }));
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof AppError) throw error;
     logger.error('Failed to get active hotspot users', {
       routerId,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
     throw new AppError(502, 'Failed to retrieve active hotspot users from the router', 'ROUTER_UNREACHABLE');
   } finally {
@@ -211,7 +301,9 @@ export async function disconnectHotspotUser(
 
   try {
     // Verify the session exists
-    const activeSessions = await api.menu('/ip/hotspot/active').get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const activeSessions = await (api as any).menu('/ip/hotspot/active').get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const session = (activeSessions || []).find((s: any) => s['.id'] === sessionId);
 
     if (!session) {
@@ -219,7 +311,8 @@ export async function disconnectHotspotUser(
     }
 
     // Remove the active session to disconnect the user
-    await api.menu('/ip/hotspot/active').where('.id', sessionId).remove();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (api as any).menu('/ip/hotspot/active').where('.id', sessionId).remove();
 
     logger.info('Hotspot user disconnected', {
       routerId,
@@ -228,12 +321,12 @@ export async function disconnectHotspotUser(
       username: session.user,
       macAddress: session['mac-address'],
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof AppError) throw error;
     logger.error('Failed to disconnect hotspot user', {
       routerId,
       sessionId,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
     throw new AppError(502, 'Failed to disconnect the hotspot user from the router', 'ROUTER_UNREACHABLE');
   } finally {

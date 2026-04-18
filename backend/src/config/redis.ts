@@ -2,6 +2,9 @@ import Redis from 'ioredis';
 import { config } from './index';
 import logger from './logger';
 
+// IMPORTANT: auth/OTP flows (JWT storage, OTP rate-limit) hard-depend on Redis.
+// The service intentionally fails closed rather than degrading gracefully —
+// a Redis outage will block logins rather than silently bypass security checks.
 export const redis = new Redis({
   host: config.REDIS_HOST,
   port: config.REDIS_PORT,

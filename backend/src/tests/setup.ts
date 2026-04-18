@@ -13,6 +13,7 @@ process.env.DB_PASSWORD = 'test';
 
 // Mock ioredis
 const redisStore = new Map<string, string>();
+const redisCounters = new Map<string, number>();
 
 vi.mock('ioredis', () => {
   class MockRedis {
@@ -27,11 +28,26 @@ vi.mock('ioredis', () => {
       let count = 0;
       for (const key of keys) {
         if (redisStore.delete(key)) count++;
+        if (redisCounters.delete(key)) count++;
       }
       return count;
     }
     async exists(key: string) {
       return redisStore.has(key) ? 1 : 0;
+    }
+    async incr(key: string) {
+      const current = (redisCounters.get(key) ?? 0) + 1;
+      redisCounters.set(key, current);
+      return current;
+    }
+    async expire(_key: string, _ttl: number) {
+      return 1; // always succeeds in tests
+    }
+    // Atomic Lua: INCR + EXPIRE — simulated inline for tests
+    async eval(_script: string, _numkeys: number, key: string, _ttl: string) {
+      const current = (redisCounters.get(key) ?? 0) + 1;
+      redisCounters.set(key, current);
+      return current;
     }
     async scan(_cursor: string, _match: string, pattern: string) {
       const prefix = pattern.replace('*', '');
@@ -39,7 +55,7 @@ vi.mock('ioredis', () => {
       return ['0', keys];
     }
     async ping() { return 'PONG'; }
-    disconnect() {}
+    disconnect() { return Promise.resolve(); }
     on() { return this; }
   }
   return { default: MockRedis };

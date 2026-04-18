@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import * as adminService from '../services/admin.service';
 import * as auditService from '../services/audit.service';
+import { redact } from '../utils/redact';
 
 export async function listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -23,7 +24,7 @@ export async function updateUser(req: AuthenticatedRequest, res: Response, next:
     const user = await adminService.updateUser(id, req.body);
     await auditService.logAction({
       adminId: req.user!.id, action: 'user.update', targetEntity: 'user',
-      targetId: id, details: req.body, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+      targetId: id, details: redact(req.body as Record<string, unknown>), ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
     res.status(200).json({ success: true, data: user });
   } catch (error) {
@@ -65,7 +66,7 @@ export async function updateSubscription(req: AuthenticatedRequest, res: Respons
     const subscription = await adminService.updateSubscription(id, req.body);
     await auditService.logAction({
       adminId: req.user!.id, action: 'subscription.update', targetEntity: 'subscription',
-      targetId: id, details: req.body, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+      targetId: id, details: redact(req.body as Record<string, unknown>), ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
     res.status(200).json({ success: true, data: subscription });
   } catch (error) {
@@ -101,7 +102,7 @@ export async function createPlan(req: AuthenticatedRequest, res: Response, next:
     const plan = await adminService.createPlan(req.body);
     await auditService.logAction({
       adminId: req.user!.id, action: 'plan.create', targetEntity: 'plan',
-      targetId: plan.id, details: req.body, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+      targetId: plan.id, details: redact(req.body as Record<string, unknown>), ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
     res.status(201).json({ success: true, data: plan });
   } catch (error) {
@@ -115,7 +116,7 @@ export async function updatePlan(req: AuthenticatedRequest, res: Response, next:
     const plan = await adminService.updatePlan(id, req.body);
     await auditService.logAction({
       adminId: req.user!.id, action: 'plan.update', targetEntity: 'plan',
-      targetId: id, details: req.body, ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+      targetId: id, details: redact(req.body as Record<string, unknown>), ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
     res.status(200).json({ success: true, data: plan });
   } catch (error) {

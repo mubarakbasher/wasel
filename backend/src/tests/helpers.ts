@@ -53,15 +53,21 @@ export const ACTIVE_SUBSCRIPTION_ROW = {
 };
 
 /**
- * Chain a mockResolvedValueOnce for the requireSubscription middleware query.
+ * Chain the two mockResolvedValueOnce calls needed by requireSubscription:
+ *   1. getActiveSubscription → SELECT subscriptions
+ *   2. toSubscriptionInfo → getPlanByTier → SELECT plans
  * Call this BEFORE chaining any service-level query mocks.
  */
 export function mockSubscriptionQuery(mockQuery: ReturnType<typeof import('vitest').vi.fn>): void {
+  // 1. SELECT subscriptions
   mockQuery.mockResolvedValueOnce({ rows: [ACTIVE_SUBSCRIPTION_ROW] });
+  // 2. getPlanByTier — return empty so toSubscriptionInfo falls back gracefully
+  mockQuery.mockResolvedValueOnce({ rows: [] });
 }
 
 /**
  * Chain a mockResolvedValueOnce that returns no subscription (403).
+ * No getPlanByTier call happens when the subscription row is absent.
  */
 export function mockNoSubscriptionQuery(mockQuery: ReturnType<typeof import('vitest').vi.fn>): void {
   mockQuery.mockResolvedValueOnce({ rows: [] });

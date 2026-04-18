@@ -95,19 +95,25 @@ function generateOtp(): string {
   return crypto.randomInt(100000, 999999).toString();
 }
 
+// Atomic Lua: INCR + always-refresh EXPIRE in one roundtrip.
+// Prevents the "slow drip" TTL-bypass attack where a caller lets the key
+// expire between 5-attempt windows by only setting EXPIRE on count === 1.
+const LUA_INCR_EXPIRE = `
+local count = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[1])
+return count
+`;
+
 /**
- * Record a wrong OTP attempt. If the counter crosses the lockout threshold,
- * delete the OTP key (so the code is unusable) and reset the counter. The
- * caller must then throw a 429 so the user restarts the flow.
+ * Record a wrong OTP attempt atomically. If the counter crosses the lockout
+ * threshold, delete the OTP key (so the code is unusable) and reset the counter.
+ * The caller must then throw a 429 so the user restarts the flow.
  *
  * Returns true when the lockout was triggered by this attempt, false otherwise.
  */
 async function recordWrongOtpAttempt(otpKey: string, flow: string, subject: string): Promise<boolean> {
   const attemptsKey = `${OTP_ATTEMPTS_PREFIX}:${subject}:${flow}`;
-  const count = await redis.incr(attemptsKey);
-  if (count === 1) {
-    await redis.expire(attemptsKey, OTP_ATTEMPTS_TTL_SECONDS);
-  }
+  const count = await redis.eval(LUA_INCR_EXPIRE, 1, attemptsKey, String(OTP_ATTEMPTS_TTL_SECONDS)) as number;
   if (count >= OTP_MAX_ATTEMPTS) {
     await redis.del(otpKey);
     await redis.del(attemptsKey);

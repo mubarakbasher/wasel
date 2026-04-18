@@ -89,73 +89,150 @@ function buildLimitDisplayName(limitType: string, limitValue: number, limitUnit:
   return `${limitValue} ${limitUnit}`;
 }
 
+// ----- Batch RADIUS helpers (eliminate N+1) ----------------------------------
+
+interface RadcheckBatchRow {
+  username: string;
+  attribute: string;
+  value: string;
+}
+
+interface RadacctBatchRow {
+  username: string;
+  active_count: number;
+  total_count: number;
+  total_time_used: string;   // bigint as string from pg
+  total_data_used: string;   // bigint as string from pg
+}
+
+interface ProfileBatchRow {
+  group_name: string;
+  user_id: string;
+  display_name: string;
+}
+
 /**
- * Transform a voucher_meta row + RADIUS data into VoucherInfo.
+ * Fetch all relevant radcheck attributes for a list of usernames in ONE query.
+ * Returns a map: username → { password, expiration, simultaneousUse }.
  */
-async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
-  // Fetch password from radcheck
-  const pwResult = await pool.query(
-    `SELECT value FROM radcheck WHERE username = $1 AND attribute = 'Cleartext-Password'`,
-    [row.radius_username],
+async function batchFetchRadcheck(usernames: string[]): Promise<Map<string, {
+  password: string | null;
+  expiration: string | null;
+  simultaneousUse: number | null;
+}>> {
+  const result = await pool.query<RadcheckBatchRow>(
+    `SELECT username, attribute, value
+     FROM radcheck
+     WHERE username = ANY($1)
+       AND attribute IN ('Cleartext-Password', 'Expiration', 'Simultaneous-Use')`,
+    [usernames],
   );
-  const password = pwResult.rows.length > 0 ? pwResult.rows[0].value : null;
 
-  // Fetch expiration from radcheck
-  const expResult = await pool.query(
-    `SELECT value FROM radcheck WHERE username = $1 AND attribute = 'Expiration'`,
-    [row.radius_username],
+  const map = new Map<string, { password: string | null; expiration: string | null; simultaneousUse: number | null }>();
+  for (const row of result.rows) {
+    if (!map.has(row.username)) {
+      map.set(row.username, { password: null, expiration: null, simultaneousUse: null });
+    }
+    const entry = map.get(row.username)!;
+    if (row.attribute === 'Cleartext-Password') entry.password = row.value;
+    else if (row.attribute === 'Expiration') entry.expiration = row.value;
+    else if (row.attribute === 'Simultaneous-Use') entry.simultaneousUse = parseInt(row.value, 10);
+  }
+  return map;
+}
+
+/**
+ * Fetch session counts + cumulative usage for a list of usernames in ONE query.
+ * Returns a map: username → radacct aggregate row.
+ */
+async function batchFetchRadacct(usernames: string[]): Promise<Map<string, RadacctBatchRow>> {
+  const result = await pool.query<RadacctBatchRow>(
+    `SELECT
+       username,
+       COUNT(*) FILTER (WHERE acctstoptime IS NULL)::int AS active_count,
+       COUNT(*)::int                                      AS total_count,
+       COALESCE(SUM(acctsessiontime), 0)::bigint          AS total_time_used,
+       COALESCE(SUM(acctinputoctets + acctoutputoctets), 0)::bigint AS total_data_used
+     FROM radacct
+     WHERE username = ANY($1)
+     GROUP BY username`,
+    [usernames],
   );
-  const expiration = expResult.rows.length > 0 ? expResult.rows[0].value : null;
 
-  // Fetch simultaneous use from radcheck
-  const simResult = await pool.query(
-    `SELECT value FROM radcheck WHERE username = $1 AND attribute = 'Simultaneous-Use'`,
-    [row.radius_username],
+  const map = new Map<string, RadacctBatchRow>();
+  for (const row of result.rows) {
+    map.set(row.username, row);
+  }
+  return map;
+}
+
+/**
+ * Fetch profile display names for a set of (group_name, user_id) pairs in ONE query.
+ * Returns a map: `${group_name}:${user_id}` → display_name.
+ */
+async function batchFetchProfiles(
+  pairs: Array<{ groupName: string; userId: string }>,
+): Promise<Map<string, string>> {
+  if (pairs.length === 0) return new Map();
+
+  // Unnest parallel arrays — one round-trip for all profiles.
+  const groupNames = pairs.map((p) => p.groupName);
+  const userIds = pairs.map((p) => p.userId);
+
+  const result = await pool.query<ProfileBatchRow>(
+    `SELECT rp.group_name, rp.user_id, rp.display_name
+     FROM radius_profiles rp
+     WHERE (rp.group_name, rp.user_id) IN (
+       SELECT unnest($1::text[]), unnest($2::uuid[])
+     )`,
+    [groupNames, userIds],
   );
-  const simultaneousUse = simResult.rows.length > 0 ? parseInt(simResult.rows[0].value, 10) : null;
 
-  // Fetch session counts from radacct to compute real-time status
-  const sessionResult = await pool.query(
-    `SELECT COUNT(*) FILTER (WHERE acctstoptime IS NULL)::int AS active_count,
-            COUNT(*)::int AS total_count
-     FROM radacct WHERE username = $1`,
-    [row.radius_username],
-  );
-  const activeCount = sessionResult.rows[0].active_count;
-  const totalCount = sessionResult.rows[0].total_count;
+  const map = new Map<string, string>();
+  for (const row of result.rows) {
+    map.set(`${row.group_name}:${row.user_id}`, row.display_name);
+  }
+  return map;
+}
 
-  // Check if cumulative usage has exceeded the voucher's limit
+/**
+ * Assemble a VoucherInfo DTO from a VoucherMetaRow plus pre-fetched batch maps.
+ * No additional DB queries are issued here.
+ */
+function assembleVoucherInfo(
+  row: VoucherMetaRow,
+  radcheckMap: Map<string, { password: string | null; expiration: string | null; simultaneousUse: number | null }>,
+  radacctMap: Map<string, RadacctBatchRow>,
+  profileMap: Map<string, string>,
+): VoucherInfo {
+  const rc = radcheckMap.get(row.radius_username) ?? { password: null, expiration: null, simultaneousUse: null };
+  const ra = radacctMap.get(row.radius_username);
+
+  const activeCount = ra?.active_count ?? 0;
+  const totalCount  = ra?.total_count ?? 0;
+
+  // Compute usage & check if limit exceeded
   let usageExceeded = false;
   let usedValue: number | null = null;
-  if (row.limit_type && row.limit_value) {
+  if (row.limit_type && row.limit_value && ra) {
     const limitVal = BigInt(row.limit_value);
     if (row.limit_type === 'time') {
-      const usageResult = await pool.query(
-        `SELECT COALESCE(SUM(acctsessiontime), 0)::bigint AS total_used
-         FROM radacct WHERE username = $1`,
-        [row.radius_username],
-      );
-      const totalUsed = BigInt(usageResult.rows[0].total_used);
+      const totalUsed = BigInt(ra.total_time_used);
       usedValue = Number(totalUsed);
       usageExceeded = totalUsed >= limitVal;
     } else if (row.limit_type === 'data') {
-      const usageResult = await pool.query(
-        `SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0)::bigint AS total_used
-         FROM radacct WHERE username = $1`,
-        [row.radius_username],
-      );
-      const totalUsed = BigInt(usageResult.rows[0].total_used);
+      const totalUsed = BigInt(ra.total_data_used);
       usedValue = Number(totalUsed);
       usageExceeded = totalUsed >= limitVal;
     }
   }
 
-  // Compute effective status from RADIUS data
+  // Compute effective status
   let computedStatus = row.status;
   if (row.status !== 'disabled') {
     if (usageExceeded) {
       computedStatus = 'expired';
-    } else if (expiration && new Date(expiration) < new Date()) {
+    } else if (rc.expiration && new Date(rc.expiration) < new Date()) {
       computedStatus = 'expired';
     } else if (activeCount > 0) {
       computedStatus = 'active';
@@ -166,14 +243,11 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
     }
   }
 
-  // Build profile name: from radius_profiles (legacy) or from limit info (new)
+  // Build profile name
   let profileName: string | null = null;
   if (row.group_profile) {
-    const profileResult = await pool.query(
-      `SELECT display_name FROM radius_profiles WHERE group_name = $1 AND user_id = $2`,
-      [row.group_profile, row.user_id],
-    );
-    profileName = profileResult.rows.length > 0 ? profileResult.rows[0].display_name : row.group_profile;
+    const key = `${row.group_profile}:${row.user_id}`;
+    profileName = profileMap.get(key) ?? row.group_profile;
   } else if (row.limit_type && row.limit_value && row.limit_unit) {
     profileName = buildLimitDisplayName(row.limit_type, Number(row.limit_value), row.limit_unit);
   }
@@ -183,13 +257,13 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
     userId: row.user_id,
     routerId: row.router_id,
     username: row.radius_username,
-    password,
+    password: rc.password,
     profileName,
     groupProfile: row.group_profile,
     comment: row.comment,
     status: computedStatus,
-    expiration,
-    simultaneousUse,
+    expiration: rc.expiration,
+    simultaneousUse: rc.simultaneousUse,
     limitType: row.limit_type,
     limitValue: row.limit_value ? Number(row.limit_value) : null,
     limitUnit: row.limit_unit,
@@ -199,6 +273,40 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
+}
+
+/**
+ * Batch-enrich a list of VoucherMetaRows into VoucherInfo DTOs.
+ * Issues exactly 3 SQL queries regardless of page size:
+ *   1. radcheck (batch)
+ *   2. radacct  (batch GROUP BY)
+ *   3. radius_profiles (batch, only when group_profile is set)
+ */
+async function batchToVoucherInfo(rows: VoucherMetaRow[]): Promise<VoucherInfo[]> {
+  if (rows.length === 0) return [];
+
+  const usernames = rows.map((r) => r.radius_username);
+
+  // Issue the 3 batch queries in parallel.
+  const profilePairs = rows
+    .filter((r) => r.group_profile !== null)
+    .map((r) => ({ groupName: r.group_profile as string, userId: r.user_id }));
+
+  const [radcheckMap, radacctMap, profileMap] = await Promise.all([
+    batchFetchRadcheck(usernames),
+    batchFetchRadacct(usernames),
+    batchFetchProfiles(profilePairs),
+  ]);
+
+  return rows.map((row) => assembleVoucherInfo(row, radcheckMap, radacctMap, profileMap));
+}
+
+/**
+ * Single-voucher helper: reuses the batch path (no separate code path to drift).
+ */
+async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
+  const [info] = await batchToVoucherInfo([row]);
+  return info;
 }
 
 /**
@@ -387,11 +495,7 @@ export async function createVouchers(
       limitUnit: data.limitUnit,
     });
 
-    const voucherInfos: VoucherInfo[] = [];
-    for (const v of vouchers) {
-      voucherInfos.push(await toVoucherInfo(v));
-    }
-    return voucherInfos;
+    return batchToVoucherInfo(vouchers);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -487,10 +591,7 @@ export async function getVouchersByRouter(
     listValues,
   );
 
-  const vouchers: VoucherInfo[] = [];
-  for (const row of result.rows) {
-    vouchers.push(await toVoucherInfo(row));
-  }
+  const vouchers = await batchToVoucherInfo(result.rows);
 
   return { vouchers, total, page, limit };
 }

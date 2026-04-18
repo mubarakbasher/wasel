@@ -108,8 +108,8 @@ export async function login(email: string, password: string): Promise<LoginResul
     const newAttempts = user.failed_login_attempts + 1;
     if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
       await pool.query(
-        `UPDATE users SET failed_login_attempts = $1, locked_until = NOW() + INTERVAL '${LOCKOUT_MINUTES} minutes' WHERE id = $2`,
-        [newAttempts, user.id],
+        `UPDATE users SET failed_login_attempts = $1, locked_until = NOW() + (($3)::int || ' minutes')::interval WHERE id = $2`,
+        [newAttempts, user.id, LOCKOUT_MINUTES],
       );
       throw new AppError(
         423,
