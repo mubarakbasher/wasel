@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import UsersPage from './pages/UsersPage';
+import UserDetailPage from './pages/UserDetailPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
 import PaymentsPage from './pages/PaymentsPage';
 import RoutersPage from './pages/RoutersPage';
@@ -62,6 +63,7 @@ export default function App() {
               >
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/users" element={<UsersPage />} />
+                <Route path="/users/:id" element={<UserDetailPage />} />
                 <Route path="/subscriptions" element={<SubscriptionsPage />} />
                 <Route path="/plans" element={<PlansPage />} />
                 <Route path="/payments" element={<PaymentsPage />} />

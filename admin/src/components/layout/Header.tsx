@@ -15,7 +15,11 @@ export default function Header() {
   const { pathname } = useLocation();
   const { user, logout } = useAuth();
 
-  const title = pageTitles[pathname] || 'Admin Panel';
+  const title =
+    pageTitles[pathname] ||
+    (pathname.startsWith('/users/') && pathname !== '/users'
+      ? 'User Details'
+      : 'Admin Panel');
 
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between h-16 px-8 bg-white border-b border-slate-200">

@@ -15,6 +15,7 @@ interface DataTableProps<T> {
   limit: number;
   onPageChange: (page: number) => void;
   isLoading?: boolean;
+  onRowClick?: (row: T) => void;
 }
 
 export default function DataTable<T extends object>({
@@ -25,6 +26,7 @@ export default function DataTable<T extends object>({
   limit,
   onPageChange,
   isLoading = false,
+  onRowClick,
 }: DataTableProps<T>) {
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const start = (page - 1) * limit + 1;
@@ -92,9 +94,10 @@ export default function DataTable<T extends object>({
             {data.map((row, i) => (
               <tr
                 key={i}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
                   i % 2 === 1 ? 'bg-slate-50/50' : ''
-                }`}
+                } ${onRowClick ? 'cursor-pointer' : ''}`}
               >
                 {columns.map((col) => (
                   <td key={col.key} className="px-6 py-4 text-sm text-slate-700">

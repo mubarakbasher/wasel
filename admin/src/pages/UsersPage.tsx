@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, MoreVertical, Check, X, Loader2 } from 'lucide-react';
 import api from '../lib/api';
@@ -18,6 +19,7 @@ interface User {
 }
 
 export default function UsersPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -128,7 +130,7 @@ export default function UsersPage() {
       key: 'actions',
       header: 'Actions',
       render: (row) => (
-        <div className="relative">
+        <div className="relative" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setOpenDropdown(openDropdown === row.id ? null : row.id)}
             className="p-1 rounded hover:bg-gray-100 cursor-pointer"
@@ -139,6 +141,15 @@ export default function UsersPage() {
             <>
               <div className="fixed inset-0 z-30" onClick={() => setOpenDropdown(null)} />
               <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-40">
+                <button
+                  onClick={() => {
+                    navigate(`/users/${row.id}`);
+                    setOpenDropdown(null);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
+                >
+                  View
+                </button>
                 <button
                   onClick={() => openEdit(row)}
                   className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
@@ -219,6 +230,7 @@ export default function UsersPage() {
             limit={limit}
             onPageChange={setPage}
             isLoading={isLoading}
+            onRowClick={(row) => navigate(`/users/${row.id}`)}
           />
         </div>
       )}
