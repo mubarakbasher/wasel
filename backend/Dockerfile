@@ -1,5 +1,4 @@
-# TODO(digest): pin after next pull → docker pull node:20-alpine && docker image inspect node:20-alpine --format '{{index .RepoDigests 0}}'
-FROM node:20-alpine AS builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 
 WORKDIR /app
 
@@ -10,8 +9,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-# TODO(digest): pin node:20-alpine to same digest as builder stage above
-FROM node:20-alpine
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 RUN apk add --no-cache wireguard-tools
 

@@ -1,7 +1,6 @@
 services:
   wireguard:
-    # TODO(digest): pin after next pull → docker pull lscr.io/linuxserver/wireguard:latest && docker image inspect lscr.io/linuxserver/wireguard:latest --format '{{index .RepoDigests 0}}'
-    image: lscr.io/linuxserver/wireguard:latest
+    image: lscr.io/linuxserver/wireguard:latest@sha256:8e505886ba5da6788f1b9dfc62a25e2f2c3a96e64e6528ef7278d7e1d6649bd2
     container_name: wireguard
     network_mode: host
     cap_add:
@@ -53,8 +52,7 @@ services:
     cpus: 1.0
 
   postgres:
-    # TODO(digest): pin after next pull → docker pull postgres:16-alpine && docker image inspect postgres:16-alpine --format '{{index .RepoDigests 0}}'
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:93d55776e04376e19adb2733e3ccebb4392ee7dd86d8ff238503b30fe719c84f
     environment:
       POSTGRES_DB: wasel
       POSTGRES_USER: wasel
@@ -74,8 +72,7 @@ services:
     cpus: 1.0
 
   redis:
-    # TODO(digest): pin after next pull → docker pull redis:7-alpine && docker image inspect redis:7-alpine --format '{{index .RepoDigests 0}}'
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:efc27681bf81e6ed55cb581718b7818c6c04c39b1f9aa40854edd3ea2241b6ed
     command: ['sh', '-c', 'exec redis-server --requirepass "$$REDIS_PASSWORD"']
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in compose env-file}
