@@ -2,3 +2,17 @@
 Thumbs.db
 *.log
 .claude/settings.local.json
+
+# Secrets & local-only configuration
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+wg0.conf
+
+# Logo generator (one-off design tool — install on demand from logos.package.json)
+/scripts/node_modules/
+/scripts/package.json
+/scripts/package-lock.json

@@ -52,7 +52,7 @@ services:
     environment:
       POSTGRES_DB: wasel
       POSTGRES_USER: wasel
-      POSTGRES_PASSWORD: 53094ff06b673713c6392c1573f2ef2fc35fcb6563a55dd2d9eca5ee52e3ec8d
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in compose env-file}
     ports:
       - '127.0.0.1:5432:5432'
     volumes:
@@ -67,7 +67,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --requirepass fb456714f3a5df62538fbb1ef88381111af9fb3c597e431a1d461899960d4114
+    command: ['sh', '-c', 'exec redis-server --requirepass "$$REDIS_PASSWORD"']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in compose env-file}
     ports:
       - '127.0.0.1:6379:6379'
     volumes:
@@ -87,7 +89,7 @@ services:
       RADIUS_DB_PORT: 5432
       RADIUS_DB_NAME: wasel
       RADIUS_DB_USER: wasel
-      RADIUS_DB_PASS: 53094ff06b673713c6392c1573f2ef2fc35fcb6563a55dd2d9eca5ee52e3ec8d
+      RADIUS_DB_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in compose env-file}
     depends_on:
       postgres:
         condition: service_healthy
