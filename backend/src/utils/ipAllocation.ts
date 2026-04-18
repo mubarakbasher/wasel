@@ -1,4 +1,5 @@
 import { pool } from '../config/database';
+import { PoolClient } from 'pg';
 
 /**
  * IP allocation for WireGuard /30 tunnel subnets.
@@ -15,31 +16,32 @@ import { pool } from '../config/database';
  * ...
  *
  * With a /16 base, there are 256 * 64 = 16,384 possible /30 blocks.
+ *
+ * Allocation is performed via the tunnel_subnets table (migration 018).
+ * A single UPDATE … RETURNING with FOR UPDATE SKIP LOCKED makes the
+ * allocation atomic — no two concurrent router-create transactions can
+ * pick the same block.
  */
 
 const BASE_FIRST_OCTET = 10;
 const BASE_SECOND_OCTET = 10;
 const BLOCKS_PER_THIRD_OCTET = 64; // 256 / 4
-const MAX_THIRD_OCTET = 255;
-const MAX_BLOCK_INDEX = (MAX_THIRD_OCTET + 1) * BLOCKS_PER_THIRD_OCTET; // 16,384
 
 export interface TunnelAllocation {
   serverIp: string;   // e.g., "10.10.0.1"
   routerIp: string;   // e.g., "10.10.0.2"
   subnet: string;     // e.g., "10.10.0.0/30"
   subnetMask: string; // "255.255.255.252"
+  subnetId: number;   // zero-based /30 block index
 }
 
 /**
  * Convert a /30 block index to a full tunnel allocation.
- *
- * @param blockIndex Zero-based sequential block number
- * @returns The tunnel allocation for that block
  */
-function blockIndexToAllocation(blockIndex: number): TunnelAllocation {
+function blockIndexToAllocation(blockIndex: number): Omit<TunnelAllocation, 'subnetId'> {
   const thirdOctet = Math.floor(blockIndex / BLOCKS_PER_THIRD_OCTET);
   const positionInOctet = blockIndex % BLOCKS_PER_THIRD_OCTET;
-  const fourthOctetBase = positionInOctet * 4; // network address of the /30
+  const fourthOctetBase = positionInOctet * 4;
 
   const prefix = `${BASE_FIRST_OCTET}.${BASE_SECOND_OCTET}.${thirdOctet}`;
 
@@ -53,11 +55,6 @@ function blockIndexToAllocation(blockIndex: number): TunnelAllocation {
 
 /**
  * Convert a router tunnel IP (e.g., "10.10.0.2") to its /30 block index.
- *
- * Router IPs always end in .2, .6, .10, ... (base + 2 within the /30).
- *
- * @param routerIp The router's tunnel IP address
- * @returns The zero-based block index
  */
 function routerIpToBlockIndex(routerIp: string): number {
   const parts = routerIp.split('.').map(Number);
@@ -71,70 +68,86 @@ function routerIpToBlockIndex(routerIp: string): number {
 
   const thirdOctet = parts[2];
   const fourthOctet = parts[3];
-
-  // The router IP's fourth octet should be base+2 within a /30
-  // So fourthOctetBase = fourthOctet - 2, and positionInOctet = fourthOctetBase / 4
   const fourthOctetBase = fourthOctet - 2;
+
   if (fourthOctetBase < 0 || fourthOctetBase % 4 !== 0) {
-    throw new Error(`Invalid router tunnel IP: ${routerIp} (fourth octet ${fourthOctet} is not a valid .2 position in a /30 block)`);
+    throw new Error(
+      `Invalid router tunnel IP: ${routerIp} (fourth octet ${fourthOctet} is not a valid .2 position in a /30 block)`,
+    );
   }
 
-  const positionInOctet = fourthOctetBase / 4;
-  return thirdOctet * BLOCKS_PER_THIRD_OCTET + positionInOctet;
+  return thirdOctet * BLOCKS_PER_THIRD_OCTET + (fourthOctetBase / 4);
 }
 
 /**
- * Allocate the next available /30 tunnel subnet for a new router.
+ * Atomically allocate the next free /30 tunnel subnet for a new router.
  *
- * Queries all currently assigned tunnel IPs from the routers table,
- * determines which /30 blocks are in use, and returns the first free block.
+ * Must be called inside an open transaction using the supplied PoolClient
+ * so the allocation is rolled back if the router INSERT fails.
  *
- * @returns The next available tunnel allocation
- * @throws Error if all 16,384 /30 blocks are exhausted
+ * Uses UPDATE … FOR UPDATE SKIP LOCKED: concurrent callers skip rows
+ * already locked by another transaction, eliminating TOCTOU collisions
+ * that the old linear-scan approach suffered from.
+ *
+ * @param client  An active pg PoolClient with a transaction already started.
+ * @param routerId  The UUID of the router being created (written to tunnel_subnets).
+ * @returns The tunnel allocation for the claimed /30 block.
+ * @throws Error if all 16,384 /30 blocks are exhausted.
  */
-export async function allocateNextTunnelIp(): Promise<TunnelAllocation> {
-  const result = await pool.query<{ tunnel_ip: string }>(
-    'SELECT tunnel_ip FROM routers WHERE tunnel_ip IS NOT NULL ORDER BY tunnel_ip'
+export async function allocateNextTunnelIp(
+  client: PoolClient,
+  routerId: string,
+): Promise<TunnelAllocation> {
+  const result = await client.query<{ subnet_id: number }>(
+    `UPDATE tunnel_subnets
+        SET router_id    = $1,
+            allocated_at = NOW()
+      WHERE subnet_id = (
+              SELECT subnet_id
+                FROM tunnel_subnets
+               WHERE router_id IS NULL
+               ORDER BY subnet_id
+               LIMIT 1
+               FOR UPDATE SKIP LOCKED
+            )
+      RETURNING subnet_id`,
+    [routerId],
   );
 
-  const usedIndices = new Set<number>();
-  for (const row of result.rows) {
-    try {
-      usedIndices.add(routerIpToBlockIndex(row.tunnel_ip));
-    } catch {
-      // Skip malformed IPs that don't parse — they don't occupy a valid block
-    }
+  if (result.rows.length === 0) {
+    throw new Error('No available tunnel IP addresses — all /30 blocks in 10.10.0.0/16 are allocated');
   }
 
-  for (let i = 0; i < MAX_BLOCK_INDEX; i++) {
-    if (!usedIndices.has(i)) {
-      return blockIndexToAllocation(i);
-    }
-  }
-
-  throw new Error('No available tunnel IP addresses — all /30 blocks in 10.10.0.0/16 are allocated');
+  const subnetId = result.rows[0].subnet_id;
+  return { subnetId, ...blockIndexToAllocation(subnetId) };
 }
 
 /**
- * Release a tunnel IP address. Currently a no-op because IPs are freed
- * automatically when the router row is deleted from the database.
+ * Release a tunnel subnet back to the free pool when a router is deleted.
+ * Nulls out router_id so the block becomes available for future allocation.
  *
- * Placeholder for future IP recycling or soft-delete support.
+ * Can be called outside a transaction — the ON DELETE SET NULL FK cascade
+ * in migration 018 handles the same cleanup automatically on router DELETE,
+ * but calling this explicitly inside the router-delete transaction gives
+ * a stronger guarantee when soft-delete or admin delete paths are used.
  *
- * @param _routerIp The router tunnel IP to release
+ * @param client  PoolClient (may or may not be inside a transaction).
+ * @param routerId  The UUID of the router being deleted.
  */
-export async function releaseTunnelIp(_routerIp: string): Promise<void> {
-  // No-op: tunnel IPs are freed when the router record is deleted.
-  // This function exists as a hook for future IP recycling logic.
+export async function releaseTunnelSubnet(
+  client: PoolClient | typeof pool,
+  routerId: string,
+): Promise<void> {
+  await (client as typeof pool).query(
+    `UPDATE tunnel_subnets SET router_id = NULL WHERE router_id = $1`,
+    [routerId],
+  );
 }
 
 /**
  * Parse a router tunnel IP and return its full /30 allocation details.
- *
- * @param routerIp The router's tunnel IP (e.g., "10.10.0.2")
- * @returns The complete tunnel allocation for that /30 block
  */
-export function parseTunnelSubnet(routerIp: string): TunnelAllocation {
+export function parseTunnelSubnet(routerIp: string): Omit<TunnelAllocation, 'subnetId'> {
   const blockIndex = routerIpToBlockIndex(routerIp);
   return blockIndexToAllocation(blockIndex);
 }

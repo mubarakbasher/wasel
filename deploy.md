@@ -65,19 +65,21 @@ The WireGuard Docker container will automatically:
 
 ### 1.3 Open Firewall Ports
 
+Apply the canonical rule set below. It rate-limits SSH, scopes RADIUS ports to the WireGuard subnet only, and sets a default-deny inbound policy. Port 3000 is intentionally omitted — the backend is reached via Caddy/Nginx on 443, never directly.
+
 ```bash
-sudo ufw allow 22/tcp       # SSH
-sudo ufw allow 80/tcp       # HTTP (for Let's Encrypt)
-sudo ufw allow 443/tcp      # HTTPS
-sudo ufw allow 3000/tcp     # Backend API (direct, or remove if using reverse proxy)
-sudo ufw allow 51820/udp    # WireGuard
-
-# WARNING: RADIUS ports must never be exposed to the public internet. The rule below restricts them to the WireGuard peer subnet.
-# RADIUS — restricted to WireGuard subnet ONLY. Never allow public.
-sudo ufw allow from 10.10.0.0/16 to any port 1812,1813,3799 proto udp
-
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw limit 22/tcp                                                          comment 'SSH with rate limit'
+sudo ufw allow 80/tcp                                                          comment 'HTTP (Let'"'"'s Encrypt)'
+sudo ufw allow 443/tcp                                                         comment 'HTTPS'
+sudo ufw allow 51820/udp                                                       comment 'WireGuard'
+sudo ufw limit from 10.10.0.0/16 to any port 1812,1813 proto udp              comment 'RADIUS auth+accounting (WG only)'
+sudo ufw allow from 10.10.0.0/16 to any port 3799 proto udp                   comment 'RADIUS CoA (WG only)'
 sudo ufw enable
 ```
+
+WARNING: RADIUS ports (1812, 1813, 3799) must never be exposed to the public internet. The rules above restrict them to the WireGuard tunnel subnet (10.10.0.0/16) only.
 
 ---
 
@@ -161,15 +163,23 @@ echo "WG_SERVER_PRIVATE_KEY=$WG_PRIV"
 echo "WG_SERVER_PUBLIC_KEY=$WG_PUB"
 ```
 
-### 2.3 Update docker-compose.yml Postgres Password
+### 2.3 Set Compose-level Secrets
 
-Change the `POSTGRES_PASSWORD` and `RADIUS_DB_PASS` in `docker-compose.yml` to match your `DB_PASSWORD`:
+`docker-compose.yml` reads `POSTGRES_PASSWORD` and `REDIS_PASSWORD` from the environment (or an env-file). On the VPS, set them in `/etc/wasel/compose.env` (chmod 600):
 
 ```bash
-nano docker-compose.yml
+sudo tee /etc/wasel/compose.env > /dev/null <<'EOF'
+POSTGRES_PASSWORD=<STRONG_PASSWORD_matching_DB_PASSWORD_in_backend_.env>
+REDIS_PASSWORD=<STRONG_PASSWORD_matching_REDIS_PASSWORD_in_backend_.env>
+EOF
+sudo chmod 600 /etc/wasel/compose.env
 ```
 
-Replace every `changeme` with your chosen database password.
+Then start compose with:
+
+```bash
+docker compose --env-file /etc/wasel/compose.env up -d
+```
 
 ### 2.4 Build & Start
 
@@ -468,38 +478,157 @@ docker compose logs wireguard
 
 ## Backups
 
-Regular PostgreSQL backups are essential. The database holds all user accounts, routers, subscriptions, vouchers, and RADIUS records.
+Regular PostgreSQL and WireGuard configuration backups are essential. The database holds all user accounts, routers, subscriptions, vouchers, and RADIUS records. The WireGuard config holds server private keys and peer definitions.
 
-### Manual Backup (one-liner)
+### RTO / RPO
+
+| Metric | Target |
+|--------|--------|
+| RPO (Recovery Point Objective) | 24 hours |
+| RTO (Recovery Time Objective) | 2 hours |
+| Local backup retention | 30 days |
+| Off-host backup retention | 90 days |
+
+### Step 0 — Create Backup Encryption Key (one-time, on VPS)
+
+All backups are AES-256-CBC encrypted at rest. Generate a key and protect it:
+
+```bash
+sudo mkdir -p /etc/wasel
+openssl rand -hex 32 | sudo tee /etc/wasel/backup.key
+sudo chmod 600 /etc/wasel/backup.key
+sudo chown root:root /etc/wasel/backup.key
+```
+
+Store a copy of `/etc/wasel/backup.key` in a separate secure location (password manager, off-site vault). Without it, encrypted backups cannot be restored.
+
+### Manual Backup (encrypted)
 
 ```bash
 mkdir -p /opt/wasel-backups
-docker compose exec -T postgres pg_dump -U wasel wasel | gzip > /opt/wasel-backups/$(date +%F).sql.gz
+
+# PostgreSQL dump — encrypted
+docker compose -f /opt/wasel/docker-compose.yml exec -T postgres pg_dump -U wasel wasel \
+  | gzip \
+  | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/etc/wasel/backup.key \
+  > /opt/wasel-backups/wasel-$(date +%F).sql.gz.enc
+
+# WireGuard config — encrypted
+sudo tar -czf - /etc/wireguard/wg0.conf \
+  | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/etc/wasel/backup.key \
+  > /opt/wasel-backups/wg0-$(date +%F).tar.gz.enc
 ```
 
 ### Automated Daily Backup (crontab)
 
-Edit root's crontab with `sudo crontab -e` and add the following line to run daily at 03:00 and prune backups older than 30 days:
+Edit root's crontab with `sudo crontab -e` and add the following lines. They run at 03:00 daily, produce encrypted archives, and prune local copies older than 30 days.
 
 ```
-0 3 * * * docker compose -f /opt/wasel/docker-compose.yml exec -T postgres pg_dump -U wasel wasel | gzip > /opt/wasel-backups/$(date +\%F).sql.gz && find /opt/wasel-backups -name "*.sql.gz" -mtime +30 -delete
+# Daily DB backup (encrypted)
+0 3 * * * cd /opt/wasel && docker compose exec -T postgres pg_dump -U wasel wasel | gzip | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/etc/wasel/backup.key > /opt/wasel-backups/wasel-$(date +\%F).sql.gz.enc && find /opt/wasel-backups -name "*.sql.gz.enc" -mtime +30 -delete
+
+# Daily WireGuard config backup (encrypted)
+5 3 * * * tar -czf - /etc/wireguard/wg0.conf | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/etc/wasel/backup.key > /opt/wasel-backups/wg0-$(date +\%F).tar.gz.enc && find /opt/wasel-backups -name "wg0-*.tar.gz.enc" -mtime +30 -delete
+
+# Monthly radacct archival (moves rows >90 days old to radacct_archive)
+0 3 1 * * cd /opt/wasel && docker compose exec -T postgres psql -U wasel -d wasel < /opt/wasel/scripts/radacct-archive.sql
 ```
 
-Note the escaped `\%F` — cron treats unescaped `%` as a newline.
+Note: cron treats unescaped `%` as a newline — hence the `\%F` escaping above.
 
-### Restore from Backup
+### Restore from Encrypted Backup
 
 ```bash
-gunzip -c /opt/wasel-backups/2026-04-17.sql.gz | docker compose exec -T postgres psql -U wasel -d wasel
+# Restore PostgreSQL
+openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/etc/wasel/backup.key \
+  -in /opt/wasel-backups/wasel-2026-04-17.sql.gz.enc \
+  | gunzip \
+  | docker compose exec -T postgres psql -U wasel -d wasel
+
+# Restore WireGuard config
+openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/etc/wasel/backup.key \
+  -in /opt/wasel-backups/wg0-2026-04-17.tar.gz.enc \
+  | tar -xzf - -C /
+sudo chmod 600 /etc/wireguard/wg0.conf
 ```
 
 ### Off-Host Copies
 
-Local backups do not protect against VPS loss. Copy backups to another host on a regular schedule, e.g.:
+Local backups do not protect against VPS loss. Copy encrypted archives to a second host on a regular schedule:
 
 ```bash
 # Push the latest backup to a remote server via scp
-scp /opt/wasel-backups/$(date +%F).sql.gz backup-user@backup-host:/path/to/wasel-backups/
+scp /opt/wasel-backups/wasel-$(date +%F).sql.gz.enc backup-user@backup-host:/path/to/wasel-backups/
+scp /opt/wasel-backups/wg0-$(date +%F).tar.gz.enc   backup-user@backup-host:/path/to/wasel-backups/
 ```
 
-Consider a dedicated offsite target (another VPS, S3-compatible object storage, or a home server) and rotate credentials independently from the production VPS.
+Consider a dedicated offsite target (another VPS, S3-compatible object storage, or a home server). Rotate off-host credentials independently from the production VPS. Retain off-host archives for 90 days before pruning.
+
+---
+
+## Off-Host Log Retention
+
+Docker containers write logs to the host's journald/syslog by default. If the VPS is lost, those logs are gone. Choose one of the following approaches:
+
+### Option A — rsyslog Forward to a Backup VPS
+
+Install and configure rsyslog on the production VPS to forward all Docker container logs to a second VPS:
+
+```bash
+sudo apt install rsyslog -y
+```
+
+Add `/etc/rsyslog.d/99-wasel-remote.conf`:
+
+```
+# Forward all Docker (and other) logs to the backup VPS over TCP
+*.* @@backup-host.example.com:514
+```
+
+On the **backup VPS**, enable the TCP receiver in `/etc/rsyslog.conf`:
+
+```
+module(load="imtcp")
+input(type="imtcp" port="514")
+```
+
+Restart rsyslog on both hosts:
+
+```bash
+sudo systemctl restart rsyslog
+```
+
+Restrict port 514/tcp on the backup VPS firewall to the production VPS IP only.
+
+### Option B — Docker Logging Driver to a Managed Service
+
+Configure Docker to ship logs to a managed aggregation service (Fluentd, Loki, Datadog, etc.) by setting the logging driver in `docker-compose.yml` per service, or globally in `/etc/docker/daemon.json`:
+
+```json
+{
+  "log-driver": "fluentd",
+  "log-opts": {
+    "fluentd-address": "localhost:24224",
+    "tag": "wasel.{{.Name}}"
+  }
+}
+```
+
+Operator must choose and provision the target service. Recommended minimum: Grafana Loki (self-hosted on the backup VPS) or Datadog Free tier. Implementation is deferred pending operator decision — document your choice here once selected.
+
+---
+
+## RADIUS Message-Authenticator
+
+FreeRADIUS is configured to require `Message-Authenticator` on all non-localhost clients (`clients.conf` block `default_wg_routers`). This mitigates the BlastRADIUS attack (CVE-2024-3596).
+
+**RouterOS compatibility:**
+
+- RouterOS 7.x sends `Message-Authenticator` automatically — no action needed.
+- RouterOS 6.x operators must explicitly enable it on each RADIUS client:
+
+```
+/radius set [find] message-authenticator-required=yes
+```
+
+If a RouterOS 6 router stops authenticating after this change, the above command is the fix. Do not disable `require_message_authenticator` on the FreeRADIUS side as a workaround — upgrade RouterOS instead.

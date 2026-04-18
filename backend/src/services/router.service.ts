@@ -3,7 +3,7 @@ import { config } from '../config';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import { generateKeyPair, generatePresharedKey } from '../utils/wireguard';
-import { allocateNextTunnelIp, parseTunnelSubnet } from '../utils/ipAllocation';
+import { allocateNextTunnelIp, releaseTunnelSubnet, parseTunnelSubnet } from '../utils/ipAllocation';
 import { encrypt, decrypt, generateRadiusSecret, generateNasIdentifier } from '../utils/encryption';
 import { addPeer, removePeer } from './wireguardPeer';
 import { generateMikrotikConfigText, generateSetupSteps } from './wireguardConfig';
@@ -98,9 +98,6 @@ export async function createRouter(
   const { privateKey: routerPrivateKey, publicKey: routerPublicKey } = generateKeyPair();
   const presharedKey = generatePresharedKey();
 
-  // Allocate tunnel IP
-  const tunnel = await allocateNextTunnelIp();
-
   // Generate RADIUS secret
   const radiusSecret = generateRadiusSecret();
 
@@ -114,13 +111,14 @@ export async function createRouter(
   try {
     await client.query('BEGIN');
 
-    // Insert router
+    // Insert router with a NULL tunnel_ip placeholder; we'll fill it after
+    // atomically claiming a subnet from the pool (tunnel_ip requires a router ID).
     const result = await client.query<RouterRow>(
       `INSERT INTO routers (
         user_id, name, model, ros_version, api_user, api_pass_enc,
         wg_public_key, wg_private_key_enc, wg_preshared_key_enc, tunnel_ip,
         radius_secret_enc, nas_identifier, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'offline')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11, 'offline')
       RETURNING *`,
       [
         userId,
@@ -132,13 +130,24 @@ export async function createRouter(
         routerPublicKey,
         wgPrivateKeyEnc,
         wgPresharedKeyEnc,
-        tunnel.routerIp,
         radiusSecretEnc,
-        'pending', // placeholder, will update after we have the ID
+        'pending', // placeholder nas_identifier, will update after we have the ID
       ],
     );
 
     const router = result.rows[0];
+
+    // Atomically claim the next free /30 from the tunnel_subnets pool.
+    // This UPDATE uses FOR UPDATE SKIP LOCKED so concurrent transactions
+    // never collide on the same subnet block.
+    const tunnel = await allocateNextTunnelIp(client, router.id);
+
+    // Write the allocated tunnel IP back onto the router row.
+    await client.query(
+      'UPDATE routers SET tunnel_ip = $1 WHERE id = $2',
+      [tunnel.routerIp, router.id],
+    );
+    router.tunnel_ip = tunnel.routerIp;
 
     // Generate NAS identifier using the router ID
     const nasIdentifier = generateNasIdentifier(data.name, router.id);
@@ -306,6 +315,13 @@ export async function deleteRouter(userId: string, routerId: string): Promise<vo
   if (router.tunnel_ip) {
     await pool.query('DELETE FROM nas WHERE nasname = $1', [router.tunnel_ip]);
   }
+
+  // Release the tunnel subnet back to the free pool before deleting the
+  // router row. The ON DELETE SET NULL FK in tunnel_subnets would handle
+  // this automatically, but doing it explicitly inside the same statement
+  // sequence avoids any window where the router row is gone but the subnet
+  // still appears allocated.
+  await releaseTunnelSubnet(pool, routerId);
 
   // Delete router record
   await pool.query('DELETE FROM routers WHERE id = $1', [routerId]);
