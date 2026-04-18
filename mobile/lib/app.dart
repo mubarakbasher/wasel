@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_jailbreak_detection/flutter_jailbreak_detection.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'theme/app_theme.dart';
-import 'navigation/app_router.dart';
 import 'i18n/app_localizations.dart';
+import 'navigation/app_router.dart';
 import 'providers/auth_provider.dart';
 import 'providers/locale_provider.dart';
 import 'services/push_notification_service.dart';
+import 'theme/app_theme.dart';
 
 class WaselApp extends ConsumerStatefulWidget {
   const WaselApp({super.key});
@@ -26,6 +27,37 @@ class _WaselAppState extends ConsumerState<WaselApp> {
       ref.read(localeProvider.notifier).loadSavedLocale();
       ref.read(authProvider.notifier).tryRestoreSession();
     });
+    _checkDeviceIntegrity();
+  }
+
+  /// Warn-but-allow root/jailbreak detection (v1 policy: no hard block).
+  Future<void> _checkDeviceIntegrity() async {
+    bool isCompromised = false;
+    try {
+      isCompromised = await FlutterJailbreakDetection.jailbroken;
+    } catch (_) {
+      // Detection failure is non-fatal — proceed normally.
+    }
+    if (isCompromised && mounted) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('Security Warning'),
+          content: const Text(
+            'This device appears to be rooted or jailbroken. '
+            'Using Wasel on a compromised device may put your account '
+            'and voucher data at risk.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: const Text('I understand, continue'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override

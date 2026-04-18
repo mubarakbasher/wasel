@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -21,16 +24,47 @@ class PaymentScreen extends ConsumerStatefulWidget {
   ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _PaymentScreenState extends ConsumerState<PaymentScreen> {
+class _PaymentScreenState extends ConsumerState<PaymentScreen>
+    with WidgetsBindingObserver {
   int _currentStep = 0;
   File? _receiptFile;
+
+  // Tracks whether the screen is currently blurred (iOS inactive state).
+  bool _obscured = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Android: prevent screenshots and screen recording for this screen.
+    if (Platform.isAndroid) {
+      FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+    }
     Future.microtask(
       () => ref.read(subscriptionProvider.notifier).loadBankInfo(),
     );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (Platform.isAndroid) {
+      FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+    }
+    super.dispose();
+  }
+
+  /// iOS blur overlay: shown when the app enters the app switcher / goes
+  /// inactive so the screen content is not captured in the OS thumbnail.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!Platform.isIOS) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (mounted) setState(() => _obscured = true);
+    } else if (state == AppLifecycleState.resumed) {
+      if (mounted) setState(() => _obscured = false);
+    }
   }
 
   Future<void> _pickReceipt(ImageSource source) async {
@@ -106,15 +140,36 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final request = state.lastRequest;
     final sub = state.subscription;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.tr('payment.title')),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/subscription'),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: Text(context.tr('payment.title')),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => context.go('/subscription'),
+            ),
+          ),
+          body: _buildStepper(state, request, sub),
         ),
-      ),
-      body: Stepper(
+        // iOS: blur the screen when app becomes inactive (switcher thumbnail).
+        if (_obscured)
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(color: Colors.black.withValues(alpha: 0.4)),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildStepper(
+    SubscriptionState state,
+    SubscriptionRequestResult? request,
+    dynamic sub,
+  ) {
+    return Stepper(
         currentStep: _currentStep,
         type: StepperType.vertical,
         onStepContinue: () {
@@ -200,8 +255,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             content: _buildSuccessStep(),
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _buildBankDetails(
@@ -457,11 +511,44 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-class _CopyableRow extends StatelessWidget {
+/// A row that copies [value] to the clipboard and schedules an auto-clear
+/// after 30 seconds (only if the clipboard still contains our value).
+class _CopyableRow extends StatefulWidget {
   final String label;
   final String value;
 
   const _CopyableRow({required this.label, required this.value});
+
+  @override
+  State<_CopyableRow> createState() => _CopyableRowState();
+}
+
+class _CopyableRowState extends State<_CopyableRow> {
+  Timer? _clearTimer;
+
+  @override
+  void dispose() {
+    _clearTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copyWithAutoClear() async {
+    await Clipboard.setData(ClipboardData(text: widget.value));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr('payment.referenceCopied')),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    _clearTimer?.cancel();
+    _clearTimer = Timer(const Duration(seconds: 30), () async {
+      final current = await Clipboard.getData('text/plain');
+      if (current?.text == widget.value) {
+        await Clipboard.setData(const ClipboardData(text: ''));
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -469,7 +556,7 @@ class _CopyableRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          label,
+          widget.label,
           style: AppTypography.subhead
               .copyWith(color: AppColors.textSecondary),
         ),
@@ -477,7 +564,7 @@ class _CopyableRow extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              value,
+              widget.value,
               style: AppTypography.subhead.copyWith(
                 fontWeight: FontWeight.w700,
                 color: AppColors.primary,
@@ -485,15 +572,7 @@ class _CopyableRow extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.xs),
             GestureDetector(
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: value));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(context.tr('payment.referenceCopied')),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              },
+              onTap: _copyWithAutoClear,
               child: const Icon(Icons.copy,
                   size: 18, color: AppColors.primary),
             ),

@@ -1,5 +1,9 @@
+import 'dart:io';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 import 'package:go_router/go_router.dart';
 
 import '../i18n/app_localizations.dart';
@@ -17,12 +21,39 @@ class SettingsScreen extends ConsumerStatefulWidget {
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen>
+    with WidgetsBindingObserver {
+  bool _obscured = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (Platform.isAndroid) {
+      FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+    }
     Future.microtask(
         () => ref.read(subscriptionProvider.notifier).loadSubscription());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (Platform.isAndroid) {
+      FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+    }
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!Platform.isIOS) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (mounted) setState(() => _obscured = true);
+    } else if (state == AppLifecycleState.resumed) {
+      if (mounted) setState(() => _obscured = false);
+    }
   }
 
   @override
@@ -32,8 +63,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final user = authState.user;
     final sub = subState.subscription;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(context.tr('settings.title'))),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(title: Text(context.tr('settings.title'))),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         children: [
@@ -201,6 +234,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: AppSpacing.xxxl),
         ],
       ),
+        ),
+        // iOS: blur screen content in the app-switcher / inactive state.
+        if (_obscured)
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(color: Colors.black.withValues(alpha: 0.4)),
+            ),
+          ),
+      ],
     );
   }
 }

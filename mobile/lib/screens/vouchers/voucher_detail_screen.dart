@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart' show Share;
 
@@ -31,10 +34,21 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     with WidgetsBindingObserver {
   Timer? _refreshTimer;
 
+  // iOS blur overlay: shown when app enters inactive state.
+  bool _obscured = false;
+
+  // Clipboard auto-clear timer.
+  Timer? _clipboardClearTimer;
+  String? _lastCopiedValue;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Android: prevent screenshots / screen recording.
+    if (Platform.isAndroid) {
+      FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+    }
     Future.microtask(() {
       ref
           .read(vouchersProvider.notifier)
@@ -48,12 +62,27 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _clipboardClearTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    if (Platform.isAndroid) {
+      FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+    }
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // iOS blur overlay logic.
+    if (Platform.isIOS) {
+      if (state == AppLifecycleState.inactive ||
+          state == AppLifecycleState.paused) {
+        if (mounted) setState(() => _obscured = true);
+      } else if (state == AppLifecycleState.resumed) {
+        if (mounted) setState(() => _obscured = false);
+      }
+    }
+
+    // Existing data-refresh logic.
     if (state == AppLifecycleState.resumed) {
       ref.read(vouchersProvider.notifier).loadVoucher(widget.routerId, widget.voucherId);
       _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -62,6 +91,19 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     } else if (state == AppLifecycleState.paused) {
       _refreshTimer?.cancel();
     }
+  }
+
+  /// Copy [text] to the clipboard and schedule auto-clear after 30 seconds.
+  Future<void> _copyWithAutoClear(String text) async {
+    _lastCopiedValue = text;
+    await Clipboard.setData(ClipboardData(text: text));
+    _clipboardClearTimer?.cancel();
+    _clipboardClearTimer = Timer(const Duration(seconds: 30), () async {
+      final current = await Clipboard.getData('text/plain');
+      if (current?.text == _lastCopiedValue) {
+        await Clipboard.setData(const ClipboardData(text: ''));
+      }
+    });
   }
 
   Future<void> _toggleStatus() async {
@@ -159,14 +201,16 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     Share.share(text.toString());
   }
 
-  void _copyCredentials() {
+  Future<void> _copyCredentials() async {
     final voucher = ref.read(vouchersProvider).selectedVoucher;
     if (voucher == null) return;
 
-    Clipboard.setData(ClipboardData(text: voucher.username));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr('vouchers.credentialsCopied'))),
-    );
+    await _copyWithAutoClear(voucher.username);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('vouchers.credentialsCopied'))),
+      );
+    }
   }
 
   @override
@@ -174,35 +218,37 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     final state = ref.watch(vouchersProvider);
     final voucher = state.selectedVoucher;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(context.tr('vouchers.voucherDetails')),
-        actions: [
-          if (voucher != null) ...[
-            IconButton(
-              icon: const Icon(Icons.share),
-              onPressed: _shareVoucher,
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: _deleteVoucher,
-            ),
-          ],
-        ],
-      ),
-      body: state.isLoading && voucher == null
-          ? const Center(child: CircularProgressIndicator())
-          : voucher == null
-              ? Center(
-                  child: Text(context.tr('vouchers.voucherNotFound'),
-                      style: AppTypography.body
-                          .copyWith(color: AppColors.textSecondary)),
-                )
-              : RefreshIndicator(
-                  onRefresh: () => ref
-                      .read(vouchersProvider.notifier)
-                      .loadVoucher(widget.routerId, widget.voucherId),
-                  child: ListView(
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: Text(context.tr('vouchers.voucherDetails')),
+            actions: [
+              if (voucher != null) ...[
+                IconButton(
+                  icon: const Icon(Icons.share),
+                  onPressed: _shareVoucher,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: _deleteVoucher,
+                ),
+              ],
+            ],
+          ),
+          body: state.isLoading && voucher == null
+              ? const Center(child: CircularProgressIndicator())
+              : voucher == null
+                  ? Center(
+                      child: Text(context.tr('vouchers.voucherNotFound'),
+                          style: AppTypography.body
+                              .copyWith(color: AppColors.textSecondary)),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () => ref
+                          .read(vouchersProvider.notifier)
+                          .loadVoucher(widget.routerId, widget.voucherId),
+                      child: ListView(
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     children: [
                       _buildCredentialsCard(voucher),
@@ -218,6 +264,16 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
                     ],
                   ),
                 ),
+        ),
+        // iOS: blur screen content in the app-switcher / inactive state.
+        if (_obscured)
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(color: Colors.black.withValues(alpha: 0.4)),
+            ),
+          ),
+      ],
     );
   }
 
@@ -258,13 +314,14 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
               ),
               IconButton(
                 icon: const Icon(Icons.copy, size: 20),
-                onPressed: () {
-                  Clipboard.setData(
-                      ClipboardData(text: voucher.username));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text(context.tr('vouchers.codeCopied'))),
-                  );
+                onPressed: () async {
+                  await _copyWithAutoClear(voucher.username);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text(context.tr('vouchers.codeCopied'))),
+                    );
+                  }
                 },
               ),
             ],

@@ -1,9 +1,37 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 
 import 'secure_storage.dart';
+
+// ---------------------------------------------------------------------------
+// Certificate pinning — SPKI SHA-256 pins for api.wa-sel.com
+//
+// TODO: Before release, replace these placeholders with real values from:
+//   echo | openssl s_client -connect api.wa-sel.com:443 -servername api.wa-sel.com 2>/dev/null \
+//     | openssl x509 -pubkey -noout \
+//     | openssl pkey -pubin -outform der \
+//     | openssl dgst -sha256 -binary | openssl enc -base64
+// ---------------------------------------------------------------------------
+const _kPinPrimary = 'TODO_PRIMARY_PIN';
+const _kPinBackup = 'TODO_BACKUP_PIN';
+
+/// Fields whose values are always replaced with '[REDACTED]' in logs.
+const _kRedactedFields = {
+  'password',
+  'otp',
+  'refresh_token',
+  'refreshToken',
+  'access_token',
+  'accessToken',
+  'authorization',
+  'Authorization',
+};
 
 class ApiClient {
   late final Dio _dio;
@@ -37,17 +65,35 @@ class ApiClient {
       },
     ));
 
+    // Certificate pinning — enforced only in release mode so that local dev
+    // against http://localhost:3000 continues to work without modification.
+    if (!kDebugMode) {
+      _dio.httpClientAdapter = IOHttpClientAdapter(
+        createHttpClient: () {
+          final client = HttpClient();
+          client.badCertificateCallback = (cert, host, port) {
+            // Compute SPKI SHA-256 for the presented certificate.
+            final spkiDer = cert.der;
+            final digest = sha256.convert(spkiDer);
+            final pin = base64.encode(digest.bytes);
+            final allowed = pin == _kPinPrimary || pin == _kPinBackup;
+            if (!allowed) {
+              debugPrint('[CertPin] REJECTED pin=$pin host=$host');
+            }
+            return allowed;
+          };
+          return client;
+        },
+      );
+    }
+
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: _onRequest,
       onError: _onError,
     ));
 
     if (kDebugMode) {
-      _dio.interceptors.add(LogInterceptor(
-        requestBody: true,
-        responseBody: true,
-        logPrint: (obj) => debugPrint(obj.toString()),
-      ));
+      _dio.interceptors.add(_RedactedLogInterceptor());
     }
   }
 
@@ -178,7 +224,8 @@ class ApiClient {
     final failedRequest = error.requestOptions;
 
     // Never attempt to refresh when the refresh endpoint itself fails.
-    if (failedRequest.path.contains('/auth/refresh')) {
+    // Use endsWith to avoid matching variant paths like /auth/refresh-extra.
+    if (failedRequest.path.endsWith('/auth/refresh')) {
       return handler.next(error);
     }
 
@@ -251,5 +298,83 @@ class ApiClient {
     } finally {
       _isRefreshing = false;
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Redacted log interceptor
+//
+// Logs method, path, status and duration. Strips the Authorization header
+// and replaces sensitive body fields with '[REDACTED]'.
+// ---------------------------------------------------------------------------
+class _RedactedLogInterceptor extends Interceptor {
+  final _stopwatches = <String, Stopwatch>{};
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    final key = '${options.method}:${options.path}:${DateTime.now().millisecondsSinceEpoch}';
+    options.extra['_logKey'] = key;
+    _stopwatches[key] = Stopwatch()..start();
+
+    final safeHeaders = Map<String, dynamic>.from(options.headers);
+    safeHeaders.remove('Authorization');
+    safeHeaders.remove('authorization');
+
+    debugPrint(
+      '[HTTP] --> ${options.method} ${options.path}'
+      '\n        Headers: $safeHeaders'
+      '\n        Body: ${_redactBody(options.data)}',
+    );
+    handler.next(options);
+  }
+
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    final key = response.requestOptions.extra['_logKey'] as String?;
+    final elapsed = key != null ? (_stopwatches.remove(key)?..stop())?.elapsedMilliseconds : null;
+
+    debugPrint(
+      '[HTTP] <-- ${response.statusCode} ${response.requestOptions.method} '
+      '${response.requestOptions.path}'
+      '${elapsed != null ? ' (${elapsed}ms)' : ''}'
+      '\n        Body: ${_redactBody(response.data)}',
+    );
+    handler.next(response);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    final key = err.requestOptions.extra['_logKey'] as String?;
+    _stopwatches.remove(key);
+
+    debugPrint(
+      '[HTTP] ERR ${err.requestOptions.method} ${err.requestOptions.path}'
+      ' — ${err.response?.statusCode} ${err.message}',
+    );
+    handler.next(err);
+  }
+
+  dynamic _redactBody(dynamic body) {
+    if (body == null) return null;
+    if (body is Map) {
+      return body.map((k, v) {
+        if (_kRedactedFields.contains(k.toString())) {
+          return MapEntry(k, '[REDACTED]');
+        }
+        if (v is Map || v is List) return MapEntry(k, _redactBody(v));
+        return MapEntry(k, v);
+      });
+    }
+    if (body is List) return body.map(_redactBody).toList();
+    if (body is String) {
+      // Attempt to parse JSON strings so field-level redaction applies.
+      try {
+        final decoded = jsonDecode(body);
+        return _redactBody(decoded);
+      } catch (_) {
+        return body;
+      }
+    }
+    return body;
   }
 }
