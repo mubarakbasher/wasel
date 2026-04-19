@@ -16,3 +16,14 @@ wg0.conf
 /scripts/node_modules/
 /scripts/package.json
 /scripts/package-lock.json
+/scripts/deploy-logo.mjs
+/scripts/generate-logos.mjs
+/scripts/logos.package.json
+
+# Gradle build output
+mobile/android/build/
+
+# Personal / scratch
+CLAUDE_MD_ADDITION.md
+.claude/agents/
+.claude/skills/
