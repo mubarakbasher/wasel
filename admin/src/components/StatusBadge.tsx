@@ -1,5 +1,5 @@
 interface StatusBadgeProps {
-  status: string;
+  status: string | null | undefined;
 }
 
 const statusStyles: Record<string, string> = {
@@ -17,6 +17,16 @@ const statusStyles: Record<string, string> = {
 const defaultStyle = 'bg-slate-100 text-slate-600 ring-slate-500/20';
 
 export default function StatusBadge({ status }: StatusBadgeProps) {
+  if (!status) {
+    return (
+      <span
+        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${defaultStyle}`}
+      >
+        —
+      </span>
+    );
+  }
+
   const style = statusStyles[status.toLowerCase()] || defaultStyle;
 
   return (

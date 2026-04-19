@@ -20,12 +20,15 @@ interface UserInfo {
 
 interface SubscriptionInfo {
   id: string;
-  plan_tier: string;
+  planTier: string;
+  planName: string;
   status: string;
-  ends_at?: string | null;
-  max_routers: number;
-  voucher_quota: number;
-  vouchers_used: number;
+  startDate: string;
+  endDate: string;
+  voucherQuota: number;
+  vouchersUsed: number;
+  daysRemaining: number;
+  maxRouters: number;
 }
 
 interface RouterInfo {
@@ -129,8 +132,8 @@ export default function UserDetailPage() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
-                    {data.subscription.plan_tier.charAt(0).toUpperCase() +
-                      data.subscription.plan_tier.slice(1)}
+                    {data.subscription.planTier.charAt(0).toUpperCase() +
+                      data.subscription.planTier.slice(1)}
                   </span>
                   <StatusBadge status={data.subscription.status} />
                 </div>
@@ -138,18 +141,18 @@ export default function UserDetailPage() {
                   <InfoRow
                     label="Ends on"
                     value={
-                      data.subscription.ends_at
-                        ? new Date(data.subscription.ends_at).toLocaleDateString()
+                      data.subscription.endDate
+                        ? new Date(data.subscription.endDate).toLocaleDateString()
                         : '—'
                     }
                   />
                   <InfoRow
                     label="Routers"
-                    value={`${data.routerCount} / ${data.subscription.max_routers}`}
+                    value={`${data.routerCount} / ${data.subscription.maxRouters}`}
                   />
                   <InfoRow
                     label="Vouchers"
-                    value={`${data.subscription.vouchers_used} / ${data.subscription.voucher_quota}`}
+                    value={`${data.subscription.vouchersUsed} / ${data.subscription.voucherQuota}`}
                   />
                 </div>
               </div>
