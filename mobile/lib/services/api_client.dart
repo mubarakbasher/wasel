@@ -12,14 +12,18 @@ import 'secure_storage.dart';
 // ---------------------------------------------------------------------------
 // Certificate pinning — SPKI SHA-256 pins for api.wa-sel.com
 //
-// TODO: Before release, replace these placeholders with real values from:
+// Primary holds the current leaf-cert pin. Backup is intentionally identical
+// to primary until a standby cert or intermediate-CA pin is provisioned; with
+// matching pins, a compromised primary requires an app update to recover.
+//
+// To refresh either pin:
 //   echo | openssl s_client -connect api.wa-sel.com:443 -servername api.wa-sel.com 2>/dev/null \
 //     | openssl x509 -pubkey -noout \
 //     | openssl pkey -pubin -outform der \
 //     | openssl dgst -sha256 -binary | openssl enc -base64
 // ---------------------------------------------------------------------------
-const _kPinPrimary = 'TODO_PRIMARY_PIN';
-const _kPinBackup = 'TODO_BACKUP_PIN';
+const _kPinPrimary = 'Mh+xVjeEin+YcN+tBVkpv5L9gicHLflwqHGPEb2VAWA=';
+const _kPinBackup = 'Mh+xVjeEin+YcN+tBVkpv5L9gicHLflwqHGPEb2VAWA=';
 
 /// Fields whose values are always replaced with '[REDACTED]' in logs.
 const _kRedactedFields = {
