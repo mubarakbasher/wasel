@@ -1,4 +1,4 @@
-FROM freeradius/freeradius-server:3.2.4
+FROM freeradius/freeradius-server:3.2.4@sha256:1cfb2e830f73d8fd3dfcb3dada7cabbeb3010cf5ff0bc9363488db1b217b3dcf
 
 # Install PostgreSQL driver for FreeRADIUS and envsubst (gettext-base)
 RUN apt-get update && \

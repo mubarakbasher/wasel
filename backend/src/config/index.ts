@@ -12,7 +12,7 @@ const envSchema = z.object({
   DB_PORT: z.coerce.number().default(5432),
   DB_NAME: z.string().default('wasel'),
   DB_USER: z.string().default('wasel'),
-  DB_PASSWORD: z.string().default('changeme'),
+  DB_PASSWORD: z.string().min(1, 'DB_PASSWORD must be set in .env'),
   DB_POOL_MIN: z.coerce.number().default(2),
   DB_POOL_MAX: z.coerce.number().default(10),
 

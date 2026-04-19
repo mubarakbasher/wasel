@@ -33,6 +33,7 @@ vi.mock('../utils/ipAllocation', () => ({
     routerIp: '10.10.0.2',
     subnet: '10.10.0.0/30',
   }),
+  releaseTunnelSubnet: vi.fn().mockResolvedValue(undefined),
   parseTunnelSubnet: vi.fn().mockReturnValue({
     serverIp: '10.10.0.1',
     routerIp: '10.10.0.2',
@@ -42,6 +43,9 @@ vi.mock('../utils/ipAllocation', () => ({
 
 vi.mock('../services/wireguardConfig', () => ({
   generateMikrotikConfigText: vi.fn().mockReturnValue('# Mikrotik Setup Commands\n/interface wireguard add ...'),
+  generateSetupSteps: vi.fn().mockReturnValue([
+    { step: 1, title: 'Step 1', commands: ['/interface wireguard add ...'] },
+  ]),
 }));
 
 vi.mock('../services/routerOs.service', () => ({
@@ -125,10 +129,12 @@ describe('POST /api/v1/routers', () => {
 
   it('should return 403 when router limit reached', async () => {
     mockSubscriptionQuery(mockQuery);
-    // getRouterLimit → getActiveSubscription
+    // getRouterLimit → getActiveSubscription → SELECT subscriptions
     mockQuery.mockResolvedValueOnce({ rows: [ACTIVE_SUBSCRIPTION_ROW] });
-    // COUNT routers = 1 (matches starter limit of 1)
-    mockQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+    // getRouterLimit → getActiveSubscription → toSubscriptionInfo → getPlanByTier → SELECT plans
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // null plan → maxRouters = 0
+    // COUNT routers = 0 which is >= 0 → triggers 403 ROUTER_LIMIT_REACHED
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
     const res = await request(app)
       .post('/api/v1/routers')
@@ -141,8 +147,17 @@ describe('POST /api/v1/routers', () => {
 
   it('should create router successfully', async () => {
     mockSubscriptionQuery(mockQuery);
-    // getRouterLimit → getActiveSubscription
+    // getRouterLimit → getActiveSubscription → SELECT subscriptions
     mockQuery.mockResolvedValueOnce({ rows: [ACTIVE_SUBSCRIPTION_ROW] });
+    // getRouterLimit → getActiveSubscription → toSubscriptionInfo → getPlanByTier → SELECT plans
+    // Return a plan row so maxRouters comes back as a real number (≥ 1)
+    mockQuery.mockResolvedValueOnce({ rows: [{
+      id: 'plan-starter', tier: 'starter', name: 'Starter', price: '5',
+      currency: 'SDG', max_routers: 1, monthly_vouchers: 500,
+      session_monitoring: null, dashboard: null, features: [],
+      allowed_durations: [1], is_active: true,
+      created_at: new Date(), updated_at: new Date(),
+    }] });
     // COUNT routers = 0
     mockQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
 

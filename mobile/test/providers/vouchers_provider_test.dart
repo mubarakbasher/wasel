@@ -112,7 +112,8 @@ void main() {
         price: 1.00,
       );
 
-      expect(result, true);
+      expect(result, isNotNull);
+      expect(result, hasLength(1));
       expect(notifier.state.vouchers, hasLength(1));
       expect(notifier.state.total, 1);
     });
@@ -136,7 +137,7 @@ void main() {
         price: 1.00,
       );
 
-      expect(result, false);
+      expect(result, isNull);
       expect(notifier.state.error, isNotNull);
     });
 

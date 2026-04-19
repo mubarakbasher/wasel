@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:wasel/models/plan.dart';
@@ -34,6 +36,10 @@ void main() {
     'maxRouters': 1,
     'startDate': '2026-03-01T00:00:00.000Z',
     'endDate': '2026-04-01T00:00:00.000Z',
+  });
+
+  setUpAll(() {
+    registerFallbackValue(File(''));
   });
 
   setUp(() {
@@ -123,14 +129,15 @@ void main() {
     });
 
     test('uploadReceipt returns true on success', () async {
+      final fakeFile = File('receipt.jpg');
       when(() => mockService.uploadReceipt(
             paymentId: 'pay-1',
-            receiptUrl: 'https://example.com/receipt.jpg',
+            file: any(named: 'file'),
           )).thenAnswer((_) async {});
 
       final success = await notifier.uploadReceipt(
         paymentId: 'pay-1',
-        receiptUrl: 'https://example.com/receipt.jpg',
+        file: fakeFile,
       );
 
       expect(success, true);
@@ -139,14 +146,15 @@ void main() {
     });
 
     test('uploadReceipt returns false on failure', () async {
+      final fakeFile = File('receipt.jpg');
       when(() => mockService.uploadReceipt(
             paymentId: 'pay-1',
-            receiptUrl: 'https://example.com/receipt.jpg',
+            file: any(named: 'file'),
           )).thenThrow(Exception('invalid'));
 
       final success = await notifier.uploadReceipt(
         paymentId: 'pay-1',
-        receiptUrl: 'https://example.com/receipt.jpg',
+        file: fakeFile,
       );
 
       expect(success, false);

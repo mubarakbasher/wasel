@@ -1,10 +1,46 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import { TEST_USER, authHeader, ACTIVE_SUBSCRIPTION_ROW } from './helpers';
 
+// Mock the upload middleware so the receipt route behaves as if a file was
+// successfully uploaded; tests can then focus on service-level logic.
+vi.mock('../middleware/upload', () => ({
+  uploadReceipt: {
+    single: () => (req: Record<string, unknown>, _res: unknown, next: () => void) => {
+      req.file = {
+        filename: 'test-receipt.jpg',
+        path: '/tmp/test-receipt.jpg',
+        mimetype: 'image/jpeg',
+      };
+      next();
+    },
+  },
+  verifyUploadMagicBytes: (_req: unknown, _res: unknown, next: () => void) => next(),
+  RECEIPTS_PUBLIC_PREFIX: '/uploads/receipts',
+}));
+
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof import('vitest').vi.fn>;
 const mockClientQuery = (globalThis as Record<string, unknown>).__mockClientQuery as ReturnType<typeof import('vitest').vi.fn>;
+
+// A minimal plan row returned by getPlanByTier — used wherever the service
+// calls SELECT * FROM plans inside requestSubscription / toSubscriptionInfo.
+const STARTER_PLAN_ROW = {
+  id: 'plan-starter',
+  tier: 'starter',
+  name: 'Starter',
+  price: '5',
+  currency: 'SDG',
+  max_routers: 1,
+  monthly_vouchers: 500,
+  session_monitoring: null,
+  dashboard: null,
+  features: [],
+  allowed_durations: [1],
+  is_active: true,
+  created_at: new Date(),
+  updated_at: new Date(),
+};
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -13,8 +49,35 @@ beforeEach(() => {
 
 // ─── GET /api/v1/subscription/plans ──────────────────────────────────────────
 
+const ALL_PLAN_ROWS = [
+  STARTER_PLAN_ROW,
+  {
+    ...STARTER_PLAN_ROW,
+    id: 'plan-professional',
+    tier: 'professional',
+    name: 'Professional',
+    price: '15',
+    max_routers: 3,
+    monthly_vouchers: 2000,
+    allowed_durations: [1, 3, 6],
+  },
+  {
+    ...STARTER_PLAN_ROW,
+    id: 'plan-enterprise',
+    tier: 'enterprise',
+    name: 'Enterprise',
+    price: '50',
+    max_routers: 10,
+    monthly_vouchers: -1,
+    allowed_durations: [1, 3, 6, 12],
+  },
+];
+
 describe('GET /api/v1/subscription/plans', () => {
   it('should return all plan definitions (public, no auth required)', async () => {
+    // getPlans() → SELECT * FROM plans
+    mockQuery.mockResolvedValueOnce({ rows: ALL_PLAN_ROWS });
+
     const res = await request(app).get('/api/v1/subscription/plans');
 
     expect(res.status).toBe(200);
@@ -29,6 +92,9 @@ describe('GET /api/v1/subscription/plans', () => {
   });
 
   it('should include pricing and limits in plan data', async () => {
+    // getPlans() → SELECT * FROM plans
+    mockQuery.mockResolvedValueOnce({ rows: ALL_PLAN_ROWS });
+
     const res = await request(app).get('/api/v1/subscription/plans');
 
     const starter = res.body.data.find((p: any) => p.tier === 'starter');
@@ -60,7 +126,10 @@ describe('GET /api/v1/subscription', () => {
   });
 
   it('should return active subscription details', async () => {
+    // getCurrentSubscription → SELECT subscriptions
     mockQuery.mockResolvedValueOnce({ rows: [ACTIVE_SUBSCRIPTION_ROW] });
+    // toSubscriptionInfo → getPlanByTier → SELECT plans
+    mockQuery.mockResolvedValueOnce({ rows: [STARTER_PLAN_ROW] });
 
     const res = await request(app)
       .get('/api/v1/subscription')
@@ -103,6 +172,9 @@ describe('POST /api/v1/subscription/request', () => {
   });
 
   it('should return 400 for invalid plan tier', async () => {
+    // requestSubscription calls getPlanByTier first → returns null for unknown tier
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
     const res = await request(app)
       .post('/api/v1/subscription/request')
       .set(authHeader())
@@ -112,7 +184,9 @@ describe('POST /api/v1/subscription/request', () => {
   });
 
   it('should return 409 when user already has active subscription', async () => {
-    // Check existing subscription
+    // requestSubscription: getPlanByTier → SELECT plans (must come first)
+    mockQuery.mockResolvedValueOnce({ rows: [STARTER_PLAN_ROW] });
+    // Then: SELECT existing subscriptions
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 'sub-1', status: 'active' }] });
 
     const res = await request(app)
@@ -125,6 +199,8 @@ describe('POST /api/v1/subscription/request', () => {
   });
 
   it('should return 409 when user has pending subscription', async () => {
+    // getPlanByTier first, then existing-sub check
+    mockQuery.mockResolvedValueOnce({ rows: [STARTER_PLAN_ROW] });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 'sub-1', status: 'pending' }] });
 
     const res = await request(app)
@@ -137,6 +213,8 @@ describe('POST /api/v1/subscription/request', () => {
   });
 
   it('should create subscription and payment on success', async () => {
+    // getPlanByTier first
+    mockQuery.mockResolvedValueOnce({ rows: [STARTER_PLAN_ROW] });
     // Check existing: none
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -156,6 +234,8 @@ describe('POST /api/v1/subscription/request', () => {
           status: 'pending',
           voucher_quota: 500,
           vouchers_used: 0,
+          duration_months: 1,
+          previous_subscription_id: null,
           created_at: now,
           updated_at: now,
         }],
@@ -170,6 +250,9 @@ describe('POST /api/v1/subscription/request', () => {
         }],
       }) // INSERT payment
       .mockResolvedValueOnce(undefined); // COMMIT
+
+    // toSubscriptionInfo → getPlanByTier called after COMMIT on the new subscription row
+    mockQuery.mockResolvedValueOnce({ rows: [STARTER_PLAN_ROW] });
 
     const res = await request(app)
       .post('/api/v1/subscription/request')
@@ -196,11 +279,12 @@ describe('POST /api/v1/subscription/receipt', () => {
     expect(res.status).toBe(401);
   });
 
-  it('should return 400 for invalid receipt URL', async () => {
+  it('should return 400 for invalid paymentId format', async () => {
+    // Zod schema validates paymentId as UUID — non-UUID string fails validation
     const res = await request(app)
       .post('/api/v1/subscription/receipt')
       .set(authHeader())
-      .send({ paymentId: validPaymentId, receiptUrl: 'not-a-url' });
+      .send({ paymentId: 'not-a-uuid' });
 
     expect(res.status).toBe(400);
   });
@@ -209,19 +293,19 @@ describe('POST /api/v1/subscription/receipt', () => {
     const res = await request(app)
       .post('/api/v1/subscription/receipt')
       .set(authHeader())
-      .send({ receiptUrl: 'https://example.com/receipt.png' });
+      .send({});
 
     expect(res.status).toBe(400);
   });
 
   it('should return 404 when payment not found', async () => {
-    // SELECT payment
+    // uploadReceipt service: SELECT payment
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await request(app)
       .post('/api/v1/subscription/receipt')
       .set(authHeader())
-      .send({ paymentId: validPaymentId, receiptUrl: 'https://example.com/receipt.png' });
+      .send({ paymentId: validPaymentId });
 
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('PAYMENT_NOT_FOUND');
@@ -235,13 +319,14 @@ describe('POST /api/v1/subscription/receipt', () => {
     const res = await request(app)
       .post('/api/v1/subscription/receipt')
       .set(authHeader())
-      .send({ paymentId: validPaymentId, receiptUrl: 'https://example.com/receipt.png' });
+      .send({ paymentId: validPaymentId });
 
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('PAYMENT_FORBIDDEN');
   });
 
   it('should return 400 when payment is not pending', async () => {
+    // The service rejects any status other than 'pending' or 'rejected'
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: validPaymentId, user_id: TEST_USER.userId, status: 'approved' }],
     });
@@ -249,10 +334,10 @@ describe('POST /api/v1/subscription/receipt', () => {
     const res = await request(app)
       .post('/api/v1/subscription/receipt')
       .set(authHeader())
-      .send({ paymentId: validPaymentId, receiptUrl: 'https://example.com/receipt.png' });
+      .send({ paymentId: validPaymentId });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('PAYMENT_NOT_PENDING');
+    expect(res.body.error.code).toBe('PAYMENT_NOT_RESUBMITTABLE');
   });
 
   it('should upload receipt successfully', async () => {
@@ -266,7 +351,7 @@ describe('POST /api/v1/subscription/receipt', () => {
     const res = await request(app)
       .post('/api/v1/subscription/receipt')
       .set(authHeader())
-      .send({ paymentId: validPaymentId, receiptUrl: 'https://example.com/receipt.png' });
+      .send({ paymentId: validPaymentId });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);

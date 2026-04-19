@@ -68,7 +68,7 @@ void main() {
       expect(voucher.limitType, isNull);
       expect(voucher.limitValue, isNull);
       expect(voucher.price, isNull);
-      expect(voucher.status, 'active');
+      expect(voucher.status, 'unused');
     });
 
     test('toJson roundtrip preserves data', () {

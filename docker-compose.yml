@@ -90,8 +90,8 @@ services:
     cpus: 0.5
 
   freeradius:
-    # TODO(digest): pin after next pull → docker pull freeradius/freeradius-server:3.2.4 && docker image inspect freeradius/freeradius-server:3.2.4 --format '{{index .RepoDigests 0}}'
     build: ./freeradius
+    image: freeradius/freeradius-server:3.2.4@sha256:1cfb2e830f73d8fd3dfcb3dada7cabbeb3010cf5ff0bc9363488db1b217b3dcf
     network_mode: host
     environment:
       RADIUS_DB_HOST: 127.0.0.1
