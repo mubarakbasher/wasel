@@ -416,25 +416,15 @@ export async function getRouterStatus(
   return statusResult;
 }
 
-/**
- * Generate the Mikrotik setup guide for a router.
- * Decrypts WireGuard private key and RADIUS secret for inclusion.
- */
-export async function getSetupGuide(
-  userId: string,
-  routerId: string,
-): Promise<{ routerName: string; setupGuide: string; tunnelIp: string | null; serverEndpoint: string; steps: import('./wireguardConfig').SetupStep[] }> {
-  const result = await pool.query<RouterRow>(
-    'SELECT * FROM routers WHERE id = $1 AND user_id = $2',
-    [routerId, userId],
-  );
+export type SetupGuideResult = {
+  routerName: string;
+  setupGuide: string;
+  tunnelIp: string | null;
+  serverEndpoint: string;
+  steps: import('./wireguardConfig').SetupStep[];
+};
 
-  if (result.rows.length === 0) {
-    throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
-  }
-
-  const router = result.rows[0];
-
+function buildSetupGuideFromRow(router: RouterRow): SetupGuideResult {
   if (!router.wg_private_key_enc || !router.radius_secret_enc || !router.tunnel_ip) {
     throw new AppError(400, 'Router is missing WireGuard or RADIUS configuration', 'ROUTER_NOT_CONFIGURED');
   }
@@ -455,14 +445,48 @@ export async function getSetupGuide(
     radiusServerIp: '10.10.0.1', // VPS wg0 address — always the same for all routers
   };
 
-  const setupGuide = generateMikrotikConfigText(configParams);
-  const steps = generateSetupSteps(configParams);
-
   return {
     routerName: router.name,
-    setupGuide,
+    setupGuide: generateMikrotikConfigText(configParams),
     tunnelIp: router.tunnel_ip,
     serverEndpoint,
-    steps,
+    steps: generateSetupSteps(configParams),
   };
+}
+
+/**
+ * Generate the Mikrotik setup guide for a router.
+ * Decrypts WireGuard private key and RADIUS secret for inclusion.
+ */
+export async function getSetupGuide(
+  userId: string,
+  routerId: string,
+): Promise<SetupGuideResult> {
+  const result = await pool.query<RouterRow>(
+    'SELECT * FROM routers WHERE id = $1 AND user_id = $2',
+    [routerId, userId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
+  }
+
+  return buildSetupGuideFromRow(result.rows[0]);
+}
+
+/**
+ * Admin variant: fetch the setup guide for any router, regardless of owner.
+ * Caller MUST audit-log this access since the response embeds plaintext secrets.
+ */
+export async function getSetupGuideForAdmin(routerId: string): Promise<SetupGuideResult> {
+  const result = await pool.query<RouterRow>(
+    'SELECT * FROM routers WHERE id = $1',
+    [routerId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
+  }
+
+  return buildSetupGuideFromRow(result.rows[0]);
 }

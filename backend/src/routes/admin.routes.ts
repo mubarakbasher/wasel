@@ -53,6 +53,11 @@ router.put('/payments/:id', validate({ params: validators.paymentIdParamSchema, 
 // Stats & Read-only
 router.get('/stats', adminController.getStats);
 router.get('/routers', validate({ query: validators.listRoutersQuerySchema }), adminController.listRouters);
+router.get(
+  '/routers/:id/setup-guide',
+  validate({ params: validators.routerIdParamSchema }),
+  adminController.getRouterSetupGuide,
+);
 router.get('/audit-logs', validate({ query: validators.listAuditLogsQuerySchema }), adminController.listAuditLogs);
 
 // Settings — bank details

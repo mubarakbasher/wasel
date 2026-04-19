@@ -316,6 +316,23 @@ export async function createRouterForUser(req: AuthenticatedRequest, res: Respon
   }
 }
 
+export async function getRouterSetupGuide(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const routerId = req.params.id as string;
+    const guide = await routerService.getSetupGuideForAdmin(routerId);
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'router.view_setup_guide',
+      targetEntity: 'router',
+      targetId: routerId,
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: guide });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getSystemStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const status = await adminService.getSystemStatus();

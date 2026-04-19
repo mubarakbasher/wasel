@@ -16,6 +16,10 @@ export const userIdParamSchema = z.object({
   id: z.string().uuid('Invalid user ID'),
 });
 
+export const routerIdParamSchema = z.object({
+  id: z.string().uuid('Invalid router ID'),
+});
+
 export const updateUserBodySchema = z.object({
   name: z.string().min(2).max(100).optional(),
   email: z.string().email().optional(),
