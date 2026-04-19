@@ -105,7 +105,7 @@ const STARTER_PLAN_ROW = {
   tier: 'starter',
   name: 'Starter',
   price: '5',
-  currency: 'USD',
+  currency: 'SDG',
   max_routers: 1,
   monthly_vouchers: 500,
   session_monitoring: null,

@@ -15,7 +15,7 @@ void main() {
     'tier': 'starter',
     'name': 'Starter',
     'price': 5,
-    'currency': 'USD',
+    'currency': 'SDG',
     'maxRouters': 1,
     'monthlyVouchers': 500,
     'sessionMonitoring': 'Active only',
@@ -98,7 +98,7 @@ void main() {
         subscription: mockSubscription,
         paymentId: 'pay-1',
         amount: 5.0,
-        currency: 'USD',
+        currency: 'SDG',
         referenceCode: 'WAS-ABC123',
       );
       when(() => mockService.requestSubscription(planTier: 'starter'))

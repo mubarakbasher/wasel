@@ -1,0 +1,10 @@
+{
+  "name": "wasel-logos",
+  "private": true,
+  "type": "module",
+  "description": "One-off SVG->PNG renderer for logo concepts. Install: cp logos.package.json package.json && npm install",
+  "dependencies": {
+    "sharp": "^0.33.5",
+    "png-to-ico": "^2.1.8"
+  }
+}

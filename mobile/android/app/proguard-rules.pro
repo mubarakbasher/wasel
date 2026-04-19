@@ -25,10 +25,6 @@
 -keep class com.scottyab.rootbeer.** { *; }
 -dontwarn com.scottyab.rootbeer.**
 
-# ---- flutter_windowmanager ----
--keep class com.praetorian.flutter_windowmanager.** { *; }
--dontwarn com.praetorian.flutter_windowmanager.**
-
 # ---- Dio / OkHttp (HTTP client) ----
 -keep class okhttp3.** { *; }
 -dontwarn okhttp3.**

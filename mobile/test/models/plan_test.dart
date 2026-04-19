@@ -6,7 +6,7 @@ void main() {
     'tier': 'starter',
     'name': 'Starter',
     'price': 5,
-    'currency': 'USD',
+    'currency': 'SDG',
     'maxRouters': 1,
     'monthlyVouchers': 500,
     'sessionMonitoring': 'Active only',
@@ -34,8 +34,9 @@ void main() {
     });
 
     test('priceLabel formats correctly', () {
-      expect(Plan.fromJson(validJson).priceLabel, '\$5');
-      expect(Plan.fromJson({...validJson, 'price': 12}).priceLabel, '\$12');
+      expect(Plan.fromJson(validJson).priceLabel('SDG'), 'SDG 5');
+      expect(
+          Plan.fromJson({...validJson, 'price': 12}).priceLabel('SDG'), 'SDG 12');
     });
   });
 }

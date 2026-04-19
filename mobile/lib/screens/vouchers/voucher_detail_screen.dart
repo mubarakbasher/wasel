@@ -5,7 +5,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_windowmanager/flutter_windowmanager.dart';
+import '../../services/secure_window.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart' show Share;
 
@@ -47,7 +47,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     WidgetsBinding.instance.addObserver(this);
     // Android: prevent screenshots / screen recording.
     if (Platform.isAndroid) {
-      FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      SecureWindow.enable();
     }
     Future.microtask(() {
       ref
@@ -65,7 +65,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     _clipboardClearTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isAndroid) {
-      FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+      SecureWindow.disable();
     }
     super.dispose();
   }

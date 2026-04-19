@@ -25,7 +25,7 @@ const emptyForm = {
   tier: '',
   name: '',
   price: '',
-  currency: 'USD',
+  currency: 'SDG',
   max_routers: '1',
   monthly_vouchers: '500',
   session_monitoring: '',
@@ -148,7 +148,7 @@ export default function PlansPage() {
       key: 'price',
       header: 'Price',
       render: (row) => (
-        <span className="font-medium">${parseFloat(row.price)}<span className="text-slate-400 font-normal">/mo</span></span>
+        <span className="font-medium">{row.currency ?? 'SDG'} {parseFloat(row.price)}<span className="text-slate-400 font-normal">/mo</span></span>
       ),
     },
     {

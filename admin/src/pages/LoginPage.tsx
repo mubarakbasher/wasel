@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { Wifi, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import BrandMark from '../components/BrandMark';
 
 export default function LoginPage() {
   const { isLoggedIn, login } = useAuth();
@@ -43,9 +44,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
           <div className="flex flex-col items-center mb-8">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 mb-4">
-              <Wifi className="w-6 h-6 text-white" />
-            </div>
+            <BrandMark size={56} className="mb-4" />
             <h1 className="text-2xl font-bold text-slate-900">Wasel Admin</h1>
             <p className="text-sm text-slate-500 mt-1">Sign in to your admin account</p>
           </div>

@@ -164,7 +164,7 @@ describe('POST /api/v1/subscription/request', () => {
         rows: [{
           id: 'pay-new',
           amount: '5',
-          currency: 'USD',
+          currency: 'SDG',
           reference_code: 'WAS-TESTTEST',
           status: 'pending',
         }],

@@ -3,7 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_windowmanager/flutter_windowmanager.dart';
+import '../services/secure_window.dart';
 import 'package:go_router/go_router.dart';
 
 import '../i18n/app_localizations.dart';
@@ -30,7 +30,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     if (Platform.isAndroid) {
-      FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      SecureWindow.enable();
     }
     Future.microtask(
         () => ref.read(subscriptionProvider.notifier).loadSubscription());
@@ -40,7 +40,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isAndroid) {
-      FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+      SecureWindow.disable();
     }
     super.dispose();
   }

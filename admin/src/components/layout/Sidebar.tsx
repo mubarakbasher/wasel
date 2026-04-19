@@ -7,12 +7,12 @@ import {
   Banknote,
   Router,
   ScrollText,
-  Wifi,
   Package,
   MessageCircle,
   Settings,
 } from 'lucide-react';
 import api from '../../lib/api';
+import BrandMark from '../BrandMark';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -40,8 +40,8 @@ export default function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-64 bg-slate-900 text-white flex flex-col z-50">
       <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-700">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-600">
-          <Wifi className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-white">
+          <BrandMark size={28} />
         </div>
         <span className="text-xl font-bold tracking-tight">Wasel</span>
         <span className="text-xs font-medium text-slate-400 ml-auto">Admin</span>

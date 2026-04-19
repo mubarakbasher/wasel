@@ -358,7 +358,8 @@ class _SubscriptionStatusScreenState
     final state = ref.read(subscriptionProvider);
     final hasActiveSub = state.subscription?.isActive == true;
     final duration = _getDuration(plan);
-    final totalPrice = plan.totalPriceLabel(duration);
+    final totalPrice =
+        plan.totalPriceLabel(context.tr('common.currencySymbol'), duration);
     final durationLabel = duration == 1
         ? context.tr('subscription.month1')
         : context.tr('subscription.monthsN', [duration.toString()]);

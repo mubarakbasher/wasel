@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Wasel — Network node mark</title>
+  <g stroke="#0066FF" stroke-width="28" stroke-linecap="round" fill="none">
+    <line x1="208" y1="300" x2="384" y2="770"/>
+    <line x1="384" y1="770" x2="512" y2="500"/>
+    <line x1="512" y1="500" x2="640" y2="770"/>
+    <line x1="640" y1="770" x2="816" y2="300"/>
+  </g>
+  <g fill="#0066FF">
+    <circle cx="208" cy="300" r="56"/>
+    <circle cx="384" cy="770" r="56"/>
+    <circle cx="640" cy="770" r="56"/>
+    <circle cx="816" cy="300" r="56"/>
+  </g>
+  <circle cx="512" cy="500" r="76" fill="#FF9500"/>
+</svg>

@@ -439,7 +439,7 @@ export async function createPlan(data: {
       data.tier,
       data.name,
       data.price,
-      data.currency ?? 'USD',
+      data.currency ?? 'SDG',
       data.max_routers,
       data.monthly_vouchers,
       data.session_monitoring ?? null,

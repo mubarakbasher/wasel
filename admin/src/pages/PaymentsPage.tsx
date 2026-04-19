@@ -108,7 +108,7 @@ export default function PaymentsPage() {
       header: 'Amount',
       render: (row) => (
         <span className="font-medium">
-          {row.currency ?? 'USD'} {Number(row.amount).toFixed(2)}
+          {row.currency ?? 'SDG'} {Number(row.amount).toFixed(2)}
         </span>
       ),
     },

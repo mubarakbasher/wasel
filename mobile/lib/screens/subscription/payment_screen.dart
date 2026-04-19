@@ -5,7 +5,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_windowmanager/flutter_windowmanager.dart';
+import '../../services/secure_window.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -38,7 +38,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     WidgetsBinding.instance.addObserver(this);
     // Android: prevent screenshots and screen recording for this screen.
     if (Platform.isAndroid) {
-      FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+      SecureWindow.enable();
     }
     Future.microtask(
       () => ref.read(subscriptionProvider.notifier).loadBankInfo(),
@@ -49,7 +49,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isAndroid) {
-      FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+      SecureWindow.disable();
     }
     super.dispose();
   }

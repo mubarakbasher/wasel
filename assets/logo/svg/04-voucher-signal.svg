@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Wasel — Voucher + signal</title>
+  <defs>
+    <mask id="voucherMask">
+      <rect width="1024" height="1024" fill="white"/>
+      <circle cx="120" cy="637" r="32" fill="black"/>
+      <circle cx="904" cy="637" r="32" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="120" y="420" width="784" height="434" rx="44" fill="#0066FF" mask="url(#voucherMask)"/>
+  <g fill="#FF9500">
+    <circle cx="196" cy="637" r="8"/>
+    <circle cx="260" cy="637" r="8"/>
+    <circle cx="324" cy="637" r="8"/>
+    <circle cx="388" cy="637" r="8"/>
+    <circle cx="452" cy="637" r="8"/>
+    <circle cx="516" cy="637" r="8"/>
+    <circle cx="580" cy="637" r="8"/>
+    <circle cx="644" cy="637" r="8"/>
+    <circle cx="708" cy="637" r="8"/>
+    <circle cx="772" cy="637" r="8"/>
+    <circle cx="828" cy="637" r="8"/>
+  </g>
+  <g fill="none" stroke="#FF9500" stroke-width="26" stroke-linecap="round">
+    <path d="M 730 360 A 60 60 0 0 1 790 420"/>
+    <path d="M 730 300 A 120 120 0 0 1 850 420"/>
+    <path d="M 730 240 A 180 180 0 0 1 910 420"/>
+  </g>
+  <circle cx="730" cy="420" r="20" fill="#FF9500"/>
+</svg>

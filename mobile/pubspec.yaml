@@ -61,7 +61,6 @@ dependencies:
   image_picker: ^1.1.2
 
   # Security
-  flutter_windowmanager: ^0.2.0
   flutter_jailbreak_detection: ^1.9.0
   crypto: ^3.0.6
 

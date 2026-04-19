@@ -48,8 +48,8 @@ class Plan {
 
   bool get hasMultipleDurations => allowedDurations.length > 1;
 
-  String get priceLabel => '\$${price.toStringAsFixed(0)}';
+  String priceLabel(String symbol) => '$symbol ${price.toStringAsFixed(0)}';
 
-  String totalPriceLabel(int months) =>
-      '\$${(price * months).toStringAsFixed(0)}';
+  String totalPriceLabel(String symbol, int months) =>
+      '$symbol ${(price * months).toStringAsFixed(0)}';
 }

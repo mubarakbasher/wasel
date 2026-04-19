@@ -98,7 +98,8 @@ class PlanCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      plan.totalPriceLabel(selectedDuration),
+                      plan.totalPriceLabel(
+                          context.tr('common.currencySymbol'), selectedDuration),
                       style: AppTypography.largeTitle.copyWith(
                         color: AppColors.primary,
                       ),

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Wasel — Wordmark</title>
+  <text x="512" y="620"
+        text-anchor="middle"
+        font-family="Cairo, 'Segoe UI', system-ui, -apple-system, sans-serif"
+        font-weight="700"
+        font-size="320"
+        fill="#0066FF"
+        letter-spacing="-6">wasel</text>
+  <circle cx="432" cy="328" r="42" fill="#FF9500"/>
+</svg>

@@ -86,7 +86,7 @@ export const createPlanBodySchema = z.object({
   tier: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, 'Tier must be lowercase alphanumeric with underscores'),
   name: z.string().min(1).max(100),
   price: z.coerce.number().min(0),
-  currency: z.string().length(3).default('USD'),
+  currency: z.string().length(3).default('SDG'),
   max_routers: z.coerce.number().int().min(1),
   monthly_vouchers: z.coerce.number().int().min(-1),
   session_monitoring: z.string().max(100).optional(),
