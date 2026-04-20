@@ -100,8 +100,12 @@ services:
     cpus: 0.5
 
   freeradius:
+    # Build a customised image from ./freeradius (adds postgresql driver + sql
+    # module). The real supply-chain pin lives in freeradius/Dockerfile's FROM
+    # line; the `image:` here is just the local tag buildx applies — a digest
+    # alongside `build:` is rejected by modern buildx.
     build: ./freeradius
-    image: freeradius/freeradius-server:3.2.4@sha256:1cfb2e830f73d8fd3dfcb3dada7cabbeb3010cf5ff0bc9363488db1b217b3dcf
+    image: wasel-freeradius:3.2.4
     network_mode: host
     environment:
       RADIUS_DB_HOST: 127.0.0.1
