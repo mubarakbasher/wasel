@@ -1,0 +1,27 @@
+[Unit]
+Description=Wasel Docker Compose Stack
+Documentation=https://github.com/mubarak/wasel
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+WorkingDirectory=/root/wasel
+
+ExecStart=/usr/bin/docker compose --env-file /etc/wasel/compose.env up -d
+ExecStop=/usr/bin/docker compose --env-file /etc/wasel/compose.env down
+
+# First-time pulls of all images can take a while on a cold VPS.
+TimeoutStartSec=300
+
+# Restart the unit (i.e. bring compose back up) if ExecStart exits non-zero.
+# This does NOT conflict with container-level restart:unless-stopped; it is
+# a belt-and-suspenders guard for the compose invocation itself.
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

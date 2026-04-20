@@ -223,6 +223,45 @@ Expected health response:
 {"status":"ok"}
 ```
 
+### 2.7 Enable Autostart on Reboot (systemd)
+
+Without this step, if the VPS reboots you must SSH in and run `docker compose up -d` manually.
+`restart: unless-stopped` in `docker-compose.yml` only restarts individual containers after crashes —
+it cannot bring the stack up from a cold host boot.
+
+The unit file is version-controlled in the repo so it can be re-installed from a fresh VPS.
+
+```bash
+# Install the unit
+sudo cp /root/wasel/scripts/wasel.service /etc/systemd/system/wasel.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now wasel.service
+
+# Confirm it is active
+sudo systemctl status wasel.service
+```
+
+Expected output includes `Active: active (exited)` — this is correct for a `Type=oneshot`
+unit with `RemainAfterExit=yes`. The containers are running even though the oneshot process
+has already exited.
+
+Running `systemctl enable --now` a second time is a no-op (idempotent).
+
+**Verify after the next reboot:**
+
+```bash
+# After rebooting the VPS:
+sudo systemctl status wasel.service && docker compose -f /root/wasel/docker-compose.yml --env-file /etc/wasel/compose.env ps
+```
+
+**To update the unit file** (e.g., after pulling a new version of the repo):
+
+```bash
+sudo cp /root/wasel/scripts/wasel.service /etc/systemd/system/wasel.service
+sudo systemctl daemon-reload
+sudo systemctl restart wasel.service
+```
+
 ---
 
 ## 3. Set Up HTTPS (Recommended)
