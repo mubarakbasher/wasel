@@ -28,6 +28,9 @@ sql {
     # Use standard PostgreSQL queries
     $INCLUDE ${modconfdir}/sql/main/${dialect}/queries.conf
 
+    # Time to wait for a new Postgres connection before giving up (seconds).
+    connect_timeout = 5
+
     pool {
         start = 5
         min = 4
@@ -36,5 +39,8 @@ sql {
         uses = 0
         lifetime = 0
         idle_timeout = 60
+        # Retry a dead connection every 5s instead of the default long back-off,
+        # so a Postgres restart recovers in seconds rather than a minute.
+        retry_delay = 5
     }
 }

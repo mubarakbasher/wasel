@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
 services:
   wireguard:
     image: lscr.io/linuxserver/wireguard:latest@sha256:8e505886ba5da6788f1b9dfc62a25e2f2c3a96e64e6528ef7278d7e1d6649bd2
@@ -19,6 +25,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+    logging: *default-logging
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.5
@@ -47,6 +54,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    logging: *default-logging
     restart: unless-stopped
     mem_limit: 1g
     cpus: 1.0
@@ -67,6 +75,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     restart: unless-stopped
     mem_limit: 1g
     cpus: 1.0
@@ -81,10 +90,11 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
       interval: 5s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.5
@@ -109,6 +119,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     restart: unless-stopped
     mem_limit: 512m
     cpus: 1.0
@@ -126,6 +137,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    logging: *default-logging
     restart: unless-stopped
     mem_limit: 128m
     cpus: 0.25

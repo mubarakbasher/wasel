@@ -10,6 +10,10 @@ export const pool = new Pool({
   password: config.DB_PASSWORD,
   min: config.DB_POOL_MIN,
   max: config.DB_POOL_MAX,
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000,
+  statement_timeout: 30000,
+  query_timeout: 30000,
 });
 
 pool.on('error', (err) => {

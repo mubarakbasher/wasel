@@ -10,6 +10,9 @@ function getTransporter(): Transporter {
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       secure: config.SMTP_PORT === 465,
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 5000,
       auth:
         config.SMTP_USER && config.SMTP_PASS
           ? { user: config.SMTP_USER, pass: config.SMTP_PASS }
