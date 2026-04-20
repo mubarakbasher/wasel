@@ -43,7 +43,7 @@ export default function DashboardPage() {
     { title: 'Total Users', value: data?.totalUsers ?? 0, icon: <Users className="w-6 h-6" />, color: 'text-blue-600' },
     { title: 'Active Subscriptions', value: data?.subscriptionsByStatus?.active ?? 0, icon: <CreditCard className="w-6 h-6" />, color: 'text-green-600' },
     { title: 'Pending Payments', value: data?.pendingPayments ?? 0, icon: <Clock className="w-6 h-6" />, color: 'text-yellow-600' },
-    { title: 'Total Revenue', value: `$${(data?.totalRevenue ?? 0).toLocaleString()}`, icon: <DollarSign className="w-6 h-6" />, color: 'text-emerald-600' },
+    { title: 'Total Revenue', value: `SDG ${(data?.totalRevenue ?? 0).toLocaleString()}`, icon: <DollarSign className="w-6 h-6" />, color: 'text-emerald-600' },
     { title: 'Routers Online', value: data?.routersByStatus?.online ?? 0, icon: <Wifi className="w-6 h-6" />, color: 'text-green-600' },
     { title: 'Routers Offline', value: data?.routersByStatus?.offline ?? 0, icon: <WifiOff className="w-6 h-6" />, color: 'text-red-600' },
     { title: 'Total Vouchers', value: data?.totalVouchers ?? 0, icon: <Ticket className="w-6 h-6" />, color: 'text-purple-600' },
