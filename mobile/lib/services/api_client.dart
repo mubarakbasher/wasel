@@ -12,18 +12,27 @@ import 'secure_storage.dart';
 // ---------------------------------------------------------------------------
 // Certificate pinning — SPKI SHA-256 pins for api.wa-sel.com
 //
-// Primary holds the current leaf-cert pin. Backup is intentionally identical
-// to primary until a standby cert or intermediate-CA pin is provisioned; with
-// matching pins, a compromised primary requires an app update to recover.
+// Primary: pin of the current leaf certificate. Rotates every ~90 days when
+// the leaf is renewed.
+// Backup: pin of the issuing intermediate CA. Stable for years; survives
+// leaf rotations and lets us recover from a compromised primary without
+// shipping an app update.
 //
-// To refresh either pin:
+// To refresh the primary (leaf) pin:
 //   echo | openssl s_client -connect api.wa-sel.com:443 -servername api.wa-sel.com 2>/dev/null \
+//     | openssl x509 -pubkey -noout \
+//     | openssl pkey -pubin -outform der \
+//     | openssl dgst -sha256 -binary | openssl enc -base64
+//
+// To refresh the backup (intermediate CA) pin — only when the CA changes:
+//   echo | openssl s_client -servername api.wa-sel.com -connect api.wa-sel.com:443 -showcerts 2>/dev/null \
+//     | awk 'BEGIN{c=0} /BEGIN CERTIFICATE/{c++} c==2,/END CERTIFICATE/' \
 //     | openssl x509 -pubkey -noout \
 //     | openssl pkey -pubin -outform der \
 //     | openssl dgst -sha256 -binary | openssl enc -base64
 // ---------------------------------------------------------------------------
 const _kPinPrimary = 'Mh+xVjeEin+YcN+tBVkpv5L9gicHLflwqHGPEb2VAWA=';
-const _kPinBackup = 'Mh+xVjeEin+YcN+tBVkpv5L9gicHLflwqHGPEb2VAWA=';
+const _kPinBackup = 'iFvwVyJSxnQdyaUvUERIf+8qk7gRze3612JMwoO3zdU=';
 
 /// Fields whose values are always replaced with '[REDACTED]' in logs.
 const _kRedactedFields = {
