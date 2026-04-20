@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../i18n/app_localizations.dart';
 import '../../models/voucher.dart';
 import '../../providers/routers_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../providers/vouchers_provider.dart';
 import '../../services/voucher_service.dart';
 import '../../theme/app_colors.dart';
@@ -90,6 +91,45 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
   void _onSearch(String query) {
     ref.read(vouchersProvider.notifier).setSearch(query.isEmpty ? null : query);
     if (_selectedRouterId != null) {
+      ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
+    }
+  }
+
+  bool _hasActiveSubscription() {
+    final sub = ref.read(subscriptionProvider).subscription;
+    return sub?.isActive ?? false;
+  }
+
+  void _showSubscriptionGate() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(context.tr('subscription.required')),
+        content: Text(context.tr('subscription.requiredDesc')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(context.tr('common.cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              context.go('/subscription');
+            },
+            child: Text(context.tr('subscription.viewPlans')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _onCreateVoucher() async {
+    if (!_hasActiveSubscription()) {
+      _showSubscriptionGate();
+      return;
+    }
+    await context.push('/vouchers/create', extra: _selectedRouterId);
+    if (mounted && _selectedRouterId != null) {
       ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
     }
   }
@@ -308,15 +348,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                 if (_selectedRouterId != null)
                   IconButton(
                     icon: const Icon(Icons.add),
-                    onPressed: () async {
-                      await context.push(
-                        '/vouchers/create',
-                        extra: _selectedRouterId,
-                      );
-                      if (mounted && _selectedRouterId != null) {
-                        ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
-                      }
-                    },
+                    onPressed: _onCreateVoucher,
                   ),
               ],
             ),
@@ -598,15 +630,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
               height: 48,
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () async {
-                  await context.push(
-                    '/vouchers/create',
-                    extra: _selectedRouterId,
-                  );
-                  if (mounted && _selectedRouterId != null) {
-                    ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
-                  }
-                },
+                onPressed: _onCreateVoucher,
                 icon: const Icon(Icons.add),
                 label: Text(context.tr('vouchers.createVoucher')),
               ),

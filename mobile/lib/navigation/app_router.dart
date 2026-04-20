@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -33,10 +34,15 @@ import '../models/voucher.dart';
 import '../providers/auth_provider.dart';
 import 'scaffold_with_nav_bar.dart';
 
+/// App-level navigator key used by the centralised 403 paywall interceptor
+/// to navigate without a BuildContext.
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
 
   return GoRouter(
+    navigatorKey: appNavigatorKey,
     initialLocation: '/login',
     redirect: (context, state) {
       final isAuthenticated = authState.isAuthenticated;

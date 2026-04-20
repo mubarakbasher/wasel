@@ -6,7 +6,10 @@ import 'package:crypto/crypto.dart' show sha256;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../navigation/app_router.dart' show appNavigatorKey;
 import 'secure_storage.dart';
 
 // ---------------------------------------------------------------------------
@@ -218,6 +221,67 @@ class ApiClient {
     handler.next(options);
   }
 
+  // ---------------------------------------------------------------------------
+  // 403 paywall codes that trigger a redirect to /subscription.
+  // ---------------------------------------------------------------------------
+  static const _kPaywallCodes = {
+    'SUBSCRIPTION_REQUIRED',
+    'SUBSCRIPTION_EXPIRED',
+    'QUOTA_EXCEEDED',
+    'ROUTER_LIMIT_REACHED',
+  };
+
+  /// Handle 403 paywall responses by showing a SnackBar and navigating to
+  /// /subscription. The error is still forwarded to the caller so that
+  /// providers can set their own error state.
+  void _handlePaywall(DioException error) {
+    try {
+      final data = error.response?.data;
+      if (data is! Map) return;
+
+      final errorObj = data['error'];
+      if (errorObj is! Map) return;
+
+      final code = errorObj['code'];
+      if (!_kPaywallCodes.contains(code)) return;
+
+      // Skip redirect if the user is not on an authenticated route or is
+      // already on /subscription (avoids redirect loops).
+      final navigatorState = appNavigatorKey.currentState;
+      if (navigatorState == null) return;
+
+      final currentRoute = GoRouter.of(navigatorState.context).routerDelegate.currentConfiguration.fullPath;
+      if (currentRoute.startsWith('/subscription')) return;
+
+      // Derive a human-friendly message from the code.
+      final String message;
+      switch (code) {
+        case 'SUBSCRIPTION_REQUIRED':
+          message = 'A subscription is required to do that.';
+          break;
+        case 'SUBSCRIPTION_EXPIRED':
+          message = 'Your subscription has expired. Please renew to continue.';
+          break;
+        case 'QUOTA_EXCEEDED':
+          message = 'You have reached your voucher quota for this plan.';
+          break;
+        case 'ROUTER_LIMIT_REACHED':
+          message = 'You have reached the router limit for your plan.';
+          break;
+        default:
+          message = 'Subscription required.';
+      }
+
+      ScaffoldMessenger.maybeOf(navigatorState.context)?.showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      );
+
+      GoRouter.of(navigatorState.context).go('/subscription');
+    } catch (_) {
+      // Never crash the caller — paywall redirect is best-effort.
+    }
+  }
+
   /// Handle 401 responses by attempting a silent token refresh.
   ///
   /// Strategy:
@@ -230,6 +294,12 @@ class ApiClient {
     DioException error,
     ErrorInterceptorHandler handler,
   ) async {
+    // Handle 403 paywall codes — fire-and-forget UX redirect.
+    if (error.response?.statusCode == 403) {
+      _handlePaywall(error);
+      return handler.next(error);
+    }
+
     if (error.response?.statusCode != 401) {
       return handler.next(error);
     }

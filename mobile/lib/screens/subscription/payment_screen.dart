@@ -32,6 +32,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   // Tracks whether the screen is currently blurred (iOS inactive state).
   bool _obscured = false;
 
+  // ---------------------------------------------------------------------------
+  // Approval poller (Fix 4)
+  // ---------------------------------------------------------------------------
+  static const _kPollInterval = Duration(seconds: 15);
+  static const _kPollTimeout = Duration(minutes: 5);
+  Timer? _pollTimer;
+  Timer? _pollTimeoutTimer;
+  bool _pollTimedOut = false;
+  bool _snackBarShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -47,11 +57,54 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
 
   @override
   void dispose() {
+    _stopPoller();
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isAndroid) {
       SecureWindow.disable();
     }
     super.dispose();
+  }
+
+  void _startPoller() {
+    _pollTimer?.cancel();
+    _pollTimeoutTimer?.cancel();
+    _snackBarShown = false;
+    _pollTimedOut = false;
+
+    // Schedule a one-shot timer that fires after the 5-min cap.
+    _pollTimeoutTimer = Timer(_kPollTimeout, () {
+      if (!mounted) return;
+      _stopPoller();
+      setState(() => _pollTimedOut = true);
+    });
+
+    _pollTimer = Timer.periodic(_kPollInterval, (_) async {
+      if (!mounted) return;
+      await ref.read(subscriptionProvider.notifier).loadSubscription();
+      if (!mounted) return;
+      final sub = ref.read(subscriptionProvider).subscription;
+      if (sub?.isActive ?? false) {
+        _stopPoller();
+        if (!_snackBarShown) {
+          _snackBarShown = true;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.tr('payment.subscriptionActivated')),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        await Future.delayed(const Duration(seconds: 1));
+        if (mounted) context.go('/dashboard');
+      }
+    });
+  }
+
+  void _stopPoller() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _pollTimeoutTimer?.cancel();
+    _pollTimeoutTimer = null;
   }
 
   /// iOS blur overlay: shown when the app enters the app switcher / goes
@@ -131,6 +184,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
 
     if (success && mounted) {
       setState(() => _currentStep = 2);
+      _startPoller();
     }
   }
 
@@ -454,8 +508,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         Center(
           child: Column(
             children: [
-              const Icon(Icons.check_circle,
-                  size: 72, color: AppColors.success),
+              const Icon(Icons.check_circle, size: 72, color: AppColors.success),
               const SizedBox(height: AppSpacing.md),
               Text(
                 context.tr('payment.receiptSubmitted'),
@@ -465,22 +518,118 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
               const SizedBox(height: AppSpacing.sm),
               Text(
                 context.tr('payment.receiptSubmittedDesc'),
-                style: AppTypography.subhead
-                    .copyWith(color: AppColors.textSecondary),
+                style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
             ],
           ),
         ),
         const SizedBox(height: AppSpacing.xxl),
+        // Approval-wait card
+        _pollTimedOut
+            ? _buildPollTimedOut()
+            : _buildPollWaiting(),
+        const SizedBox(height: AppSpacing.lg),
         SizedBox(
           height: 48,
-          child: ElevatedButton(
-            onPressed: () => context.go('/subscription'),
-            child: Text(context.tr('payment.backToSubscription')),
+          child: OutlinedButton(
+            onPressed: () {
+              _stopPoller();
+              context.go('/settings');
+            },
+            child: Text(context.tr('payment.doneForNow')),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildPollWaiting() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  context.tr('payment.waitingApproval'),
+                  style: AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            context.tr('payment.waitingApprovalDesc'),
+            style: AppTypography.footnote.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: OutlinedButton(
+              onPressed: () async {
+                await ref.read(subscriptionProvider.notifier).loadSubscription();
+                if (!mounted) return;
+                final sub = ref.read(subscriptionProvider).subscription;
+                if (sub?.isActive ?? false) {
+                  _stopPoller();
+                  if (!_snackBarShown) {
+                    _snackBarShown = true;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(context.tr('payment.subscriptionActivated')),
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                  await Future.delayed(const Duration(seconds: 1));
+                  if (mounted) context.go('/dashboard');
+                }
+              },
+              child: Text(context.tr('payment.refreshNow')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPollTimedOut() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.tr('payment.stillPending'),
+            style: AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            context.tr('payment.stillPendingDesc'),
+            style: AppTypography.footnote.copyWith(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }

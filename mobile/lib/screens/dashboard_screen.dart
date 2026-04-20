@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../i18n/app_localizations.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/notifications_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../theme/theme.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -91,6 +92,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _onQuickCreate(DashboardState state) {
+    final subState = ref.read(subscriptionProvider);
+    final isActive = subState.subscription?.isActive ?? false;
+    if (!isActive) {
+      _showSubscriptionGate();
+      return;
+    }
     final routers = state.routers;
     if (routers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -100,6 +107,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
     final firstRouterId = routers[0]['id'] as String;
     context.push('/vouchers/create', extra: firstRouterId);
+  }
+
+  void _showSubscriptionGate() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(context.tr('subscription.required')),
+        content: Text(context.tr('subscription.requiredDesc')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(context.tr('common.cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              context.go('/subscription');
+            },
+            child: Text(context.tr('subscription.viewPlans')),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildBody(DashboardState state) {
@@ -156,7 +186,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: AppSpacing.sm),
               FilledButton(
-                onPressed: () => context.push('/subscription/plans'),
+                onPressed: () => context.go('/subscription'),
                 child: Text(context.tr('dashboard.viewPlans')),
               ),
             ],

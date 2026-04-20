@@ -667,6 +667,19 @@ class AppLocalizations {
     'reports.csvDataLines': 'CSV data  ·  {0} lines',
     'reports.copiedToClipboard': 'Copied to clipboard',
     'reports.copy': 'Copy',
+
+    // ── Subscription gate ────────────────────────────────────────────────────
+    'subscription.required': 'Subscription Required',
+    'subscription.requiredDesc': 'You need an active subscription to do this. View available plans to get started.',
+
+    // ── Payment poller ───────────────────────────────────────────────────────
+    'payment.waitingApproval': 'Waiting for admin approval',
+    'payment.waitingApprovalDesc': 'This usually takes a few minutes. We\'ll update automatically when your subscription is activated.',
+    'payment.refreshNow': 'Refresh now',
+    'payment.doneForNow': 'Done for now',
+    'payment.stillPending': 'Still pending',
+    'payment.stillPendingDesc': 'Your payment is still under review. You can check back from Settings \u2192 Payments.',
+    'payment.subscriptionActivated': 'Your subscription is now active!',
   };
 
   static const Map<String, String> _ar = {
@@ -1269,6 +1282,19 @@ class AppLocalizations {
     'reports.csvDataLines': 'بيانات CSV  ·  {0} سطر',
     'reports.copiedToClipboard': 'تم النسخ إلى الحافظة',
     'reports.copy': 'نسخ',
+
+    // ── Subscription gate ────────────────────────────────────────────────────
+    'subscription.required': 'الاشتراك مطلوب',
+    'subscription.requiredDesc': 'تحتاج إلى اشتراك نشط للقيام بذلك. اعرض الباقات المتاحة للبدء.',
+
+    // ── Payment poller ───────────────────────────────────────────────────────
+    'payment.waitingApproval': 'في انتظار موافقة المسؤول',
+    'payment.waitingApprovalDesc': 'يستغرق هذا عادةً بضع دقائق. سيتم التحديث تلقائياً عند تفعيل اشتراكك.',
+    'payment.refreshNow': 'تحديث الآن',
+    'payment.doneForNow': 'الانتهاء الآن',
+    'payment.stillPending': 'لا يزال معلقاً',
+    'payment.stillPendingDesc': 'دفعتك لا تزال قيد المراجعة. يمكنك التحقق من الإعدادات \u2190 المدفوعات.',
+    'payment.subscriptionActivated': 'اشتراكك نشط الآن!',
   };
 }
 

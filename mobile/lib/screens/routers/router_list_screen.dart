@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
@@ -22,6 +23,42 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
     Future.microtask(() => ref.read(routersProvider.notifier).loadRouters());
   }
 
+  bool _hasActiveSubscription() {
+    final sub = ref.read(subscriptionProvider).subscription;
+    return sub?.isActive ?? false;
+  }
+
+  void _onAddRouter() {
+    if (!_hasActiveSubscription()) {
+      _showSubscriptionGate();
+      return;
+    }
+    context.push('/routers/add');
+  }
+
+  void _showSubscriptionGate() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(context.tr('subscription.required')),
+        content: Text(context.tr('subscription.requiredDesc')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(context.tr('common.cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              context.go('/subscription');
+            },
+            child: Text(context.tr('subscription.viewPlans')),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(routersProvider);
@@ -32,7 +69,7 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () => context.push('/routers/add'),
+            onPressed: _onAddRouter,
           ),
         ],
       ),
@@ -94,7 +131,7 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
               height: 48,
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => context.push('/routers/add'),
+                onPressed: _onAddRouter,
                 icon: const Icon(Icons.add),
                 label: Text(context.tr('routers.addRouter')),
               ),
