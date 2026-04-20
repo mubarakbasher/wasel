@@ -55,6 +55,8 @@ vi.mock('ioredis', () => {
       return ['0', keys];
     }
     async ping() { return 'PONG'; }
+    // Used by the rate-limit-redis sendCommand bridge
+    async call(_command: string, ..._args: string[]) { return 'OK'; }
     disconnect() { return Promise.resolve(); }
     on() { return this; }
   }
