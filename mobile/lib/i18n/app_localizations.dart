@@ -902,14 +902,14 @@ class AppLocalizations {
     'error.routerOffline': 'الراوتر غير متصل حالياً.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
-    'common.appName': 'وصل',
+    'common.appName': 'واصل',
     'common.appTagline': 'مدير نقاط اتصال Mikrotik',
     'common.all': 'الكل',
     'common.unused': 'غير مستخدمة',
     'common.continue_': 'متابعة',
 
     // ── Extra Auth ───────────────────────────────────────────────────────────
-    'auth.registerSubtitle2': 'أنشئ حساب وصل الخاص بك',
+    'auth.registerSubtitle2': 'أنشئ حساب واصل الخاص بك',
     'auth.businessNameOptional': 'اسم النشاط التجاري (اختياري)',
     'auth.phoneHint': '+1234567890',
     'auth.sendCode': 'إرسال الرمز',
@@ -971,7 +971,7 @@ class AppLocalizations {
     'routers.stepInfo': 'معلومات الراوتر',
     'routers.stepDetails': 'التفاصيل',
     'routers.setupNotAvailable': 'دليل الإعداد غير متوفر',
-    'routers.setupInstructions': 'اتبع هذه الخطوات لتوصيل راوتر Mikrotik الخاص بك بوصل.',
+    'routers.setupInstructions': 'اتبع هذه الخطوات لتوصيل راوتر Mikrotik الخاص بك بواصل.',
     'routers.lastSeenLabel': 'آخر ظهور',
     'routers.guideCopied': 'تم نسخ دليل الإعداد',
     'routers.stepCopied': 'تم نسخ الخطوة {0}',
@@ -1060,7 +1060,7 @@ class AppLocalizations {
     'settings.passwordChanged': 'تم تغيير كلمة المرور بنجاح',
     'settings.emailCannotChange': 'لا يمكن تغيير البريد الإلكتروني',
     'settings.saveChanges': 'حفظ التغييرات',
-    'settings.aboutDescription': 'وصل هو منصة إدارة نقاط اتصال WiFi تساعد الشركات في إنشاء وإدارة ومراقبة قسائم الوصول للإنترنت لراوترات MikroTik.',
+    'settings.aboutDescription': 'واصل هو منصة إدارة نقاط اتصال WiFi تساعد الشركات في إنشاء وإدارة ومراقبة قسائم الوصول للإنترنت لراوترات MikroTik.',
 
     // ── Notifications screen ─────────────────────────────────────────────────
     'notifications.title': 'الإشعارات',
