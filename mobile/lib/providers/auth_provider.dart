@@ -24,6 +24,11 @@ class AuthState {
   final bool isLoading;
   final String? error;
   final String? errorCode;
+  /// Email awaiting OTP verification. Set by register() / set by a login
+  /// that failed with EMAIL_NOT_VERIFIED. Cleared on successful verify or
+  /// successful login. VerifyEmailScreen falls back to this when the route
+  /// arg is empty — makes the flow survive any URL / navigation quirk.
+  final String? pendingVerificationEmail;
 
   const AuthState({
     this.isAuthenticated = false,
@@ -33,6 +38,7 @@ class AuthState {
     this.isLoading = false,
     this.error,
     this.errorCode,
+    this.pendingVerificationEmail,
   });
 
   AuthState copyWith({
@@ -43,9 +49,11 @@ class AuthState {
     bool? isLoading,
     String? error,
     String? errorCode,
+    String? pendingVerificationEmail,
     bool clearError = false,
     bool clearUser = false,
     bool clearTokens = false,
+    bool clearPendingVerificationEmail = false,
   }) {
     return AuthState(
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -55,6 +63,9 @@ class AuthState {
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : (error ?? this.error),
       errorCode: clearError ? null : (errorCode ?? this.errorCode),
+      pendingVerificationEmail: clearPendingVerificationEmail
+          ? null
+          : (pendingVerificationEmail ?? this.pendingVerificationEmail),
     );
   }
 }
@@ -171,12 +182,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
         refreshToken: result.refreshToken,
         user: result.user,
         isLoading: false,
+        clearPendingVerificationEmail: true,
       );
     } catch (e) {
+      final code = _extractErrorCode(e);
       state = state.copyWith(
         isLoading: false,
         error: _extractErrorMessage(e),
-        errorCode: _extractErrorCode(e),
+        errorCode: code,
+        // If the login was blocked because the email isn't verified, remember
+        // which email — the login screen will route to /verify-email and the
+        // screen will pick it up from state.
+        pendingVerificationEmail:
+            code == 'EMAIL_NOT_VERIFIED' ? email : null,
       );
       rethrow;
     }
@@ -202,7 +220,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
         password: password,
         businessName: businessName,
       );
-      state = state.copyWith(isLoading: false);
+      // Stash the email so the verify screen can pick it up even if the
+      // route argument is lost in navigation (release-mode cast / go-router
+      // reset). Belt-and-suspenders with the query parameter.
+      state = state.copyWith(
+        isLoading: false,
+        pendingVerificationEmail: email,
+      );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -234,9 +258,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
           isVerified: true,
         );
         await _storage.setUserData(json.encode(updatedUser.toJson()));
-        state = state.copyWith(user: updatedUser, isLoading: false);
+        state = state.copyWith(
+          user: updatedUser,
+          isLoading: false,
+          clearPendingVerificationEmail: true,
+        );
       } else {
-        state = state.copyWith(isLoading: false);
+        state = state.copyWith(
+          isLoading: false,
+          clearPendingVerificationEmail: true,
+        );
       }
     } catch (e) {
       state = state.copyWith(

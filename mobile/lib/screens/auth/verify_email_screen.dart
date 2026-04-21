@@ -25,6 +25,14 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
   int _resendCooldown = 0;
   Timer? _timer;
 
+  /// Prefer the email passed in via the route; fall back to the one stashed
+  /// in auth state by register() / login(). Covers the case where the route
+  /// argument gets lost on a release-build navigation.
+  String get _effectiveEmail {
+    if (widget.email.isNotEmpty) return widget.email;
+    return ref.read(authProvider).pendingVerificationEmail ?? '';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -53,7 +61,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
     if (!_formKey.currentState!.validate()) return;
     try {
       await ref.read(authProvider.notifier).verifyEmail(
-            email: widget.email,
+            email: _effectiveEmail,
             otp: _otpController.text.trim(),
           );
       if (mounted) {
@@ -67,7 +75,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
 
   Future<void> _resend() async {
     try {
-      await ref.read(authProvider.notifier).resendVerification(email: widget.email);
+      await ref.read(authProvider.notifier).resendVerification(email: _effectiveEmail);
       if (!mounted) return;
       _startCooldown();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -104,7 +112,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                 Text(context.tr('auth.verifyEmail'), style: AppTypography.title1, textAlign: TextAlign.center),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  context.tr('auth.enterOtpSent', [widget.email]),
+                  context.tr('auth.enterOtpSent', [_effectiveEmail]),
                   style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
