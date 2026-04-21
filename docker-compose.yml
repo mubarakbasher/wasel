@@ -41,6 +41,10 @@ services:
       - /etc/wireguard:/etc/wireguard
       - backend_uploads:/app/uploads
       - ./backend/secrets:/app/secrets:ro
+      # Shared with the freeradius container. The radmin Unix socket lives
+      # at /var/run/freeradius/radmin.sock; we use it to trigger HUP reloads
+      # of the nas client table after a router is added / updated / deleted.
+      - freeradius_control:/var/run/freeradius
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,6 +117,10 @@ services:
       RADIUS_DB_NAME: wasel
       RADIUS_DB_USER: wasel
       RADIUS_DB_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in compose env-file}
+    volumes:
+      # Shared with the backend container so it can issue `radmin -f
+      # /var/run/freeradius/radmin.sock -e "hup"` after nas table writes.
+      - freeradius_control:/var/run/freeradius
     depends_on:
       postgres:
         condition: service_healthy
@@ -150,3 +158,4 @@ volumes:
   postgres_data:
   redis_data:
   backend_uploads:
+  freeradius_control:

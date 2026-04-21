@@ -52,6 +52,11 @@ vi.mock('../services/routerOs.service', () => ({
   testConnection: vi.fn(),
 }));
 
+vi.mock('../services/freeradius.service', () => ({
+  reloadFreeradiusClients: vi.fn().mockResolvedValue(undefined),
+  showFreeradiusClients: vi.fn().mockResolvedValue(''),
+}));
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------

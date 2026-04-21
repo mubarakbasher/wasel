@@ -1,0 +1,32 @@
+######################################################################
+#
+#   Wasel — radmin control socket
+#
+#   Exposes a Unix domain socket that `radmin` connects to so external
+#   processes can send commands to a running FreeRADIUS instance. The
+#   backend uses this to issue `hup` after the `nas` table changes, so
+#   new NAS clients are picked up without a full container restart.
+#
+#   The socket is bound to /var/run/freeradius/radmin.sock; the backend
+#   container mounts that directory via a shared docker volume so the
+#   non-root `app` user can reach it (mode 0660, owned by freerad group).
+#
+######################################################################
+
+listen {
+    type = control
+
+    socket = ${run_dir}/radmin.sock
+
+    #
+    #  The user and group that can read and write to the socket.
+    #  The backend container's UID/GID need to match one of these to
+    #  send commands. We keep group = freerad and rely on the named
+    #  volume carrying the socket across to the backend, where the
+    #  `app` user has been added to the same GID at image build time.
+    #
+    uid = freerad
+    gid = freerad
+
+    mode = rw
+}
