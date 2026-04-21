@@ -307,6 +307,7 @@ class AppLocalizations {
 
     // ── Extra Auth ───────────────────────────────────────────────────────────
     'auth.registerSubtitle2': 'Set up your Wasel account',
+    'auth.registerSentEmail': 'Account created. Check your email for a verification code.',
     'auth.businessNameOptional': 'Business Name (optional)',
     'auth.phoneHint': '+1234567890',
     'auth.sendCode': 'Send Code',
@@ -923,6 +924,7 @@ class AppLocalizations {
 
     // ── Extra Auth ───────────────────────────────────────────────────────────
     'auth.registerSubtitle2': 'أنشئ حساب واصل الخاص بك',
+    'auth.registerSentEmail': 'تم إنشاء الحساب. تحقق من بريدك للحصول على رمز التأكيد.',
     'auth.businessNameOptional': 'اسم النشاط التجاري (اختياري)',
     'auth.phoneHint': '+1234567890',
     'auth.sendCode': 'إرسال الرمز',

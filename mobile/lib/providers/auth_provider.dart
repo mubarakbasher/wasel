@@ -23,6 +23,7 @@ class AuthState {
   final User? user;
   final bool isLoading;
   final String? error;
+  final String? errorCode;
 
   const AuthState({
     this.isAuthenticated = false,
@@ -31,6 +32,7 @@ class AuthState {
     this.user,
     this.isLoading = false,
     this.error,
+    this.errorCode,
   });
 
   AuthState copyWith({
@@ -40,6 +42,7 @@ class AuthState {
     User? user,
     bool? isLoading,
     String? error,
+    String? errorCode,
     bool clearError = false,
     bool clearUser = false,
     bool clearTokens = false,
@@ -51,6 +54,7 @@ class AuthState {
       user: clearUser ? null : (user ?? this.user),
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : (error ?? this.error),
+      errorCode: clearError ? null : (errorCode ?? this.errorCode),
     );
   }
 }
@@ -172,6 +176,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(
         isLoading: false,
         error: _extractErrorMessage(e),
+        errorCode: _extractErrorCode(e),
       );
       rethrow;
     }
@@ -385,6 +390,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _resetUserScopedProviders();
     _storage.clearAll();
     state = const AuthState(error: 'Session expired. Please log in again.');
+  }
+
+  /// Extracts the backend error code (e.g. 'EMAIL_NOT_VERIFIED') from a
+  /// [DioException] response body. Returns null for non-Dio errors or when the
+  /// response does not carry a structured error code.
+  static String? _extractErrorCode(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map<String, dynamic>) {
+        final errorObj = data['error'];
+        if (errorObj is Map<String, dynamic> && errorObj['code'] is String) {
+          return errorObj['code'] as String;
+        }
+      }
+    }
+    return null;
   }
 
   /// Extracts a human-readable error message from a [DioException] response

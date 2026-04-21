@@ -24,6 +24,7 @@ export const updateUserBodySchema = z.object({
   name: z.string().min(2).max(100).optional(),
   email: z.string().email().optional(),
   is_active: z.boolean().optional(),
+  is_verified: z.boolean().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
 export const subscriptionIdParamSchema = z.object({

@@ -43,7 +43,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             password: _passwordController.text,
           );
     } catch (_) {
-      // Error is displayed via state
+      final code = ref.read(authProvider).errorCode;
+      if (code == 'EMAIL_NOT_VERIFIED' && mounted) {
+        try {
+          await ref.read(authProvider.notifier).resendVerification(
+                email: _emailController.text.trim(),
+              );
+        } catch (_) {/* ignore resend errors */}
+        if (!mounted) return;
+        final email = Uri.encodeQueryComponent(_emailController.text.trim());
+        context.go('/verify-email?email=$email');
+        return;
+      }
+      // Error is displayed via state for all other failures
     }
   }
 

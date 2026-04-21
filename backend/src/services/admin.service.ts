@@ -150,7 +150,7 @@ export async function getUsers(
  */
 export async function updateUser(
   userId: string,
-  data: { name?: string; email?: string; is_active?: boolean },
+  data: { name?: string; email?: string; is_active?: boolean; is_verified?: boolean },
 ): Promise<UserRow> {
   const setClauses: string[] = [];
   const params: unknown[] = [];
@@ -167,6 +167,10 @@ export async function updateUser(
   if (data.is_active !== undefined) {
     setClauses.push(`is_active = $${paramIndex++}`);
     params.push(data.is_active);
+  }
+  if (data.is_verified !== undefined) {
+    setClauses.push(`is_verified = $${paramIndex++}`);
+    params.push(data.is_verified);
   }
 
   if (setClauses.length === 0) {

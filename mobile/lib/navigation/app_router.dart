@@ -73,8 +73,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/verify-email',
         builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>?;
-          return VerifyEmailScreen(email: extra?['email'] as String? ?? '');
+          final email = state.uri.queryParameters['email'] ?? '';
+          return VerifyEmailScreen(email: email);
         },
       ),
       GoRoute(

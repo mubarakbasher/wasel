@@ -57,6 +57,7 @@ function extractErr(err: unknown, fallback = 'Request failed'): string {
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [setupRouterId, setSetupRouterId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -73,6 +74,27 @@ export default function UserDetailPage() {
   const flash = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
+      await api.put(`/admin/users/${id}`, { is_verified: true });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-user', id] });
+      flash('User verified.');
+    },
+    onError: (err) => flash(extractErr(err, 'Verify failed')),
+  });
+
+  const onVerify = () => {
+    if (
+      window.confirm(
+        'Mark this user as email-verified? They will be able to log in without entering an OTP.',
+      )
+    ) {
+      verifyMutation.mutate();
+    }
   };
 
   return (
@@ -111,6 +133,16 @@ export default function UserDetailPage() {
               </div>
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 <StatusBadge status={data.user.is_verified ? 'verified' : 'not verified'} />
+                {!data.user.is_verified && (
+                  <button
+                    onClick={onVerify}
+                    disabled={verifyMutation.isPending}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    {verifyMutation.isPending ? 'Verifying…' : 'Verify user'}
+                  </button>
+                )}
                 <StatusBadge status={data.user.is_active ? 'active' : 'suspended'} />
               </div>
             </div>

@@ -52,7 +52,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             businessName: _businessNameController.text.trim().isEmpty ? null : _businessNameController.text.trim(),
           );
       if (mounted) {
-        context.push('/verify-email', extra: {'email': _emailController.text.trim()});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr('auth.registerSentEmail'))),
+        );
+        final email = Uri.encodeQueryComponent(_emailController.text.trim());
+        context.go('/verify-email?email=$email');
       }
     } catch (_) {
       // Error displayed via state

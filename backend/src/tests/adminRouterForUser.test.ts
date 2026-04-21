@@ -359,3 +359,67 @@ describe('POST /api/v1/admin/users/:id/routers', () => {
     expect(res.status).toBeLessThan(500);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PUT /api/v1/admin/users/:id — is_verified flip unblocks login
+// ---------------------------------------------------------------------------
+
+describe('PUT /api/v1/admin/users/:id — is_verified', () => {
+  const UPDATE_URL = `/api/v1/admin/users/${TARGET_USER_ID}`;
+  // bcrypt hash of "Password1" with cost 10 (verified against real bcrypt)
+  const bcryptHash = '$2b$10$1ii8y1yC0neuAR7LQ/ZGx.OtMIVFKvLw7IMYufR3C3.nWzT0az.be';
+
+  const unverifiedUserRow = {
+    id: TARGET_USER_ID,
+    name: 'Fresh User',
+    email: 'fresh@example.com',
+    password_hash: bcryptHash,
+    is_verified: false,
+    is_active: true,
+    failed_login_attempts: 0,
+    locked_until: null,
+    role: 'user',
+  };
+
+  it('flipping is_verified to true allows a previously blocked login to succeed', async () => {
+    // Step 1 — login before verification: SELECT user → 403 EMAIL_NOT_VERIFIED
+    mockQuery.mockResolvedValueOnce({ rows: [unverifiedUserRow] });
+
+    const loginBefore = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'fresh@example.com', password: 'Password1' });
+
+    expect(loginBefore.status).toBe(403);
+    expect(loginBefore.body.error.code).toBe('EMAIL_NOT_VERIFIED');
+
+    // Step 2 — admin flips is_verified: true
+    // UPDATE users RETURNING *
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...unverifiedUserRow, is_verified: true }],
+      rowCount: 1,
+    });
+    // audit_logs INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const updateRes = await request(app)
+      .put(UPDATE_URL)
+      .set(adminAuthHeader())
+      .send({ is_verified: true });
+
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.data.is_verified).toBe(true);
+
+    // Step 3 — login now succeeds (is_verified: true, failed_login_attempts: 0)
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...unverifiedUserRow, is_verified: true }],
+    });
+
+    const loginAfter = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'fresh@example.com', password: 'Password1' });
+
+    expect(loginAfter.status).toBe(200);
+    expect(loginAfter.body.data.accessToken).toBeDefined();
+    expect(loginAfter.body.data.refreshToken).toBeDefined();
+  });
+});
