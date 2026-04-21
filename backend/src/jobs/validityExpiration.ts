@@ -45,8 +45,15 @@ export function startValidityExpirationJob(): void {
         const expDate = new Date(row.first_login.getTime() + row.validity_seconds * 1000);
         const formatted = `${months[expDate.getUTCMonth()]} ${String(expDate.getUTCDate()).padStart(2, '0')} ${expDate.getUTCFullYear()} ${String(expDate.getUTCHours()).padStart(2, '0')}:${String(expDate.getUTCMinutes()).padStart(2, '0')}:${String(expDate.getUTCSeconds()).padStart(2, '0')}`;
 
+        // Guard against a concurrent cron tick inserting a second Expiration
+        // row for the same voucher: emit the INSERT conditionally so two
+        // replicas racing on the same username produce one row, not two.
         await pool.query(
-          'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+          `INSERT INTO radcheck (username, attribute, op, value)
+           SELECT $1, $2, $3, $4
+           WHERE NOT EXISTS (
+             SELECT 1 FROM radcheck WHERE username = $1 AND attribute = $2
+           )`,
           [row.radius_username, 'Expiration', ':=', formatted],
         );
 

@@ -8,15 +8,13 @@ export function startPurgeUnverifiedJob(): void {
       const result = await pool.query(
         `DELETE FROM users
          WHERE is_verified = FALSE
-           AND created_at < NOW() - INTERVAL '72 hours'
-         RETURNING id, email`,
+           AND created_at < NOW() - INTERVAL '72 hours'`,
       );
 
       if (result.rowCount && result.rowCount > 0) {
-        logger.info('Purged unverified accounts', {
-          count: result.rowCount,
-          emails: result.rows.map((r: { email: string }) => r.email),
-        });
+        // Deliberately log only the count — emails of purged users are PII
+        // and would live in the log retention window indefinitely otherwise.
+        logger.info('Purged unverified accounts', { count: result.rowCount });
       }
     } catch (error) {
       logger.error('Failed to purge unverified accounts', { error });
