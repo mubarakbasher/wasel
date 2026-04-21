@@ -11,7 +11,18 @@ class PrintService {
   static final _accentColor = PdfColor.fromHex('#00897b');
   static final _lightBg = PdfColor.fromHex('#f5f5f5');
 
+  // Arabic Unicode block + Arabic Supplement + Arabic Extended-A + Arabic
+  // Presentation Forms. If the string contains any of these, we must render it
+  // RTL so the pdf package runs Arabic glyph shaping (joining initial/medial/
+  // final forms). Without this, Arabic letters stay as isolated shapes.
+  static final _arabicRegex = RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
+
   pw.Font? _arabicFont;
+
+  bool _hasArabic(String s) => _arabicRegex.hasMatch(s);
+
+  pw.TextDirection _direction(String s) =>
+      _hasArabic(s) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
 
   Future<void> _ensureFont() async {
     _arabicFont ??= pw.Font.ttf(
@@ -145,16 +156,19 @@ class PrintService {
               color: _headerColor,
               alignment: pw.Alignment.center,
               padding: pw.EdgeInsets.symmetric(horizontal: pad),
-              child: pw.Text(
-                businessName,
-                style: pw.TextStyle(
-                  fontSize: headerFs,
-                  fontWeight: pw.FontWeight.bold,
-                  font: _arabicFont,
-                  color: PdfColors.white,
+              child: pw.Directionality(
+                textDirection: _direction(businessName),
+                child: pw.Text(
+                  businessName,
+                  style: pw.TextStyle(
+                    fontSize: headerFs,
+                    fontWeight: pw.FontWeight.bold,
+                    font: _arabicFont,
+                    color: PdfColors.white,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                  maxLines: 1,
                 ),
-                textAlign: pw.TextAlign.center,
-                maxLines: 1,
               ),
             ),
 
@@ -205,13 +219,16 @@ class PrintService {
                     pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
                       children: [
-                        pw.Text(
-                          v.limitDisplayText,
-                          style: pw.TextStyle(
-                            fontSize: infoFs,
-                            fontWeight: pw.FontWeight.bold,
-                            font: _arabicFont,
-                            color: _headerColor,
+                        pw.Directionality(
+                          textDirection: _direction(v.limitDisplayText),
+                          child: pw.Text(
+                            v.limitDisplayText,
+                            style: pw.TextStyle(
+                              fontSize: infoFs,
+                              fontWeight: pw.FontWeight.bold,
+                              font: _arabicFont,
+                              color: _headerColor,
+                            ),
                           ),
                         ),
                         pw.Container(
@@ -219,12 +236,15 @@ class PrintService {
                           height: infoFs * 1.2,
                           color: PdfColors.grey400,
                         ),
-                        pw.Text(
-                          validityText,
-                          style: pw.TextStyle(
-                            fontSize: infoFs,
-                            font: _arabicFont,
-                            color: PdfColors.grey700,
+                        pw.Directionality(
+                          textDirection: _direction(validityText),
+                          child: pw.Text(
+                            validityText,
+                            style: pw.TextStyle(
+                              fontSize: infoFs,
+                              font: _arabicFont,
+                              color: PdfColors.grey700,
+                            ),
                           ),
                         ),
                       ],
