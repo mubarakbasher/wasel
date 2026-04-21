@@ -153,13 +153,17 @@ export function generateMikrotikConfig(params: {
     // 3. IP address on WireGuard interface (/30)
     `/ip address add address=${toSubnet30(params.routerTunnelIp)} interface=wg-wasel network=${deriveNetwork30(params.routerTunnelIp)}`,
 
-    // 4. RADIUS server pointing to VPS tunnel IP
+    // 4. Route the Wasel /16 through the tunnel — without this only the /30 pair is reachable,
+    //    so ping to ${params.radiusServerIp} fails even though the WG handshake succeeds.
+    `/ip route add dst-address=10.10.0.0/16 gateway=wg-wasel`,
+
+    // 5. RADIUS server pointing to VPS tunnel IP
     `/radius add service=hotspot address=${params.radiusServerIp} secret="${params.radiusSecret}"`,
 
-    // 5. Hotspot profile to use RADIUS
+    // 6. Hotspot profile to use RADIUS
     `/ip hotspot profile set default use-radius=yes radius-default-domain=""`,
 
-    // 6. Firewall rules — allow RADIUS traffic over WireGuard
+    // 7. Firewall rules — allow RADIUS traffic over WireGuard
     `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=1812,1813 action=accept comment="Allow RADIUS auth/acct from Wasel VPS" place-before=0`,
     `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=3799 action=accept comment="Allow RADIUS CoA from Wasel VPS" place-before=1`,
     `/ip firewall filter add chain=input protocol=udp dst-port=51820 action=accept comment="Allow WireGuard" place-before=2`,
@@ -246,7 +250,15 @@ This gives your router its unique address on the VPN.
      interface=wg-wasel network=${network}
 
 --------------------------------------------------------------------------------
-STEP 4: Configure RADIUS authentication
+STEP 4: Route the Wasel subnet through the tunnel
+--------------------------------------------------------------------------------
+Without this route, only the /30 pair is reachable — you cannot reach the VPS
+tunnel IP (${params.radiusServerIp}) even though the handshake succeeds.
+
+  /ip route add dst-address=10.10.0.0/16 gateway=wg-wasel
+
+--------------------------------------------------------------------------------
+STEP 5: Configure RADIUS authentication
 --------------------------------------------------------------------------------
 This points the router's hotspot to the Wasel RADIUS server on the VPN.
 
@@ -254,7 +266,7 @@ This points the router's hotspot to the Wasel RADIUS server on the VPN.
      secret="${params.radiusSecret}"
 
 --------------------------------------------------------------------------------
-STEP 5: Enable RADIUS on the hotspot profile
+STEP 6: Enable RADIUS on the hotspot profile
 --------------------------------------------------------------------------------
 This tells the hotspot to authenticate users via RADIUS instead of local users.
 
@@ -262,7 +274,7 @@ This tells the hotspot to authenticate users via RADIUS instead of local users.
      radius-default-domain=""
 
 --------------------------------------------------------------------------------
-STEP 6: Add firewall rules for RADIUS and WireGuard traffic
+STEP 7: Add firewall rules for RADIUS and WireGuard traffic
 --------------------------------------------------------------------------------
 These rules ensure the router accepts RADIUS and WireGuard packets.
 They are placed at the top of the input chain so they are evaluated first.
@@ -344,42 +356,48 @@ export function generateSetupSteps(params: {
     },
     {
       step: 4,
+      title: 'Route the Wasel subnet through the tunnel',
+      description: `Without this route only the /30 pair is reachable; ping to ${params.radiusServerIp} would fail even though the handshake succeeds.`,
+      command: `/ip route add dst-address=10.10.0.0/16 gateway=wg-wasel`,
+    },
+    {
+      step: 5,
       title: 'Configure RADIUS authentication',
       description: 'Points the router\'s hotspot to the Wasel RADIUS server on the VPN.',
       command: `/radius add service=hotspot address=${params.radiusServerIp} secret="${params.radiusSecret}"`,
     },
     {
-      step: 5,
+      step: 6,
       title: 'Enable RADIUS on the hotspot profile',
       description: 'Tells the hotspot to authenticate users via RADIUS instead of local users.',
       command: `/ip hotspot profile set default use-radius=yes radius-default-domain=""`,
     },
     {
-      step: 6,
+      step: 7,
       title: 'Allow RADIUS auth/acct traffic',
       description: 'Allows RADIUS authentication and accounting packets from the Wasel VPS.',
       command: `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=1812,1813 action=accept comment="Allow RADIUS auth/acct from Wasel VPS" place-before=0`,
     },
     {
-      step: 7,
+      step: 8,
       title: 'Allow RADIUS CoA traffic',
       description: 'Allows RADIUS Change-of-Authorization packets for disconnecting users.',
       command: `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=3799 action=accept comment="Allow RADIUS CoA from Wasel VPS" place-before=1`,
     },
     {
-      step: 8,
+      step: 9,
       title: 'Allow WireGuard traffic',
       description: 'Allows incoming WireGuard VPN packets.',
       command: `/ip firewall filter add chain=input protocol=udp dst-port=51820 action=accept comment="Allow WireGuard" place-before=2`,
     },
     {
-      step: 9,
+      step: 10,
       title: 'Verify the tunnel',
       description: 'Check that the WireGuard peer is active and you can ping the VPS tunnel IP.',
       command: `/interface wireguard peers print`,
     },
     {
-      step: 10,
+      step: 11,
       title: 'Ping the VPS',
       description: 'You should see successful replies confirming the tunnel is working.',
       command: `/ping ${params.radiusServerIp} count=4`,

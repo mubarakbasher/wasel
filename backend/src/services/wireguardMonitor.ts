@@ -69,15 +69,18 @@ function determineStatus(peer: WgPeerStatus | undefined, nowSeconds: number): Ro
  * 5. Tracks offline duration and logs when the grace period is exceeded.
  */
 export async function checkRouterStatuses(): Promise<void> {
-  let peers: WgPeerStatus[];
+  // If listPeers fails (wg binary missing, interface down, permission denied)
+  // fall through with an empty set rather than returning — otherwise every
+  // router's status freezes at its last known value forever, which is how a
+  // dead tunnel can keep showing "online" indefinitely.
+  let peers: WgPeerStatus[] = [];
 
   try {
     peers = await listPeers();
   } catch (error) {
-    logger.error('WireGuard monitor: failed to list peers, skipping cycle', {
+    logger.error('WireGuard monitor: failed to list peers, treating all peers as unreachable', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return;
   }
 
   // Index peers by public key for O(1) lookup
