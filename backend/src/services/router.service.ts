@@ -10,6 +10,7 @@ import { generateMikrotikConfigText, generateSetupSteps } from './wireguardConfi
 import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
 import { reloadFreeradiusClients } from './freeradius.service';
+import { runHealthCheck } from './routerHealth.service';
 
 // ----- Interfaces -----
 
@@ -30,6 +31,8 @@ export interface RouterRow {
   nas_identifier: string | null;
   status: string;
   last_seen: Date | null;
+  last_health_check_at: Date | null;
+  last_health_report: unknown;
   created_at: Date;
   updated_at: Date;
 }
@@ -46,6 +49,8 @@ export interface RouterInfo {
   nasIdentifier: string | null;
   status: string;
   lastSeen: string | null;
+  lastHealthCheckAt: string | null;
+  lastHealthReport: unknown;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,6 +70,10 @@ function toRouterInfo(row: RouterRow): RouterInfo {
     nasIdentifier: row.nas_identifier,
     status: row.status,
     lastSeen: row.last_seen ? new Date(row.last_seen).toISOString() : null,
+    lastHealthCheckAt: row.last_health_check_at
+      ? new Date(row.last_health_check_at).toISOString()
+      : null,
+    lastHealthReport: row.last_health_report ?? null,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
@@ -191,6 +200,16 @@ export async function createRouter(
         error: error instanceof Error ? error.message : String(error),
       });
     }
+
+    // Fire-and-forget initial health check so the mobile UI has a
+    // baseline report the first time the user opens the router detail.
+    // `force: true` bypasses the per-router rate limit.
+    runHealthCheck(userId, router.id, { force: true }).catch((err) => {
+      logger.warn('Initial health check failed', {
+        routerId: router.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     logger.info('Router created', {
       routerId: router.id,

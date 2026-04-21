@@ -6,6 +6,7 @@ import {
   createRouterSchema,
   updateRouterSchema,
   routerIdParamSchema,
+  healthQuerySchema,
 } from '../validators/router.validators';
 import * as routerController from '../controllers/router.controller';
 
@@ -61,6 +62,14 @@ router.get(
   requireSubscription,
   validate({ params: routerIdParamSchema }),
   routerController.getSetupGuide,
+);
+
+router.get(
+  '/:id/health',
+  authenticate,
+  requireSubscription,
+  validate({ params: routerIdParamSchema, query: healthQuerySchema }),
+  routerController.getRouterHealth,
 );
 
 export default router;

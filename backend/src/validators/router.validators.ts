@@ -22,3 +22,7 @@ export const updateRouterSchema = z.object({
 export const routerIdParamSchema = z.object({
   id: z.string().uuid('Invalid router ID'),
 });
+
+export const healthQuerySchema = z.object({
+  refresh: z.enum(['true', 'false']).optional(),
+});

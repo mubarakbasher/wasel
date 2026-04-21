@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import * as routerService from '../services/router.service';
+import { runHealthCheck } from '../services/routerHealth.service';
 
 export async function createRouter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -80,6 +81,27 @@ export async function getSetupGuide(req: AuthenticatedRequest, res: Response, ne
     res.status(200).json({
       success: true,
       data: guide,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getRouterHealth(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const refresh = (req.query.refresh as string | undefined) === 'true';
+    const report = await runHealthCheck(
+      req.user!.id,
+      req.params.id as string,
+      { force: refresh },
+    );
+    res.status(200).json({
+      success: true,
+      data: report,
     });
   } catch (error) {
     next(error);

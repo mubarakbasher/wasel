@@ -61,6 +61,15 @@ vi.mock('../services/freeradius.service', () => ({
   showFreeradiusClients: vi.fn().mockResolvedValue(''),
 }));
 
+vi.mock('../services/routerHealth.service', () => ({
+  runHealthCheck: vi.fn().mockResolvedValue({
+    routerId: 'stub',
+    ranAt: new Date().toISOString(),
+    overall: 'healthy',
+    probes: [],
+  }),
+}));
+
 const now = new Date();
 
 const MOCK_ROUTER_ROW = {
@@ -79,6 +88,8 @@ const MOCK_ROUTER_ROW = {
   nas_identifier: 'office-router-aaa',
   status: 'offline',
   last_seen: null,
+  last_health_check_at: null,
+  last_health_report: null,
   created_at: now,
   updated_at: now,
 };

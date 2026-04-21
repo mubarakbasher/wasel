@@ -57,6 +57,15 @@ vi.mock('../services/freeradius.service', () => ({
   showFreeradiusClients: vi.fn().mockResolvedValue(''),
 }));
 
+vi.mock('../services/routerHealth.service', () => ({
+  runHealthCheck: vi.fn().mockResolvedValue({
+    routerId: 'stub',
+    ranAt: new Date().toISOString(),
+    overall: 'healthy',
+    probes: [],
+  }),
+}));
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -92,6 +101,8 @@ const MOCK_ROUTER_ROW = {
   nas_identifier: 'test-router-nas',
   status: 'offline',
   last_seen: null,
+  last_health_check_at: null,
+  last_health_report: null,
   created_at: new Date(),
   updated_at: new Date(),
 };
