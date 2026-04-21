@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../models/router_health.dart';
 import '../../providers/routers_provider.dart';
 import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
@@ -109,6 +110,8 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     children: [
+                      _buildHealthSummaryCard(router),
+                      const SizedBox(height: AppSpacing.lg),
                       _buildStatusCard(router, status),
                       const SizedBox(height: AppSpacing.lg),
                       if (status?.systemInfo != null) ...[
@@ -122,6 +125,74 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
                   ),
                 ),
     );
+  }
+
+  Widget _buildHealthSummaryCard(dynamic router) {
+    final report = router.lastHealthReport as RouterHealthReport?;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            report == null
+                ? Icons.health_and_safety_outlined
+                : _healthIcon(report.overall),
+            color: report == null
+                ? AppColors.textTertiary
+                : _healthColor(report.overall),
+            size: 28,
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Health check', style: AppTypography.title3),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  report == null
+                      ? 'Not checked yet'
+                      : '${report.passingCount} / ${report.probes.length} checks passing',
+                  style: AppTypography.caption1,
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () =>
+                context.push('/routers/health', extra: router.id as String),
+            child: const Text('Open'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _healthColor(OverallHealth overall) {
+    switch (overall) {
+      case OverallHealth.healthy:
+        return AppColors.success;
+      case OverallHealth.degraded:
+        return AppColors.warning;
+      case OverallHealth.broken:
+        return AppColors.error;
+    }
+  }
+
+  IconData _healthIcon(OverallHealth overall) {
+    switch (overall) {
+      case OverallHealth.healthy:
+        return Icons.check_circle;
+      case OverallHealth.degraded:
+        return Icons.warning_amber_rounded;
+      case OverallHealth.broken:
+        return Icons.cancel;
+    }
   }
 
   Widget _buildStatusCard(dynamic router, RouterStatusInfo? status) {

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../models/router_health.dart';
+import '../../models/router_model.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../theme/app_colors.dart';
@@ -50,7 +52,7 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
           FilledButton(
             onPressed: () {
               Navigator.of(dialogCtx).pop();
-              context.go('/subscription');
+              context.push('/subscription');
             },
             child: Text(context.tr('subscription.viewPlans')),
           ),
@@ -161,7 +163,7 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
 }
 
 class _RouterCard extends StatelessWidget {
-  final dynamic router;
+  final RouterModel router;
   final VoidCallback onTap;
 
   const _RouterCard({required this.router, required this.onTap});
@@ -188,6 +190,12 @@ class _RouterCard extends StatelessWidget {
                 Expanded(
                   child: Text(router.name, style: AppTypography.title3),
                 ),
+                if (router.lastHealthReport != null &&
+                    router.lastHealthReport!.overall != OverallHealth.healthy)
+                  _HealthChip(
+                    overall: router.lastHealthReport!.overall,
+                    routerId: router.id,
+                  ),
                 Icon(Icons.chevron_right,
                     color: AppColors.textTertiary, size: 20),
               ],
@@ -270,5 +278,41 @@ class _RouterCard extends StatelessWidget {
     if (diff.inHours < 24) return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
     if (diff.inDays < 30) return context.tr('routers.daysAgo', [diff.inDays.toString()]);
     return context.tr('routers.monthsAgo', [(diff.inDays / 30).floor().toString()]);
+  }
+}
+
+class _HealthChip extends StatelessWidget {
+  final OverallHealth overall;
+  final String routerId;
+
+  const _HealthChip({required this.overall, required this.routerId});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = overall == OverallHealth.broken ? AppColors.error : AppColors.warning;
+    final label = overall == OverallHealth.broken ? 'Broken' : 'Degraded';
+
+    return GestureDetector(
+      onTap: () => context.push('/routers/health', extra: routerId),
+      child: Container(
+        margin: const EdgeInsets.only(right: AppSpacing.xs),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          label,
+          style: AppTypography.caption2.copyWith(
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
   }
 }

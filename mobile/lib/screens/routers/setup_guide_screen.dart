@@ -11,19 +11,52 @@ import '../../theme/app_typography.dart';
 
 class SetupGuideScreen extends ConsumerStatefulWidget {
   final String routerId;
+  final int? initialStep;
 
-  const SetupGuideScreen({super.key, required this.routerId});
+  const SetupGuideScreen({
+    super.key,
+    required this.routerId,
+    this.initialStep,
+  });
 
   @override
   ConsumerState<SetupGuideScreen> createState() => _SetupGuideScreenState();
 }
 
 class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
+  final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey> _stepKeys = {};
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
     Future.microtask(
         () => ref.read(routersProvider.notifier).loadSetupGuide(widget.routerId));
+  }
+
+  void _scrollToInitialStep() {
+    final step = widget.initialStep;
+    if (step == null) return;
+    final key = _stepKeys[step];
+    if (key == null) return;
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+      alignment: 0.0,
+    );
+  }
+
+  GlobalKey _keyForStep(int step) {
+    return _stepKeys.putIfAbsent(step, () => GlobalKey());
   }
 
   void _copyToClipboard(String text) {
@@ -91,7 +124,12 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
   }
 
   Widget _buildGuide(RouterSetupGuide guide) {
+    // Scroll to the target step after the list is laid out.
+    if (widget.initialStep != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToInitialStep());
+    }
     return ListView(
+      controller: _scrollController,
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: [
         Text(guide.routerName, style: AppTypography.title2),
@@ -124,7 +162,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
         ),
         const SizedBox(height: AppSpacing.xxl),
         if (guide.steps.isNotEmpty)
-          ...guide.steps.map((step) => _buildStepCard(step))
+          ...guide.steps.map((step) => _buildStepCard(step, key: _keyForStep(step.step)))
         else
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
@@ -158,9 +196,10 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
     );
   }
 
-  Widget _buildStepCard(SetupStep step) {
+  Widget _buildStepCard(SetupStep step, {Key? key}) {
     final isVerification = step.step >= 9;
     return Padding(
+      key: key,
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Container(
         decoration: BoxDecoration(

@@ -13,6 +13,7 @@ import '../screens/routers/add_router_screen.dart';
 import '../screens/routers/router_detail_screen.dart';
 import '../screens/routers/edit_router_screen.dart';
 import '../screens/routers/setup_guide_screen.dart';
+import '../screens/routers/router_health_screen.dart';
 import '../screens/vouchers/voucher_list_screen.dart';
 import '../screens/vouchers/create_voucher_wizard.dart';
 import '../screens/vouchers/voucher_detail_screen.dart';
@@ -39,12 +40,27 @@ import 'scaffold_with_nav_bar.dart';
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  // Bridge Riverpod -> Listenable so GoRouter's redirect re-runs on auth
+  // changes without rebuilding the router. Rebuilding the router resets
+  // Navigator state and drops mid-flight context.go() calls — e.g. the
+  // signup -> /verify-email navigation would never land.
+  final listenable = ValueNotifier<int>(0);
+  final sub = ref.listen<AuthState>(
+    authProvider,
+    (_, _) => listenable.value++,
+    fireImmediately: false,
+  );
+  ref.onDispose(() {
+    sub.close();
+    listenable.dispose();
+  });
 
   return GoRouter(
     navigatorKey: appNavigatorKey,
     initialLocation: '/login',
+    refreshListenable: listenable,
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
       final isAuthenticated = authState.isAuthenticated;
       final isAuthRoute = state.matchedLocation == '/login' ||
           state.matchedLocation == '/register' ||
@@ -113,19 +129,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Subscription routes (pushed on top of nav, no bottom bar)
       GoRoute(
         path: '/subscription',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const SubscriptionStatusScreen(),
       ),
       GoRoute(
         path: '/subscription/payment',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const PaymentScreen(),
       ),
       // Router routes (pushed on top of nav, no bottom bar)
       GoRoute(
         path: '/routers/add',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const AddRouterScreen(),
       ),
       GoRoute(
         path: '/routers/detail',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return RouterDetailScreen(routerId: routerId);
@@ -133,6 +153,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/routers/edit',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return EditRouterScreen(routerId: routerId);
@@ -140,14 +161,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/routers/setup-guide',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
-          final routerId = state.extra as String? ?? '';
-          return SetupGuideScreen(routerId: routerId);
+          final extra = state.extra;
+          if (extra is Map<String, dynamic>) {
+            return SetupGuideScreen(
+              routerId: extra['routerId'] as String? ?? '',
+              initialStep: extra['initialStep'] as int?,
+            );
+          }
+          return SetupGuideScreen(routerId: extra as String? ?? '');
+        },
+      ),
+      GoRoute(
+        path: '/routers/health',
+        parentNavigatorKey: appNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra;
+          final routerId = extra is Map<String, dynamic>
+              ? extra['routerId'] as String? ?? ''
+              : extra as String? ?? '';
+          return RouterHealthScreen(routerId: routerId);
         },
       ),
       // Voucher routes
       GoRoute(
         path: '/vouchers/create',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return CreateVoucherWizard(routerId: routerId);
@@ -155,6 +195,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/vouchers/detail',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? {};
           return VoucherDetailScreen(
@@ -166,6 +207,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Print routes
       GoRoute(
         path: '/vouchers/print',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? {};
           final vouchers = extra['vouchers'] as List<Voucher>? ?? [];
@@ -179,37 +221,45 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Settings sub-routes
       GoRoute(
         path: '/settings/profile',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const EditProfileScreen(),
       ),
       GoRoute(
         path: '/settings/change-password',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const ChangePasswordScreen(),
       ),
       GoRoute(
         path: '/settings/payments',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const PaymentsScreen(),
       ),
       GoRoute(
         path: '/settings/contact',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const ContactScreen(),
       ),
       // Notifications
       GoRoute(
         path: '/notifications',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const NotificationsScreen(),
       ),
       // Notification preferences
       GoRoute(
         path: '/notification-preferences',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const NotificationPreferencesScreen(),
       ),
       // Report routes
       GoRoute(
         path: '/reports',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const ReportsScreen(),
       ),
       GoRoute(
         path: '/reports/export',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? {};
           return ReportExportScreen(
@@ -221,6 +271,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Session routes
       GoRoute(
         path: '/sessions/active',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return ActiveSessionsScreen(routerId: routerId);
@@ -228,6 +279,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/sessions/history',
+        parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return SessionHistoryScreen(routerId: routerId);
