@@ -16,6 +16,7 @@ import {
   listInterfaces,
   listHotspotServers,
   listAddresses,
+  ensureWgInLanList,
   RouterInterface,
 } from './routerOs.service';
 import { getPeerStatus } from './wireguardPeer';
@@ -288,6 +289,14 @@ export async function provisionRouter(
     await upsertByComment(api, cmd.menu, cmd.commentTag, cmd.desired);
   });
 
+  // Step 7b: add wg-wasel to the LAN interface list so the default
+  // /ip/firewall/filter drop !LAN rule doesn't block CoA traffic from Wasel.
+  // No-op if the router doesn't use a LAN interface list.
+  await runStep('wgInterfaceList', async () => {
+    const result = await ensureWgInLanList(api);
+    logger.debug('ensureWgInLanList', { routerId, result });
+  });
+
   // Step 8: Hotspot server binding detection
   let needsHotspotConfirmation = false;
   let suggestedHotspotInterface: string | null = null;
@@ -328,7 +337,7 @@ export async function provisionRouter(
 
   // Determine final status
   const succeeded = errors.length === 0;
-  const finalStatus = succeeded ? 'succeeded' : errors.length === 8 ? 'failed' : 'partial';
+  const finalStatus = succeeded ? 'succeeded' : errors.length === 9 ? 'failed' : 'partial';
 
   const extra: Parameters<typeof setProvisionStatus>[3] = {
     needs_hotspot_confirmation: needsHotspotConfirmation,

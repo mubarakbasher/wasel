@@ -483,6 +483,36 @@ export async function listInterfaces(api: any): Promise<RouterInterface[]> {
 }
 
 /**
+ * Ensure the wg-wasel interface is a member of the router's LAN interface list
+ * (if such a list exists). Default MikroTik firewalls use
+ * `in-interface-list=!LAN` drop rules that would otherwise block CoA traffic
+ * arriving over the tunnel. Idempotent — no-op if already a member.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function ensureWgInLanList(api: any): Promise<'added' | 'already-member' | 'no-lan-list'> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lists = (await (api as any).menu('/interface/list').get()) as Array<Record<string, unknown>>;
+  const hasLan = lists.some((l) => String(l.name ?? '') === 'LAN');
+  if (!hasLan) return 'no-lan-list';
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const members = (await (api as any)
+    .menu('/interface/list/member')
+    .where('interface', 'wg-wasel')
+    .get()) as Array<Record<string, unknown>>;
+
+  const alreadyInLan = members.some((m) => String(m.list ?? '') === 'LAN');
+  if (alreadyInLan) return 'already-member';
+
+  await (api as any).menu('/interface/list/member').add({
+    interface: 'wg-wasel',
+    list: 'LAN',
+    comment: 'wasel',
+  });
+  return 'added';
+}
+
+/**
  * List all configured hotspot servers on the router.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

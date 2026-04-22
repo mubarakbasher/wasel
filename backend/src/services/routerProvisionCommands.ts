@@ -77,7 +77,7 @@ export function coaListenerCommand(): SingletonCommand {
 
 /**
  * /ip/hotspot/profile set default — enable RADIUS auth and interim updates.
- * nas-port-type=19 is the numeric code for wireless-802.11 in RouterOS.
+ * nas-port-type is omitted; the router's default is correct for hotspot.
  */
 export function hotspotProfileCommand(): SingletonCommand {
   return {
@@ -87,7 +87,6 @@ export function hotspotProfileCommand(): SingletonCommand {
     args: {
       'use-radius': 'yes',
       'radius-interim-update': 'received',
-      'nas-port-type': '19',
     },
   };
 }
@@ -125,7 +124,6 @@ export function firewallRadiusAuthCommand(params: {
       'src-address': params.radiusServerIp,
       'dst-port': '1812',
       comment: 'wasel-radius-auth',
-      'place-before': '0',
     },
   };
 }
@@ -147,7 +145,6 @@ export function firewallRadiusCoaCommand(params: {
       'src-address': params.radiusServerIp,
       'dst-port': '3799',
       comment: 'wasel-radius-coa',
-      'place-before': '1',
     },
   };
 }
@@ -166,7 +163,6 @@ export function firewallWgCommand(): UpsertCommand {
       protocol: 'udp',
       'dst-port': '51820',
       comment: 'wasel-wg',
-      'place-before': '2',
     },
   };
 }
