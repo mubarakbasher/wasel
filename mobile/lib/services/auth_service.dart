@@ -77,7 +77,7 @@ class AuthService {
     await _api.post('/auth/reset-password', data: {
       'email': email,
       'otp': otp,
-      'new_password': newPassword,
+      'newPassword': newPassword,
     });
   }
 
