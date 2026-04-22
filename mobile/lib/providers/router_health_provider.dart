@@ -27,7 +27,11 @@ class RouterHealthNotifier
       if (data == null) {
         throw Exception('Empty response from health endpoint');
       }
-      return RouterHealthReport.fromJson(data);
+      final payload = data['data'];
+      if (payload is! Map<String, dynamic>) {
+        throw Exception('Malformed health response: missing data field');
+      }
+      return RouterHealthReport.fromJson(payload);
     } on DioException catch (e) {
       throw _extractError(e);
     }

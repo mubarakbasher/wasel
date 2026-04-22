@@ -148,7 +148,11 @@ class ProvisionPollNotifier extends FamilyNotifier<ProvisionPollState, String> {
     );
     final data = response.data;
     if (data == null) throw Exception('Empty health response');
-    return RouterHealthReport.fromJson(data);
+    final payload = data['data'];
+    if (payload is! Map<String, dynamic>) {
+      throw Exception('Malformed health response: missing data field');
+    }
+    return RouterHealthReport.fromJson(payload);
   }
 
   String _extractError(dynamic e) {
