@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler';
 import { RECEIPTS_PUBLIC_PREFIX } from '../middleware/upload';
 import * as subscriptionService from '../services/subscription.service';
 import * as settingsService from '../services/settings.service';
+import logger from '../config/logger';
 
 export async function getPlans(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -70,6 +71,14 @@ export async function uploadReceipt(req: AuthenticatedRequest, res: Response, ne
       data: { message: 'Receipt uploaded successfully', receiptUrl },
     });
   } catch (error) {
+    logger.error('Receipt upload failed', {
+      userId: req.user?.id,
+      paymentId: req.body?.paymentId,
+      code: error instanceof AppError ? error.code : undefined,
+      status: error instanceof AppError ? error.statusCode : undefined,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     next(error);
   }
 }

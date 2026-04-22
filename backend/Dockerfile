@@ -15,7 +15,7 @@ FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb836
 # - freeradius: ships radmin (control-socket HUP after nas table changes)
 #   and radclient (synthetic RADIUS auth probe in routerHealth.service.ts)
 # - iputils: `ping` used by the tunnel-reachability health probe
-RUN apk add --no-cache wireguard-tools libcap freeradius iputils \
+RUN apk add --no-cache wireguard-tools libcap freeradius iputils su-exec \
     && setcap cap_net_admin+eip /usr/bin/wg
 
 WORKDIR /app
@@ -28,13 +28,17 @@ COPY src/migrations/sql ./dist/migrations/sql
 
 # Create non-root user. The radmin socket in the freeradius_control volume
 # is chmod 0666 by the freeradius entrypoint, so no GID matching is needed.
+# Entrypoint runs as root to chown the uploads volume (named volumes can carry
+# stale ownership from earlier image builds), then drops to `app` via su-exec.
 RUN addgroup -S app \
     && adduser -S -G app -s /sbin/nologin app \
-    && mkdir -p /app/uploads \
+    && mkdir -p /app/uploads/receipts \
     && chown -R app:app /app
 
-USER app
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3000
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]

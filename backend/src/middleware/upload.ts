@@ -4,16 +4,31 @@ import multer from 'multer';
 import { Request, Response, NextFunction } from 'express';
 import FileType from 'file-type';
 import { AppError } from './errorHandler';
+import logger from '../config/logger';
 
 const UPLOAD_ROOT = process.env.UPLOAD_DIR || '/app/uploads';
 const RECEIPTS_DIR = path.join(UPLOAD_ROOT, 'receipts');
 
-fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
-
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, RECEIPTS_DIR),
+  destination: (req, _file, cb) => {
+    try {
+      fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
+      cb(null, RECEIPTS_DIR);
+    } catch (err) {
+      const userId = (req as Request & { user?: { id: string } }).user?.id;
+      logger.error('Upload destination not writable', {
+        userId,
+        dir: RECEIPTS_DIR,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      cb(
+        new AppError(500, 'Upload directory is not writable', 'UPLOAD_DIR_UNWRITABLE'),
+        RECEIPTS_DIR,
+      );
+    }
+  },
   filename: (req, file, cb) => {
     const userId = (req as Request & { user?: { id: string } }).user?.id ?? 'anon';
     const ts = Date.now();
@@ -74,6 +89,13 @@ export async function verifyUploadMagicBytes(
 
     next();
   } catch (err) {
+    const userId = (req as Request & { user?: { id: string } }).user?.id;
+    logger.error('Upload magic-byte verification failed', {
+      userId,
+      path: file.path,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     // Best-effort cleanup on any failure during verification.
     await fs.promises.unlink(file.path).catch(() => {});
     next(err instanceof AppError ? err : new AppError(400, 'Could not verify uploaded file', 'UPLOAD_VERIFY_FAILED'));

@@ -236,16 +236,22 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   String _extractError(dynamic e) {
     if (e is DioException) {
       final data = e.response?.data;
-      if (data is Map<String, dynamic> && data.containsKey('error')) {
+      if (data is Map<String, dynamic>) {
         final error = data['error'];
-        if (error is Map<String, dynamic> && error.containsKey('message')) {
+        if (error is Map<String, dynamic> && error['message'] is String) {
           return error['message'] as String;
         }
-        if (error is String) return error;
+        if (error is String && error.isNotEmpty) return error;
+        if (data['message'] is String) return data['message'] as String;
       }
+      if (data is String && data.isNotEmpty) return data;
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
         return 'Connection timed out. Please try again.';
+      }
+      final status = e.response?.statusCode;
+      if (status != null) {
+        return 'Server error ($status). Please try again.';
       }
       return 'Network error. Please check your connection.';
     }
