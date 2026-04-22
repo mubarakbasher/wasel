@@ -519,12 +519,17 @@ export async function runHealthCheck(
   const force = opts?.force === true;
   const now = Date.now();
   const last = lastRunByRouter.get(routerId);
-  if (!force && last !== undefined && now - last < RATE_LIMIT_MS) {
-    throw new AppError(429, 'Health check running too often', 'HEALTHCHECK_RATELIMIT');
-  }
-  lastRunByRouter.set(routerId, now);
 
   const router = await loadRouterForHealth(userId, routerId);
+
+  // Non-forced callers (polling, initial page load) get the last persisted
+  // report within the rate-limit window. Avoids hammering real probes and
+  // the 429 UX we were showing on the mobile auto-config screen.
+  if (!force && last !== undefined && now - last < RATE_LIMIT_MS) {
+    const cached = router.last_health_report as RouterHealthReport | null;
+    if (cached) return cached;
+  }
+  lastRunByRouter.set(routerId, now);
 
   if (!router.tunnel_ip) {
     throw new AppError(
