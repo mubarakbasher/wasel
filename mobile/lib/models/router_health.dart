@@ -41,26 +41,6 @@ class ProvisionStepError {
   }
 }
 
-class RouterInterface {
-  final String name;
-  final String type;
-  final bool running;
-
-  const RouterInterface({
-    required this.name,
-    required this.type,
-    required this.running,
-  });
-
-  factory RouterInterface.fromJson(Map<String, dynamic> json) {
-    return RouterInterface(
-      name: json['name'] as String? ?? '',
-      type: json['type'] as String? ?? '',
-      running: json['running'] as bool? ?? false,
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Probe status
 // ---------------------------------------------------------------------------
@@ -155,10 +135,6 @@ class RouterHealthReport {
   final ProvisionStatus? provisionStatus;
   final List<ProvisionStepError>? provisionError;
   final DateTime? provisionAppliedAt;
-  final bool needsHotspotConfirmation;
-  final String? suggestedHotspotInterface;
-  final List<RouterInterface> availableInterfaces;
-
   const RouterHealthReport({
     required this.routerId,
     required this.ranAt,
@@ -167,9 +143,6 @@ class RouterHealthReport {
     this.provisionStatus,
     this.provisionError,
     this.provisionAppliedAt,
-    this.needsHotspotConfirmation = false,
-    this.suggestedHotspotInterface,
-    this.availableInterfaces = const [],
   });
 
   factory RouterHealthReport.fromJson(Map<String, dynamic> json) {
@@ -180,12 +153,6 @@ class RouterHealthReport {
     final provisionErrorList = (json['provisionError'] as List<dynamic>?)
         ?.map((e) => ProvisionStepError.fromJson(e as Map<String, dynamic>))
         .toList();
-    final availableInterfacesList =
-        (json['availableInterfaces'] as List<dynamic>?)
-                ?.map((i) =>
-                    RouterInterface.fromJson(i as Map<String, dynamic>))
-                .toList() ??
-            [];
     return RouterHealthReport(
       routerId: json['routerId'] as String,
       ranAt: DateTime.parse(json['ranAt'] as String),
@@ -197,11 +164,6 @@ class RouterHealthReport {
       provisionAppliedAt: json['provisionAppliedAt'] != null
           ? DateTime.parse(json['provisionAppliedAt'] as String)
           : null,
-      needsHotspotConfirmation:
-          json['needsHotspotConfirmation'] as bool? ?? false,
-      suggestedHotspotInterface:
-          json['suggestedHotspotInterface'] as String?,
-      availableInterfaces: availableInterfacesList,
     );
   }
 
@@ -215,8 +177,6 @@ class RouterHealthReport {
       'provisionError':
           provisionError?.map((e) => {'step': e.step, 'error': e.error}).toList(),
       'provisionAppliedAt': provisionAppliedAt?.toIso8601String(),
-      'needsHotspotConfirmation': needsHotspotConfirmation,
-      'suggestedHotspotInterface': suggestedHotspotInterface,
     };
   }
 

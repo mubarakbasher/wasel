@@ -224,12 +224,4 @@ class RouterService {
     await _api.dio.post('/routers/$id/reprovision');
   }
 
-  /// POST /routers/:id/provision/hotspot — confirms the hotspot interface.
-  /// Called when the operator selects a LAN interface for the hotspot server.
-  Future<void> confirmHotspotInterface(String id, String interfaceName) async {
-    await _api.dio.post(
-      '/routers/$id/provision/hotspot',
-      data: {'interface': interfaceName},
-    );
-  }
 }

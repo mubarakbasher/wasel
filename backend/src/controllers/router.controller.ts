@@ -4,9 +4,7 @@ import { AuthenticatedRequest } from '../types';
 import { config } from '../config';
 import * as routerService from '../services/router.service';
 import { runHealthCheck } from '../services/routerHealth.service';
-import { provisionRouter, confirmHotspotInterface } from '../services/routerProvision.service';
-import { listInterfaces } from '../services/routerOs.service';
-import { connectToRouter } from '../services/routerOs.service';
+import { provisionRouter } from '../services/routerProvision.service';
 import { pool } from '../config/database';
 
 export async function createRouter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -163,32 +161,14 @@ export async function getRouterHealth(
       last_provision_error: unknown;
       last_provision_at: Date | null;
       provision_applied_at: Date | null;
-      needs_hotspot_confirmation: boolean;
-      suggested_hotspot_interface: string | null;
     }>(
       `SELECT last_provision_status, last_provision_error, last_provision_at,
-              provision_applied_at, needs_hotspot_confirmation, suggested_hotspot_interface
+              provision_applied_at
          FROM routers WHERE id = $1 AND user_id = $2`,
       [routerId, userId],
     );
 
     const prov = provRow.rows[0] ?? {};
-
-    // If hotspot confirmation is pending, surface available interfaces
-    let availableInterfaces: import('../services/routerOs.service').RouterInterface[] = [];
-    if (prov.needs_hotspot_confirmation) {
-      try {
-        const { client, api } = await connectToRouter(routerId, userId);
-        try {
-          availableInterfaces = await listInterfaces(api);
-        } finally {
-          try { await client.disconnect(); } catch { /* ignore */ }
-        }
-      } catch {
-        // Non-fatal — return empty array
-        availableInterfaces = [];
-      }
-    }
 
     res.status(200).json({
       success: true,
@@ -198,9 +178,6 @@ export async function getRouterHealth(
         provisionError: prov.last_provision_error ?? null,
         provisionAt: prov.last_provision_at ? new Date(prov.last_provision_at).toISOString() : null,
         provisionAppliedAt: prov.provision_applied_at ? new Date(prov.provision_applied_at).toISOString() : null,
-        needsHotspotConfirmation: prov.needs_hotspot_confirmation ?? false,
-        suggestedHotspotInterface: prov.suggested_hotspot_interface ?? null,
-        ...(prov.needs_hotspot_confirmation ? { availableInterfaces } : {}),
       },
     });
   } catch (error) {
@@ -228,22 +205,3 @@ export async function reprovisionRouter(
   }
 }
 
-export async function confirmHotspot(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    await confirmHotspotInterface(
-      req.user!.id,
-      req.params.id as string,
-      req.body.interface as string,
-    );
-    res.status(200).json({
-      success: true,
-      data: { message: 'Hotspot interface confirmed and setup applied' },
-    });
-  } catch (error) {
-    next(error);
-  }
-}

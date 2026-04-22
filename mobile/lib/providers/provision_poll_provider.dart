@@ -17,13 +17,11 @@ class ProvisionPollState {
   final RouterHealthReport? report;
   final PollPhase phase;
   final String? error;
-  final bool isConfirmingInterface;
 
   const ProvisionPollState({
     this.report,
     this.phase = PollPhase.polling,
     this.error,
-    this.isConfirmingInterface = false,
   });
 
   ProvisionPollState copyWith({
@@ -31,14 +29,11 @@ class ProvisionPollState {
     PollPhase? phase,
     String? error,
     bool clearError = false,
-    bool? isConfirmingInterface,
   }) {
     return ProvisionPollState(
       report: report ?? this.report,
       phase: phase ?? this.phase,
       error: clearError ? null : (error ?? this.error),
-      isConfirmingInterface:
-          isConfirmingInterface ?? this.isConfirmingInterface,
     );
   }
 
@@ -78,21 +73,6 @@ class ProvisionPollNotifier extends FamilyNotifier<ProvisionPollState, String> {
     } catch (e) {
       state = state.copyWith(error: _extractError(e));
     }
-  }
-
-  Future<void> confirmInterface(String interfaceName) async {
-    state = state.copyWith(isConfirmingInterface: true, clearError: true);
-    try {
-      await RouterService().confirmHotspotInterface(arg, interfaceName);
-    } catch (e) {
-      state = state.copyWith(
-        isConfirmingInterface: false,
-        error: _extractError(e),
-      );
-      return;
-    }
-    state = state.copyWith(isConfirmingInterface: false);
-    // Next poll tick will update the report; no need to force-fetch here.
   }
 
   // ---------------------------------------------------------------------------

@@ -7,7 +7,6 @@ import {
   updateRouterSchema,
   routerIdParamSchema,
   healthQuerySchema,
-  confirmHotspotInterfaceSchema,
 } from '../validators/router.validators';
 import * as routerController from '../controllers/router.controller';
 
@@ -79,14 +78,6 @@ router.post(
   requireSubscription,
   validate({ params: routerIdParamSchema }),
   routerController.reprovisionRouter,
-);
-
-router.post(
-  '/:id/provision/hotspot',
-  authenticate,
-  requireSubscription,
-  validate({ params: routerIdParamSchema, body: confirmHotspotInterfaceSchema }),
-  routerController.confirmHotspot,
 );
 
 export default router;

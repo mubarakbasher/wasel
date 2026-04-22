@@ -69,7 +69,6 @@ vi.mock('../services/routerHealth.service', () => ({
 vi.mock('../services/routerProvision.service', () => ({
   schedulePostAddProvision: vi.fn(),
   provisionRouter: vi.fn().mockResolvedValue({}),
-  confirmHotspotInterface: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ---------------------------------------------------------------------------

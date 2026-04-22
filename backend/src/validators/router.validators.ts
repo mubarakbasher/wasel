@@ -23,9 +23,3 @@ export const healthQuerySchema = z.object({
   refresh: z.enum(['true', 'false']).optional(),
 });
 
-export const confirmHotspotInterfaceSchema = z.object({
-  interface: z
-    .string()
-    .min(1, 'Interface name is required')
-    .max(50, 'Interface name must be at most 50 characters'),
-});

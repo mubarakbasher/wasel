@@ -3,7 +3,7 @@
  *
  * Orchestrates Stage-2 auto-provisioning: opens a RouterOS API session via
  * the WireGuard tunnel and idempotently applies RADIUS, CoA, hotspot profile,
- * firewall, and (when operator confirms) hotspot server binding.
+ * and firewall rules.
  */
 
 import { pool } from '../config/database';
@@ -13,12 +13,8 @@ import {
   connectToRouter,
   upsertByComment,
   setSingleton,
-  listInterfaces,
   listHotspotServers,
-  listHotspotProfiles,
-  listAddresses,
   ensureWgInLanList,
-  RouterInterface,
 } from './routerOs.service';
 import { getPeerStatus } from './wireguardPeer';
 import { testConnection } from './routerOs.service';
@@ -30,7 +26,6 @@ import {
   firewallRadiusAuthCommand,
   firewallRadiusCoaCommand,
   firewallWgCommand,
-  hotspotSetupCommands,
 } from './routerProvisionCommands';
 
 // ---------------------------------------------------------------------------
@@ -47,8 +42,6 @@ export interface StepError {
 export interface ProvisionResult {
   status: 'succeeded' | 'partial' | 'failed';
   errors: StepError[];
-  needsHotspotConfirmation: boolean;
-  suggestedHotspotInterface: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,13 +67,12 @@ interface RouterProvisionRow {
   wg_public_key: string | null;
   radius_secret_enc: string | null;
   provision_applied_at: Date | null;
-  needs_hotspot_confirmation: boolean;
 }
 
 async function loadProvisionRow(routerId: string, userId: string): Promise<RouterProvisionRow> {
   const result = await pool.query<RouterProvisionRow>(
     `SELECT id, user_id, tunnel_ip, wg_public_key, radius_secret_enc,
-            provision_applied_at, needs_hotspot_confirmation
+            provision_applied_at
        FROM routers
       WHERE id = $1 AND user_id = $2`,
     [routerId, userId],
@@ -97,8 +89,6 @@ async function setProvisionStatus(
   errors: StepError[],
   extra: Partial<{
     provision_applied_at: string;
-    needs_hotspot_confirmation: boolean;
-    suggested_hotspot_interface: string | null;
   }> = {},
 ): Promise<void> {
   const sets: string[] = [
@@ -113,69 +103,12 @@ async function setProvisionStatus(
     sets.push(`provision_applied_at = $${idx++}`);
     values.push(extra.provision_applied_at);
   }
-  if (extra.needs_hotspot_confirmation !== undefined) {
-    sets.push(`needs_hotspot_confirmation = $${idx++}`);
-    values.push(extra.needs_hotspot_confirmation);
-  }
-  if (extra.suggested_hotspot_interface !== undefined) {
-    sets.push(`suggested_hotspot_interface = $${idx++}`);
-    values.push(extra.suggested_hotspot_interface);
-  }
 
   values.push(routerId);
   await pool.query(
     `UPDATE routers SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${idx}`,
     values,
   );
-}
-
-// ---------------------------------------------------------------------------
-// Interface auto-detect
-// ---------------------------------------------------------------------------
-
-/**
- * Pick the best candidate interface for the hotspot server.
- * Priority: bridge-lan > bridge > first ether that is not WAN and not wg-wasel.
- *
- * WAN detection: whichever interface holds the default-route source address
- * from /ip/address (a crude but useful heuristic).
- */
-function detectHotspotInterface(
-  interfaces: RouterInterface[],
-  addresses: { address: string; interface: string }[],
-): string | null {
-  // Heuristic: WAN iface is the one whose address is not in private ranges
-  const privateRanges = [/^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./];
-  const isPrivate = (ip: string) => privateRanges.some((re) => re.test(ip));
-
-  const wanInterfaces = new Set<string>();
-  for (const addr of addresses) {
-    const ip = addr.address.split('/')[0];
-    if (!isPrivate(ip)) {
-      wanInterfaces.add(addr.interface);
-    }
-  }
-
-  // Exclude wg-wasel and WAN candidates
-  const candidates = interfaces.filter(
-    (i) => i.name !== 'wg-wasel' && !wanInterfaces.has(i.name),
-  );
-
-  // Priority order
-  const bridgeLan = candidates.find((i) => i.name === 'bridge-lan');
-  if (bridgeLan) return bridgeLan.name;
-
-  const anyBridge = candidates.find(
-    (i) => i.type === 'bridge' || i.name.startsWith('bridge'),
-  );
-  if (anyBridge) return anyBridge.name;
-
-  const firstEther = candidates.find(
-    (i) => i.type === 'ether' || i.name.startsWith('ether'),
-  );
-  if (firstEther) return firstEther.name;
-
-  return candidates[0]?.name ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,13 +139,13 @@ export async function provisionRouter(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await setProvisionStatus(routerId, 'failed', [{ step: 'load', error: msg }]);
-    return { status: 'failed', errors: [{ step: 'load', error: msg }], needsHotspotConfirmation: false, suggestedHotspotInterface: null };
+    return { status: 'failed', errors: [{ step: 'load', error: msg }] };
   }
 
   if (!rowData.radius_secret_enc || !rowData.tunnel_ip) {
     const msg = 'Router missing radius secret or tunnel IP';
     await setProvisionStatus(routerId, 'failed', [{ step: 'load', error: msg }]);
-    return { status: 'failed', errors: [{ step: 'load', error: msg }], needsHotspotConfirmation: false, suggestedHotspotInterface: null };
+    return { status: 'failed', errors: [{ step: 'load', error: msg }] };
   }
 
   const radiusSecret = decrypt(rowData.radius_secret_enc);
@@ -231,7 +164,7 @@ export async function provisionRouter(
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn('Provision: could not connect to router API', { routerId, error: msg });
     await setProvisionStatus(routerId, 'failed', [{ step: 'connect', error: msg }]);
-    return { status: 'failed', errors: [{ step: 'connect', error: msg }], needsHotspotConfirmation: false, suggestedHotspotInterface: null };
+    return { status: 'failed', errors: [{ step: 'connect', error: msg }] };
   }
 
   // Helper to run a labelled step, catching and collecting errors
@@ -335,37 +268,6 @@ export async function provisionRouter(
     logger.debug('ensureWgInLanList', { routerId, result });
   });
 
-  // Step 8: Hotspot server binding detection
-  let needsHotspotConfirmation = false;
-  let suggestedHotspotInterface: string | null = null;
-
-  await runStep('hotspotBindingDetect', async () => {
-    const existingServers = await listHotspotServers(api);
-    const activeServers = existingServers.filter((s) => !s.disabled);
-
-    if (activeServers.length > 0) {
-      // Operator already has a hotspot — do nothing
-      logger.info('Provision: hotspot server already exists, skipping binding', {
-        routerId,
-        servers: activeServers.map((s) => s.name),
-      });
-      return;
-    }
-
-    // No hotspot server — detect best candidate interface
-    const ifaces = await listInterfaces(api);
-    const addrs = await listAddresses(api);
-
-    const candidate = detectHotspotInterface(ifaces, addrs);
-    if (candidate) {
-      needsHotspotConfirmation = true;
-      suggestedHotspotInterface = candidate;
-      logger.info('Provision: suggesting hotspot interface', { routerId, candidate });
-    } else {
-      logger.warn('Provision: no suitable hotspot interface found', { routerId });
-    }
-  });
-
   // Disconnect
   try {
     await client.disconnect();
@@ -375,13 +277,9 @@ export async function provisionRouter(
 
   // Determine final status
   const succeeded = errors.length === 0;
-  const finalStatus = succeeded ? 'succeeded' : errors.length === 9 ? 'failed' : 'partial';
+  const finalStatus = succeeded ? 'succeeded' : errors.length === 8 ? 'failed' : 'partial';
 
-  const extra: Parameters<typeof setProvisionStatus>[3] = {
-    needs_hotspot_confirmation: needsHotspotConfirmation,
-    suggested_hotspot_interface: suggestedHotspotInterface,
-  };
-
+  const extra: Parameters<typeof setProvisionStatus>[3] = {};
   if (succeeded) {
     extra.provision_applied_at = new Date().toISOString();
   }
@@ -393,15 +291,9 @@ export async function provisionRouter(
     trigger: opts.trigger,
     status: finalStatus,
     errorCount: errors.length,
-    needsHotspotConfirmation,
   });
 
-  return {
-    status: finalStatus,
-    errors,
-    needsHotspotConfirmation,
-    suggestedHotspotInterface,
-  };
+  return { status: finalStatus, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -488,61 +380,6 @@ export function schedulePostAddProvision(routerId: string, userId: string): void
   // First tick after initial delay
   const handle = setTimeout(() => void tick(), INTERVAL_MS);
   pollerMap.set(routerId, handle);
-}
-
-// ---------------------------------------------------------------------------
-// Hotspot interface confirmation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate the operator-chosen interface exists on the router, then run
- * hotspot setup commands (pool + DHCP + hotspot server) and clear the
- * needs_hotspot_confirmation flag.
- */
-export async function confirmHotspotInterface(
-  userId: string,
-  routerId: string,
-  ifaceName: string,
-): Promise<void> {
-  const { client, api } = await connectToRouter(routerId, userId);
-
-  try {
-    // Validate interface exists
-    const ifaces = await listInterfaces(api);
-    const found = ifaces.some((i) => i.name === ifaceName);
-    if (!found) {
-      throw new Error(`Interface "${ifaceName}" not found on router`);
-    }
-
-    // Check no hotspot server already exists (idempotency guard)
-    const existing = await listHotspotServers(api);
-    if (existing.some((s) => !s.disabled)) {
-      logger.info('confirmHotspotInterface: active hotspot already present, skipping', { routerId, ifaceName });
-    } else {
-      // Apply hotspot setup commands in order
-      const commands = hotspotSetupCommands({ interface: ifaceName });
-      for (const cmd of commands) {
-        await (api as any).menu(cmd.menu).add(cmd.args); // eslint-disable-line @typescript-eslint/no-explicit-any
-      }
-      logger.info('Hotspot setup commands applied', { routerId, ifaceName });
-    }
-
-    // Clear confirmation flag and record success
-    await pool.query(
-      `UPDATE routers
-          SET needs_hotspot_confirmation = FALSE,
-              suggested_hotspot_interface = NULL,
-              provision_applied_at = COALESCE(provision_applied_at, NOW()),
-              last_provision_status = 'succeeded',
-              updated_at = NOW()
-        WHERE id = $1`,
-      [routerId],
-    );
-
-    logger.info('Hotspot interface confirmed', { routerId, userId, ifaceName });
-  } finally {
-    try { await client.disconnect(); } catch { /* ignore */ }
-  }
 }
 
 // ---------------------------------------------------------------------------
