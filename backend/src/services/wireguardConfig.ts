@@ -196,15 +196,15 @@ export function generateMikrotikConfigText(params: {
   presharedKey?: string;
   radiusSecret: string;
   radiusServerIp: string;
+  // NEW — embedded in the generated script
+  apiPassword: string;
+  callbackUrl: string;
 }): string {
   const { host, port } = parseEndpoint(params.serverEndpoint);
   const network = deriveNetwork30(params.routerTunnelIp);
 
   const pskNote = params.presharedKey
     ? `\n   preshared-key="${params.presharedKey}" \\`
-    : '';
-  const pskCmd = params.presharedKey
-    ? ` preshared-key="${params.presharedKey}"`
     : '';
 
   return `
@@ -218,7 +218,6 @@ and paste each command block below.
 
 Your tunnel IP : ${params.routerTunnelIp}
 VPS endpoint   : ${params.serverEndpoint}
-RADIUS server  : ${params.radiusServerIp}
 
 --------------------------------------------------------------------------------
 STEP 1: Create the WireGuard interface
@@ -253,52 +252,42 @@ This gives your router its unique address on the VPN.
 STEP 4: Route the Wasel subnet through the tunnel
 --------------------------------------------------------------------------------
 Without this route, only the /30 pair is reachable — you cannot reach the VPS
-tunnel IP (${params.radiusServerIp}) even though the handshake succeeds.
+tunnel IP even though the handshake succeeds.
 
   /ip route add dst-address=10.10.0.0/16 gateway=wg-wasel
 
 --------------------------------------------------------------------------------
-STEP 5: Configure RADIUS authentication
+STEP 5: Create Wasel API user
 --------------------------------------------------------------------------------
-This points the router's hotspot to the Wasel RADIUS server on the VPN.
+Wasel uses this user to auto-configure RADIUS, firewall, and hotspot over the
+tunnel. Keep it — deleting it stops Wasel from managing the router.
 
-  /radius add service=hotspot address=${params.radiusServerIp} \\
-     secret="${params.radiusSecret}"
-
---------------------------------------------------------------------------------
-STEP 6: Enable RADIUS on the hotspot profile
---------------------------------------------------------------------------------
-This tells the hotspot to authenticate users via RADIUS instead of local users.
-
-  /ip hotspot profile set default use-radius=yes \\
-     radius-default-domain=""
+  /user add name=wasel_auto password="${params.apiPassword}" \\
+     group=full comment="Wasel auto-provision — do not remove"
 
 --------------------------------------------------------------------------------
-STEP 7: Add firewall rules for RADIUS and WireGuard traffic
+STEP 6: Enable RouterOS API
 --------------------------------------------------------------------------------
-These rules ensure the router accepts RADIUS and WireGuard packets.
-They are placed at the top of the input chain so they are evaluated first.
+Allows Wasel to connect over the tunnel to finish setup automatically.
 
-  /ip firewall filter add chain=input protocol=udp \\
-     src-address=${params.radiusServerIp} dst-port=1812,1813 \\
-     action=accept comment="Allow RADIUS auth/acct from Wasel VPS" place-before=0
+  /ip service enable api
 
-  /ip firewall filter add chain=input protocol=udp \\
-     src-address=${params.radiusServerIp} dst-port=3799 \\
-     action=accept comment="Allow RADIUS CoA from Wasel VPS" place-before=1
+--------------------------------------------------------------------------------
+STEP 7: Notify Wasel
+--------------------------------------------------------------------------------
+Last step — pings Wasel over the tunnel so the app finalizes setup.
+You should see the checklist go green right after this runs.
 
-  /ip firewall filter add chain=input protocol=udp dst-port=51820 \\
-     action=accept comment="Allow WireGuard" place-before=2
+  /tool fetch url="${params.callbackUrl}" keep-result=no
 
 --------------------------------------------------------------------------------
 VERIFICATION
 --------------------------------------------------------------------------------
-After running all commands, verify the tunnel is up:
+Wasel should show a green checklist within seconds. If not, run the following
+commands manually to diagnose the tunnel:
 
   /interface wireguard peers print
   /ping ${params.radiusServerIp} count=4
-
-You should see handshake activity and successful pings to the VPS tunnel IP.
 
 ================================================================================
 `.trimStart();
@@ -318,12 +307,13 @@ export interface SetupStep {
 /**
  * Generate structured setup steps for the mobile app UI.
  *
- * After these 4 commands, the rest is configured automatically over the tunnel.
- *
  * Steps 1-4 bring the WireGuard tunnel up so Wasel can reach the router API.
- * Steps 5-6 are verification — confirm the tunnel is active and responsive.
+ * Step 5 creates the wasel_auto RouterOS user that the backend logs in as.
+ * Step 6 enables the RouterOS API service over the tunnel.
+ * Step 7 fires the callback URL so the backend finalizes provisioning immediately.
+ *
  * RADIUS, CoA, hotspot profile, and firewall rules are applied automatically
- * once the tunnel is detected.
+ * by the backend once the callback is received (or by the fallback poller).
  */
 export function generateSetupSteps(params: {
   routerPrivateKey: string;
@@ -333,6 +323,9 @@ export function generateSetupSteps(params: {
   presharedKey?: string;
   radiusSecret: string;
   radiusServerIp: string;
+  // NEW — embedded in the generated script
+  apiPassword: string;
+  callbackUrl: string;
 }): SetupStep[] {
   const { host, port } = parseEndpoint(params.serverEndpoint);
   const network = deriveNetwork30(params.routerTunnelIp);
@@ -368,15 +361,21 @@ export function generateSetupSteps(params: {
     },
     {
       step: 5,
-      title: 'Verify the tunnel',
-      description: 'Check that the WireGuard peer is active and the handshake is recent. Wasel will auto-configure RADIUS, hotspot, and firewall once this is seen.',
-      command: `/interface wireguard peers print`,
+      title: 'Create Wasel API user',
+      description: 'Wasel uses this user to auto-configure RADIUS, firewall, and hotspot over the tunnel. Keep it — deleting it stops Wasel from managing the router.',
+      command: `/user add name=wasel_auto password="${params.apiPassword}" group=full comment="Wasel auto-provision — do not remove"`,
     },
     {
       step: 6,
-      title: 'Ping the VPS',
-      description: 'You should see successful replies confirming the tunnel is working. Everything else is configured automatically.',
-      command: `/ping ${params.radiusServerIp} count=4`,
+      title: 'Enable RouterOS API',
+      description: 'Allows Wasel to connect over the tunnel to finish setup automatically.',
+      command: `/ip service enable api`,
+    },
+    {
+      step: 7,
+      title: 'Notify Wasel',
+      description: 'Last step — pings Wasel over the tunnel so the app finalizes setup. You should see the checklist go green right after this runs.',
+      command: `/tool fetch url="${params.callbackUrl}" keep-result=no`,
     },
   ];
 }

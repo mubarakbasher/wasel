@@ -47,9 +47,16 @@ class _SubscriptionStatusScreenState
     final state = ref.watch(subscriptionProvider);
     final sub = state.subscription;
     final pendingChange = state.pendingChange;
+    final router = GoRouter.of(context);
 
-    return Scaffold(
-      appBar: AppBar(title: Text(context.tr('subscription.title'))),
+    return PopScope(
+      canPop: router.canPop(),
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        router.go('/dashboard');
+      },
+      child: Scaffold(
+        appBar: AppBar(title: Text(context.tr('subscription.title'))),
       body: state.isLoading && sub == null && state.plans.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -71,6 +78,7 @@ class _SubscriptionStatusScreenState
                 ],
               ),
             ),
+      ),
     );
   }
 

@@ -70,6 +70,12 @@ vi.mock('../services/routerHealth.service', () => ({
   }),
 }));
 
+vi.mock('../services/routerProvision.service', () => ({
+  schedulePostAddProvision: vi.fn(),
+  provisionRouter: vi.fn().mockResolvedValue({}),
+  confirmHotspotInterface: vi.fn().mockResolvedValue(undefined),
+}));
+
 const now = new Date();
 
 const MOCK_ROUTER_ROW = {
@@ -102,7 +108,7 @@ beforeEach(() => {
 // ─── POST /api/v1/routers ────────────────────────────────────────────────────
 
 describe('POST /api/v1/routers', () => {
-  const validBody = { name: 'My Router', model: 'RB750Gr3', apiUser: 'admin' };
+  const validBody = { name: 'My Router' };
 
   it('should return 401 without auth', async () => {
     const res = await request(app).post('/api/v1/routers').send(validBody);
@@ -181,6 +187,7 @@ describe('POST /api/v1/routers', () => {
     mockClientQuery
       .mockResolvedValueOnce(undefined) // BEGIN
       .mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] }) // INSERT router RETURNING *
+      .mockResolvedValueOnce(undefined) // UPDATE tunnel_ip
       .mockResolvedValueOnce(undefined) // UPDATE nas_identifier
       .mockResolvedValueOnce(undefined) // INSERT nas
       .mockResolvedValueOnce(undefined); // COMMIT
@@ -192,8 +199,9 @@ describe('POST /api/v1/routers', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.name).toBe('Office Router');
-    expect(res.body.data.tunnelIp).toBe('10.10.0.2');
+    expect(res.body.data.router.name).toBe('Office Router');
+    expect(res.body.data.router.tunnelIp).toBe('10.10.0.2');
+    expect(Array.isArray(res.body.data.steps)).toBe(true);
   });
 });
 

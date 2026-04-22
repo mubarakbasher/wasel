@@ -459,7 +459,14 @@ export interface HotspotServer {
   id: string;
   name: string;
   interface: string;
+  profile: string;
   disabled: boolean;
+}
+
+export interface HotspotProfile {
+  id: string;
+  name: string;
+  useRadius: boolean;
 }
 
 export interface RouterAddress {
@@ -523,7 +530,25 @@ export async function listHotspotServers(api: any): Promise<HotspotServer[]> {
     id: String(e['.id'] ?? ''),
     name: String(e.name ?? ''),
     interface: String(e.interface ?? ''),
+    profile: String(e.profile ?? ''),
     disabled: String(e.disabled ?? 'false').toLowerCase() === 'true',
+  }));
+}
+
+/**
+ * List all hotspot profiles on the router. A fresh router has only the
+ * built-in `default` profile; `/ip hotspot setup` creates extra ones
+ * (typically `hsprof1`) that the actual hotspot server uses.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function listHotspotProfiles(api: any): Promise<HotspotProfile[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entries = (await (api as any).menu('/ip/hotspot/profile').get()) as Array<Record<string, unknown>>;
+  return entries.map((e) => ({
+    id: String(e['.id'] ?? ''),
+    name: String(e.name ?? ''),
+    useRadius: String(e['use-radius'] ?? 'false').toLowerCase() === 'yes' ||
+               String(e['use-radius'] ?? 'false').toLowerCase() === 'true',
   }));
 }
 

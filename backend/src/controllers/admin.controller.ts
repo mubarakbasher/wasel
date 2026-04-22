@@ -299,26 +299,22 @@ export async function createRouterForUser(req: AuthenticatedRequest, res: Respon
     const targetUserId = req.params.id as string;
     const { overrideQuota, ...routerBody } = req.body as {
       name: string;
-      model?: string;
-      rosVersion?: string;
-      apiUser?: string;
-      apiPass?: string;
       overrideQuota?: boolean;
     };
-    const router = await routerService.createRouter(
+    const result = await routerService.createRouter(
       targetUserId,
-      routerBody,
+      { name: routerBody.name },
       { skipQuotaCheck: overrideQuota === true },
     );
     await auditService.logAction({
       adminId: req.user!.id,
       action: 'router.create_for_user',
       targetEntity: 'router',
-      targetId: router.id,
+      targetId: result.router.id,
       details: { userId: targetUserId, name: routerBody.name, overrideQuota: !!overrideQuota },
       ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
-    res.status(201).json({ success: true, data: router });
+    res.status(201).json({ success: true, data: { router: result.router, vpnIp: result.vpnIp, steps: result.steps } });
   } catch (error) {
     next(error);
   }

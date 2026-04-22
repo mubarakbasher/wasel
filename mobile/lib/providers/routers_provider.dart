@@ -77,25 +77,14 @@ class RoutersNotifier extends StateNotifier<RoutersState> {
     }
   }
 
-  Future<bool> createRouter({
-    required String name,
-    String? model,
-    String? rosVersion,
-    String? apiUser,
-    String? apiPass,
-  }) async {
-    state = state.copyWith(isLoading: true, clearError: true);
+  Future<bool> createRouter({required String name}) async {
+    state = state.copyWith(isLoading: true, clearError: true, clearGuide: true);
     try {
-      final router = await _service.createRouter(
-        name: name,
-        model: model,
-        rosVersion: rosVersion,
-        apiUser: apiUser,
-        apiPass: apiPass,
-      );
+      final result = await _service.createRouter(name: name);
       state = state.copyWith(
-        routers: [router, ...state.routers],
-        selectedRouter: router,
+        routers: [result.router, ...state.routers],
+        selectedRouter: result.router,
+        setupGuide: result.setupGuide,
         isLoading: false,
       );
       return true;

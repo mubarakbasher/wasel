@@ -54,6 +54,11 @@ const envSchema = z.object({
 
   // Firebase (Push Notifications)
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+
+  // Public base URL — used for callback URLs embedded in router setup scripts.
+  // Must be reachable from the router over the internet (not the tunnel).
+  // Example: https://api.wasel.app
+  PUBLIC_BASE_URL: z.string().url().default('http://localhost:3000'),
 });
 
 // Guard against wildcard CORS before we even parse — a misconfigured '*' with

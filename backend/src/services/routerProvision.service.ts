@@ -15,6 +15,7 @@ import {
   setSingleton,
   listInterfaces,
   listHotspotServers,
+  listHotspotProfiles,
   listAddresses,
   ensureWgInLanList,
   RouterInterface,

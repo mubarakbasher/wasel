@@ -116,7 +116,7 @@ class RouterSetupGuide {
     required this.routerName,
     required this.setupGuide,
     this.tunnelIp,
-    required this.serverEndpoint,
+    this.serverEndpoint = '',
     this.steps = const [],
   });
 
@@ -125,13 +125,24 @@ class RouterSetupGuide {
       routerName: json['routerName'] as String,
       setupGuide: json['setupGuide'] as String,
       tunnelIp: json['tunnelIp'] as String?,
-      serverEndpoint: json['serverEndpoint'] as String,
+      serverEndpoint: json['serverEndpoint'] as String? ?? '',
       steps: (json['steps'] as List<dynamic>?)
               ?.map((e) => SetupStep.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );
   }
+}
+
+/// Bundle returned by [RouterService.createRouter].
+class CreateRouterResult {
+  final RouterModel router;
+  final RouterSetupGuide setupGuide;
+
+  const CreateRouterResult({
+    required this.router,
+    required this.setupGuide,
+  });
 }
 
 class RouterService {
@@ -150,23 +161,26 @@ class RouterService {
     return RouterModel.fromJson(response.data['data'] as Map<String, dynamic>);
   }
 
-  Future<RouterModel> createRouter({
-    required String name,
-    String? model,
-    String? rosVersion,
-    String? apiUser,
-    String? apiPass,
-  }) async {
-    final body = <String, dynamic>{'name': name};
-    if (model != null && model.isNotEmpty) body['model'] = model;
-    if (rosVersion != null && rosVersion.isNotEmpty) {
-      body['rosVersion'] = rosVersion;
-    }
-    if (apiUser != null && apiUser.isNotEmpty) body['apiUser'] = apiUser;
-    if (apiPass != null && apiPass.isNotEmpty) body['apiPass'] = apiPass;
+  Future<CreateRouterResult> createRouter({required String name}) async {
+    final response = await _api.dio.post('/routers', data: {'name': name});
+    final data = response.data['data'] as Map<String, dynamic>;
 
-    final response = await _api.dio.post('/routers', data: body);
-    return RouterModel.fromJson(response.data['data'] as Map<String, dynamic>);
+    final router = RouterModel.fromJson(data['router'] as Map<String, dynamic>);
+
+    final rawSteps = (data['steps'] as List<dynamic>?)
+            ?.map((e) => SetupStep.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const <SetupStep>[];
+
+    final setupGuide = RouterSetupGuide(
+      routerName: router.name,
+      tunnelIp: data['vpnIp'] as String?,
+      steps: rawSteps,
+      // Concatenate all commands for "Copy All" — newline-separated.
+      setupGuide: rawSteps.map((s) => s.command).join('\n'),
+    );
+
+    return CreateRouterResult(router: router, setupGuide: setupGuide);
   }
 
   Future<RouterModel> updateRouter(

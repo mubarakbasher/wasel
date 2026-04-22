@@ -114,7 +114,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
           FilledButton(
             onPressed: () {
               Navigator.of(dialogCtx).pop();
-              context.go('/subscription');
+              context.push('/subscription');
             },
             child: Text(context.tr('subscription.viewPlans')),
           ),

@@ -20,26 +20,14 @@ class AddRouterScreen extends ConsumerStatefulWidget {
 }
 
 class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
-  List<String> _stepLabels(BuildContext context) => [
-        context.tr('routers.stepInfo'),
-        context.tr('routers.stepDetails'),
-        context.tr('routers.setupGuide'),
-      ];
-
-  final _pageController = PageController();
-  final _step1FormKey = GlobalKey<FormState>();
-  final _step2FormKey = GlobalKey<FormState>();
-
+  final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _modelController = TextEditingController();
-  final _rosVersionController = TextEditingController();
-  final _apiUserController = TextEditingController();
-  final _apiPassController = TextEditingController();
+  final _scrollController = ScrollController();
 
-  int _currentStep = 0;
-  bool _obscurePassword = true;
-  bool _isSubmitting = false;
-  String? _createdRouterId;
+  bool _isGenerating = false;
+  String? _generatedRouterId;
+  String? _generatedVpnIp;
+  List<SetupStep>? _steps;
 
   @override
   void initState() {
@@ -49,86 +37,82 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
 
   @override
   void dispose() {
-    _pageController.dispose();
     _nameController.dispose();
-    _modelController.dispose();
-    _rosVersionController.dispose();
-    _apiUserController.dispose();
-    _apiPassController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _goNext() {
-    if (!_step1FormKey.currentState!.validate()) return;
-    FocusScope.of(context).unfocus();
-    _pageController.animateToPage(1,
-        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-    setState(() => _currentStep = 1);
-  }
+  bool get _scriptGenerated => _generatedRouterId != null;
 
-  void _goBack() {
+  Future<void> _generate() async {
+    if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    _pageController.animateToPage(_currentStep - 1,
-        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-    setState(() => _currentStep--);
-  }
 
-  Future<void> _submitAndLoadGuide() async {
-    if (!_step2FormKey.currentState!.validate()) return;
-    FocusScope.of(context).unfocus();
-    setState(() => _isSubmitting = true);
+    setState(() => _isGenerating = true);
     ref.read(routersProvider.notifier).clearError();
 
-    final success = await ref.read(routersProvider.notifier).createRouter(
-          name: _nameController.text.trim(),
-          model: _modelController.text.trim().isEmpty
-              ? null
-              : _modelController.text.trim(),
-          rosVersion: _rosVersionController.text.trim().isEmpty
-              ? null
-              : _rosVersionController.text.trim(),
-          apiUser: _apiUserController.text.trim().isEmpty
-              ? null
-              : _apiUserController.text.trim(),
-          apiPass:
-              _apiPassController.text.isEmpty ? null : _apiPassController.text,
-        );
+    final success = await ref
+        .read(routersProvider.notifier)
+        .createRouter(name: _nameController.text.trim());
 
     if (!mounted) return;
 
     if (success) {
-      final router = ref.read(routersProvider).selectedRouter;
-      if (router != null) {
-        _createdRouterId = router.id;
-        await ref.read(routersProvider.notifier).loadSetupGuide(router.id);
-      }
-      if (mounted) {
-        _pageController.animateToPage(2,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut);
-        setState(() {
-          _currentStep = 2;
-          _isSubmitting = false;
-        });
-      }
+      final state = ref.read(routersProvider);
+      final router = state.selectedRouter;
+      final guide = state.setupGuide;
+
+      setState(() {
+        _isGenerating = false;
+        _generatedRouterId = router?.id;
+        _generatedVpnIp = guide?.tunnelIp ?? router?.tunnelIp;
+        _steps = guide?.steps;
+      });
+
+      // Scroll to reveal generated content after the frame is built.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     } else {
-      setState(() => _isSubmitting = false);
+      setState(() => _isGenerating = false);
     }
   }
 
   void _finish() {
-    if (_createdRouterId != null) {
-      context.pushReplacement('/routers/detail', extra: _createdRouterId);
+    if (_generatedRouterId != null) {
+      context.pushReplacement('/routers/detail', extra: _generatedRouterId);
     } else {
       context.pop();
     }
   }
 
-  void _copyToClipboard(String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr('routers.guideCopied'))),
+  Future<bool> _confirmLeave() async {
+    if (!_scriptGenerated) return true;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.tr('routers.leaveWarningTitle')),
+        content: Text(context.tr('routers.leaveWarningBody')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(context.tr('common.cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: Text(context.tr('routers.leaveAnyway')),
+          ),
+        ],
+      ),
     );
+    return result ?? false;
   }
 
   @override
@@ -136,149 +120,198 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
     final state = ref.watch(routersProvider);
 
     return PopScope(
-      canPop: _currentStep == 0 || _currentStep == 2,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _currentStep == 1) _goBack();
+      canPop: !_scriptGenerated,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop) {
+          final shouldLeave = await _confirmLeave();
+          if (shouldLeave && mounted) {
+            // ignore: use_build_context_synchronously
+            context.pop();
+          }
+        }
       },
       child: Scaffold(
         appBar: AppBar(
           title: Text(context.tr('routers.addRouter')),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              if (_currentStep == 1) {
-                _goBack();
-              } else {
+            onPressed: () async {
+              final shouldLeave = await _confirmLeave();
+              if (shouldLeave && mounted) {
+                // ignore: use_build_context_synchronously
                 context.pop();
               }
             },
           ),
         ),
-        body: Column(
+        body: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
-            _buildProgressIndicator(),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _buildStep1RouterInfo(state),
-                  _buildStep2RouterDetails(state),
-                  _buildStep3SetupGuide(state),
-                ],
-              ),
+            _NameSection(
+              formKey: _formKey,
+              nameController: _nameController,
+              isGenerating: _isGenerating,
+              scriptGenerated: _scriptGenerated,
+              error: (!_scriptGenerated) ? state.error : null,
+              onGenerate: _generate,
             ),
-            _buildBottomBar(state),
+            if (_scriptGenerated) ...[
+              const SizedBox(height: AppSpacing.xxl),
+              _VpnBanner(vpnIp: _generatedVpnIp),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                context.tr('routers.scriptInstructions'),
+                style: AppTypography.subhead
+                    .copyWith(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              if (_steps != null && _steps!.isNotEmpty)
+                ..._steps!.map((step) => _buildStepCard(step))
+              else
+                _buildNoStepsFallback(state),
+              const SizedBox(height: AppSpacing.md),
+              _CopyAllButton(
+                onPressed: () => _copyAllCommands(),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              _AutoConfigPanel(routerId: _generatedRouterId!),
+              const SizedBox(height: AppSpacing.lg),
+              _DoneButton(onPressed: _finish),
+              const SizedBox(height: AppSpacing.lg),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProgressIndicator() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.xxl, vertical: AppSpacing.lg),
-      child: Row(
-        children: List.generate(5, (index) {
-          // 0, 2, 4 = circles; 1, 3 = connectors
-          if (index.isEven) {
-            final stepIndex = index ~/ 2;
-            final isCompleted = stepIndex < _currentStep;
-            final isActive = stepIndex == _currentStep;
-            return _buildStepCircle(
-              stepIndex: stepIndex,
-              isCompleted: isCompleted,
-              isActive: isActive,
-            );
-          } else {
-            final leftStepIndex = index ~/ 2;
-            final isCompleted = leftStepIndex < _currentStep;
-            return Expanded(
-              child: Container(
-                height: 2,
-                color: isCompleted ? AppColors.success : AppColors.border,
-              ),
-            );
-          }
-        }),
+  void _copyAllCommands() {
+    final commands = (_steps ?? []).map((s) => s.command).join('\n');
+    if (commands.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: commands));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.tr('routers.guideCopied'))),
+    );
+  }
+
+  Widget _buildNoStepsFallback(RoutersState state) {
+    final guide = state.setupGuide;
+    if (guide == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: SelectableText(
+        guide.setupGuide,
+        style: const TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 13,
+          height: 1.5,
+          color: AppColors.textPrimary,
+        ),
       ),
     );
   }
 
-  Widget _buildStepCircle({
-    required int stepIndex,
-    required bool isCompleted,
-    required bool isActive,
-  }) {
-    Color bgColor;
-    Widget child;
+  // Step 7 is the final "notify Wasel" step — highlight it green.
+  Widget _buildStepCard(SetupStep step) {
+    final isFinal = step.step == 7;
+    // Step 5 creates the wasel_auto API user — give it a subtle tint.
+    final isApiUser = step.step == 5;
 
-    if (isCompleted) {
-      bgColor = AppColors.success;
-      child = const Icon(Icons.check, size: 16, color: Colors.white);
-    } else if (isActive) {
-      bgColor = AppColors.primary;
-      child = Text(
-        '${stepIndex + 1}',
-        style: const TextStyle(
-            fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
-      );
-    } else {
-      bgColor = AppColors.border;
-      child = Text(
-        '${stepIndex + 1}',
-        style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary),
-      );
-    }
+    final borderColor = isFinal
+        ? AppColors.success.withValues(alpha: 0.5)
+        : isApiUser
+            ? AppColors.primary.withValues(alpha: 0.3)
+            : AppColors.border;
+    final badgeColor =
+        isFinal ? AppColors.success : AppColors.primary;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: bgColor),
-          alignment: Alignment.center,
-          child: child,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(color: borderColor),
         ),
-        const SizedBox(height: AppSpacing.xs),
-        Text(
-          _stepLabels(context)[stepIndex],
-          style: AppTypography.caption2.copyWith(
-            color: isActive || isCompleted
-                ? AppColors.textPrimary
-                : AppColors.textTertiary,
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _StepCardHeader(
+              step: step,
+              badgeColor: badgeColor,
+              isFinal: isFinal,
+            ),
+            _StepDescription(step: step),
+            _StepCommand(
+              step: step,
+              onCopy: () {
+                Clipboard.setData(ClipboardData(text: step.command));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        context.tr('routers.stepCopied', [step.step.toString()])),
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
+}
 
-  Widget _buildStep1RouterInfo(RoutersState state) {
+// ---------------------------------------------------------------------------
+// Name + Generate section
+// ---------------------------------------------------------------------------
+
+class _NameSection extends StatelessWidget {
+  final GlobalKey<FormState> formKey;
+  final TextEditingController nameController;
+  final bool isGenerating;
+  final bool scriptGenerated;
+  final String? error;
+  final VoidCallback onGenerate;
+
+  const _NameSection({
+    required this.formKey,
+    required this.nameController,
+    required this.isGenerating,
+    required this.scriptGenerated,
+    required this.error,
+    required this.onGenerate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Form(
-      key: _step1FormKey,
-      child: ListView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+      key: formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(context.tr('routers.basicInfo'), style: AppTypography.title3),
+          const SizedBox(height: AppSpacing.lg),
+          Text(context.tr('routers.addRouter'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            context.tr('routers.basicInfoSubtitle'),
+            context.tr('routers.nameYourRouter'),
             style:
                 AppTypography.subhead.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppSpacing.xxl),
-          if (state.error != null && _currentStep == 0) ...[
-            _buildErrorBox(state.error!),
+          if (error != null) ...[
+            _ErrorBox(error: error!),
             const SizedBox(height: AppSpacing.lg),
           ],
           TextFormField(
-            controller: _nameController,
+            controller: nameController,
+            enabled: !scriptGenerated,
             decoration: InputDecoration(
               labelText: '${context.tr('routers.routerName')} *',
               prefixIcon: const Icon(Icons.router),
@@ -296,401 +329,35 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
               }
               return null;
             },
-            onChanged: (_) => ref.read(routersProvider.notifier).clearError(),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          TextFormField(
-            controller: _modelController,
-            decoration: InputDecoration(
-              labelText: context.tr('routers.model'),
-              prefixIcon: const Icon(Icons.devices),
-              hintText: context.tr('routers.modelHint'),
+          const SizedBox(height: AppSpacing.xl),
+          if (!scriptGenerated)
+            SizedBox(
+              height: 48,
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: isGenerating ? null : onGenerate,
+                child: isGenerating
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(context.tr('routers.generateScript')),
+              ),
             ),
-            validator: (value) {
-              if (value != null && value.length > 100) {
-                return context.tr('routers.modelMaxLength');
-              }
-              return null;
-            },
-          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildStep2RouterDetails(RoutersState state) {
-    return Form(
-      key: _step2FormKey,
-      child: ListView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        children: [
-          Text(context.tr('routers.technicalDetails'),
-              style: AppTypography.title3),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            context.tr('routers.technicalDetailsSubtitle'),
-            style:
-                AppTypography.subhead.copyWith(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: AppSpacing.xxl),
-          if (state.error != null && _currentStep == 1) ...[
-            _buildErrorBox(state.error!),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-          TextFormField(
-            controller: _rosVersionController,
-            decoration: InputDecoration(
-              labelText: context.tr('routers.rosVersion'),
-              prefixIcon: const Icon(Icons.system_update),
-              hintText: context.tr('routers.rosVersionHint'),
-            ),
-            validator: (value) {
-              if (value != null && value.length > 20) {
-                return context.tr('routers.versionMaxLength');
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          TextFormField(
-            controller: _apiUserController,
-            decoration: InputDecoration(
-              labelText: context.tr('routers.apiUsername'),
-              prefixIcon: const Icon(Icons.person),
-              hintText: context.tr('routers.apiUsernameHint'),
-            ),
-            validator: (value) {
-              if (value != null && value.length > 100) {
-                return context.tr('routers.usernameMaxLength');
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          TextFormField(
-            controller: _apiPassController,
-            obscureText: _obscurePassword,
-            decoration: InputDecoration(
-              labelText: context.tr('routers.apiPassword'),
-              prefixIcon: const Icon(Icons.lock),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                ),
-                onPressed: () =>
-                    setState(() => _obscurePassword = !_obscurePassword),
-              ),
-            ),
-            validator: (value) {
-              if (value != null && value.length > 255) {
-                return context.tr('routers.passwordMaxLength');
-              }
-              return null;
-            },
-          ),
-        ],
-      ),
-    );
-  }
+class _ErrorBox extends StatelessWidget {
+  final String error;
+  const _ErrorBox({required this.error});
 
-  Widget _buildStep3SetupGuide(RoutersState state) {
-    final guide = state.setupGuide;
-
-    if (_isSubmitting || (state.isLoading && guide == null)) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (state.error != null && guide == null && _currentStep == 2) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xxxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, size: 64, color: AppColors.error),
-              const SizedBox(height: AppSpacing.lg),
-              Text(state.error!,
-                  style: AppTypography.body, textAlign: TextAlign.center),
-              const SizedBox(height: AppSpacing.xxl),
-              SizedBox(
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (_createdRouterId != null) {
-                      ref
-                          .read(routersProvider.notifier)
-                          .loadSetupGuide(_createdRouterId!);
-                    }
-                  },
-                  child: Text(context.tr('common.retry')),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (guide == null) {
-      return Center(
-        child: Text(context.tr('routers.setupNotAvailable'),
-            style: AppTypography.body
-                .copyWith(color: AppColors.textSecondary)),
-      );
-    }
-
-    return _buildGuideContent(guide);
-  }
-
-  Widget _buildGuideContent(RouterSetupGuide guide) {
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      children: [
-        Text(guide.routerName, style: AppTypography.title2),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          context.tr('routers.setupInstructions'),
-          style:
-              AppTypography.subhead.copyWith(color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
-          children: [
-            if (guide.tunnelIp != null)
-              Chip(
-                avatar:
-                    Icon(Icons.lan, size: 16, color: AppColors.textSecondary),
-                label: Text(guide.tunnelIp!, style: AppTypography.caption1),
-                backgroundColor: AppColors.background,
-                side: BorderSide(color: AppColors.border),
-              ),
-            Chip(
-              avatar:
-                  Icon(Icons.dns, size: 16, color: AppColors.textSecondary),
-              label:
-                  Text(guide.serverEndpoint, style: AppTypography.caption1),
-              backgroundColor: AppColors.background,
-              side: BorderSide(color: AppColors.border),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xxl),
-        if (guide.steps.isNotEmpty)
-          ...guide.steps.map((step) => _buildStepCard(step))
-        else
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: SelectableText(
-              guide.setupGuide,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 13,
-                height: 1.5,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        const SizedBox(height: AppSpacing.xxl),
-        SizedBox(
-          height: 48,
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () => _copyToClipboard(guide.setupGuide),
-            icon: const Icon(Icons.copy),
-            label: Text(context.tr('routers.copyAllClipboard')),
-          ),
-        ),
-        // Auto-provisioning panel — only shown once the router is created.
-        if (_createdRouterId != null) ...[
-          const SizedBox(height: AppSpacing.xxl),
-          _AutoConfigPanel(routerId: _createdRouterId!),
-        ],
-        const SizedBox(height: AppSpacing.lg),
-      ],
-    );
-  }
-
-  // Backend now returns 6 steps: 4 WG bootstrap + 2 verification.
-  // Verification steps are step numbers 5 and 6.
-  Widget _buildStepCard(SetupStep step) {
-    final isVerification = step.step >= 5;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(
-            color: isVerification
-                ? AppColors.success.withValues(alpha: 0.4)
-                : AppColors.border,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg, AppSpacing.md, AppSpacing.md, 0),
-              child: Row(
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isVerification
-                          ? AppColors.success
-                          : AppColors.primary,
-                    ),
-                    alignment: Alignment.center,
-                    child: isVerification
-                        ? const Icon(Icons.check, size: 16, color: Colors.white)
-                        : Text(
-                            '${step.step}',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      step.title,
-                      style: AppTypography.headline.copyWith(fontSize: 15),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
-              child: Text(
-                step.description,
-                style: AppTypography.caption1
-                    .copyWith(color: AppColors.textSecondary),
-              ),
-            ),
-            Container(
-              margin: const EdgeInsets.fromLTRB(
-                  AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.sm),
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: SelectableText(
-                      step.command,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        height: 1.5,
-                        color: Color(0xFFD4D4D4),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
-                  InkWell(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: step.command));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(context.tr(
-                              'routers.stepCopied', [step.step.toString()])),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
-                    },
-                    child: const Icon(
-                      Icons.copy,
-                      size: 18,
-                      color: Color(0xFF9E9E9E),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomBar(RoutersState state) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Row(
-          children: [
-            if (_currentStep == 1) ...[
-              Expanded(
-                child: SizedBox(
-                  height: 48,
-                  child: OutlinedButton(
-                    onPressed: _isSubmitting ? null : _goBack,
-                    child: Text(context.tr('common.back')),
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.lg),
-            ],
-            if (_currentStep == 0)
-              Expanded(
-                child: SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _goNext,
-                    child: Text(context.tr('common.next')),
-                  ),
-                ),
-              ),
-            if (_currentStep == 1)
-              Expanded(
-                child: SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _isSubmitting ? null : _submitAndLoadGuide,
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(context.tr('routers.createRouter')),
-                  ),
-                ),
-              ),
-            if (_currentStep == 2)
-              Expanded(
-                child: SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _finish,
-                    child: Text(context.tr('common.done')),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorBox(String error) {
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -700,6 +367,196 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
       child: Text(
         error,
         style: AppTypography.subhead.copyWith(color: AppColors.error),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// VPN IP banner
+// ---------------------------------------------------------------------------
+
+class _VpnBanner extends StatelessWidget {
+  final String? vpnIp;
+  const _VpnBanner({this.vpnIp});
+
+  @override
+  Widget build(BuildContext context) {
+    if (vpnIp == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, color: AppColors.success, size: 20),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              context.tr('routers.vpnAssigned', [vpnIp!]),
+              style: AppTypography.subhead
+                  .copyWith(color: AppColors.success, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step card sub-widgets
+// ---------------------------------------------------------------------------
+
+class _StepCardHeader extends StatelessWidget {
+  final SetupStep step;
+  final Color badgeColor;
+  final bool isFinal;
+
+  const _StepCardHeader({
+    required this.step,
+    required this.badgeColor,
+    required this.isFinal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.md, AppSpacing.md, 0),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+                shape: BoxShape.circle, color: badgeColor),
+            alignment: Alignment.center,
+            child: isFinal
+                ? const Icon(Icons.check, size: 16, color: Colors.white)
+                : Text(
+                    '${step.step}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              step.title,
+              style: AppTypography.headline.copyWith(fontSize: 15),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepDescription extends StatelessWidget {
+  final SetupStep step;
+  const _StepDescription({required this.step});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
+      child: Text(
+        step.description,
+        style:
+            AppTypography.caption1.copyWith(color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
+class _StepCommand extends StatelessWidget {
+  final SetupStep step;
+  final VoidCallback onCopy;
+
+  const _StepCommand({required this.step, required this.onCopy});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: SelectableText(
+              step.command,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                height: 1.5,
+                color: Color(0xFFD4D4D4),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          InkWell(
+            onTap: onCopy,
+            child: const Icon(
+              Icons.copy,
+              size: 18,
+              color: Color(0xFF9E9E9E),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Copy All + Done buttons
+// ---------------------------------------------------------------------------
+
+class _CopyAllButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  const _CopyAllButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.copy),
+        label: Text(context.tr('routers.copyAllClipboard')),
+      ),
+    );
+  }
+}
+
+class _DoneButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  const _DoneButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        child: Text(context.tr('common.done')),
       ),
     );
   }

@@ -1,11 +1,7 @@
 import { z } from 'zod';
 
 export const createRouterSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(100, 'Name must be at most 100 characters'),
-  model: z.string().max(100, 'Model must be at most 100 characters').optional(),
-  rosVersion: z.string().max(20, 'ROS version must be at most 20 characters').optional(),
-  apiUser: z.string().max(100, 'API user must be at most 100 characters').optional(),
-  apiPass: z.string().max(255, 'API password must be at most 255 characters').optional(),
+  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be at most 100 characters'),
 });
 
 export const updateRouterSchema = z.object({

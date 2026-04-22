@@ -276,7 +276,7 @@ class ApiClient {
         SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
       );
 
-      GoRouter.of(navigatorState.context).go('/subscription');
+      GoRouter.of(navigatorState.context).push('/subscription');
     } catch (_) {
       // Never crash the caller — paywall redirect is best-effort.
     }

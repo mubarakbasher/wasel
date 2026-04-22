@@ -1,5 +1,7 @@
-import { Response, NextFunction } from 'express';
+import { createHmac, timingSafeEqual } from 'crypto';
+import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
+import { config } from '../config';
 import * as routerService from '../services/router.service';
 import { runHealthCheck } from '../services/routerHealth.service';
 import { provisionRouter, confirmHotspotInterface } from '../services/routerProvision.service';
@@ -9,11 +11,63 @@ import { pool } from '../config/database';
 
 export async function createRouter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const router = await routerService.createRouter(req.user!.id, req.body);
+    const result = await routerService.createRouter(req.user!.id, req.body);
     res.status(201).json({
       success: true,
-      data: router,
+      data: {
+        router: result.router,
+        vpnIp: result.vpnIp,
+        steps: result.steps,
+      },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Public callback endpoint — called by the RouterOS `/tool fetch` in setup step 7.
+ * Authenticated only by HMAC-SHA256(JWT_ACCESS_SECRET, routerId) so no JWT is needed.
+ * Always returns 200 so the `/tool fetch` on the router does not error out.
+ */
+export async function scriptCallback(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const routerId = req.query['routerId'] as string | undefined;
+    const sig = req.query['sig'] as string | undefined;
+
+    if (!routerId || !sig) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_CALLBACK', message: 'missing routerId or sig' },
+      });
+      return;
+    }
+
+    const expected = createHmac('sha256', config.JWT_ACCESS_SECRET).update(routerId).digest('hex');
+
+    // timingSafeEqual requires equal-length buffers; mismatched lengths would throw.
+    let sigValid = false;
+    try {
+      const sigBuf = Buffer.from(sig, 'hex');
+      const expBuf = Buffer.from(expected, 'hex');
+      sigValid = sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf);
+    } catch {
+      sigValid = false;
+    }
+
+    if (!sigValid) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_SIGNATURE', message: 'bad signature' },
+      });
+      return;
+    }
+
+    // Fire-and-forget — errors are swallowed inside finalizePendingRouter so
+    // the router always gets a 200 back from its /tool fetch call.
+    void routerService.finalizePendingRouter(routerId);
+
+    res.status(200).json({ success: true, data: { message: 'ok' } });
   } catch (error) {
     next(error);
   }

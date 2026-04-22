@@ -66,6 +66,12 @@ vi.mock('../services/routerHealth.service', () => ({
   }),
 }));
 
+vi.mock('../services/routerProvision.service', () => ({
+  schedulePostAddProvision: vi.fn(),
+  provisionRouter: vi.fn().mockResolvedValue({}),
+  confirmHotspotInterface: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -273,7 +279,7 @@ describe('POST /api/v1/admin/users/:id/routers', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.name).toBe('Test Router');
+    expect(res.body.data.router.name).toBe('Test Router');
   });
 
   it('returns 403 when Starter user already has 1 router (quota hit)', async () => {

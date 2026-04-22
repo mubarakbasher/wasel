@@ -400,6 +400,18 @@ class AppLocalizations {
     'routers.versionMaxLength': 'Version must be at most 20 characters',
     'routers.usernameMaxLength': 'Username must be at most 100 characters',
     'routers.passwordMaxLength': 'Password must be at most 255 characters',
+    'routers.generateScript': 'Generate Setup Script',
+    'routers.generating': 'Generating...',
+    'routers.vpnAssigned': 'Your VPN IP: {0}',
+    'routers.scriptInstructions':
+        'Paste these commands into your Mikrotik terminal (SSH, Winbox terminal, or WebFig). The last step tells Wasel you\'re done.',
+    'routers.nameYourRouter':
+        'Give your router a name. Wasel will generate a setup script you paste into RouterOS.',
+    'routers.finalStep': 'Final — notifies Wasel',
+    'routers.leaveWarningTitle': 'Leave this screen?',
+    'routers.leaveWarningBody':
+        'The script has been generated but setup is not complete. Leaving now will leave this router in a pending state.',
+    'routers.leaveAnyway': 'Leave anyway',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} selected',
@@ -1017,6 +1029,18 @@ class AppLocalizations {
     'routers.versionMaxLength': 'يجب ألا يتجاوز الإصدار 20 حرف',
     'routers.usernameMaxLength': 'يجب ألا يتجاوز اسم المستخدم 100 حرف',
     'routers.passwordMaxLength': 'يجب ألا تتجاوز كلمة المرور 255 حرف',
+    'routers.generateScript': 'إنشاء سكريبت الإعداد',
+    'routers.generating': 'جارٍ الإنشاء...',
+    'routers.vpnAssigned': 'عنوان VPN الخاص بك: {0}',
+    'routers.scriptInstructions':
+        'الصق هذه الأوامر في طرفية Mikrotik (SSH أو Winbox أو WebFig). الخطوة الأخيرة تُعلم واصل بأنك انتهيت.',
+    'routers.nameYourRouter':
+        'أعط راوترك اسماً. سيقوم واصل بإنشاء سكريبت إعداد تلصقه في RouterOS.',
+    'routers.finalStep': 'أخيراً — يُعلم واصل',
+    'routers.leaveWarningTitle': 'مغادرة هذه الشاشة؟',
+    'routers.leaveWarningBody':
+        'تم إنشاء السكريبت لكن الإعداد لم يكتمل. المغادرة الآن ستترك هذا الراوتر في حالة معلقة.',
+    'routers.leaveAnyway': 'غادر على أي حال',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} محدد',

@@ -65,6 +65,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(dashboardProvider);
+    final isActive =
+        ref.watch(subscriptionProvider).subscription?.isActive ?? false;
 
     final unreadCount = ref.watch(notificationsProvider).unreadCount;
 
@@ -80,7 +82,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const SizedBox(width: AppSpacing.sm),
         ],
       ),
-      body: _buildBody(state),
+      body: _buildBody(state, isActive),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _onQuickCreate(state),
         icon: const Icon(Icons.add),
@@ -123,7 +125,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           FilledButton(
             onPressed: () {
               Navigator.of(dialogCtx).pop();
-              context.go('/subscription');
+              context.push('/subscription');
             },
             child: Text(context.tr('subscription.viewPlans')),
           ),
@@ -132,7 +134,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildBody(DashboardState state) {
+  Widget _buildBody(DashboardState state, bool isActive) {
     if (state.isLoading && state.data == null) {
       return _buildLoadingSkeleton();
     }
@@ -151,15 +153,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           children: [
             _buildSubscriptionCard(state),
             const SizedBox(height: AppSpacing.lg),
-            _buildQuickStatsRow(state),
+            _buildQuickStatsRow(state, isActive),
             const SizedBox(height: AppSpacing.md),
-            _buildSecondStatsRow(state),
+            _buildSecondStatsRow(state, isActive),
             const SizedBox(height: AppSpacing.lg),
-            _buildDataUsageCard(state),
+            _buildDataUsageCard(state, isActive),
             const SizedBox(height: AppSpacing.lg),
             _buildRoutersCard(state),
             const SizedBox(height: AppSpacing.lg),
-            _buildSessionsByRouterCard(state),
+            _buildSessionsByRouterCard(state, isActive),
             const SizedBox(height: 80), // Space for FAB
           ],
         ),
@@ -186,7 +188,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: AppSpacing.sm),
               FilledButton(
-                onPressed: () => context.go('/subscription'),
+                onPressed: () => context.push('/subscription'),
                 child: Text(context.tr('dashboard.viewPlans')),
               ),
             ],
@@ -293,14 +295,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // ---------------------------------------------------------------------------
   // Quick Stats Row
   // ---------------------------------------------------------------------------
-  Widget _buildQuickStatsRow(DashboardState state) {
+  Widget _buildQuickStatsRow(DashboardState state, bool isActive) {
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
             icon: Icons.wifi,
             label: context.tr('dashboard.activeSessions'),
-            value: '${state.totalActiveSessions}',
+            value: isActive ? '${state.totalActiveSessions}' : '--',
             color: AppColors.primary,
           ),
         ),
@@ -309,7 +311,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: _buildStatCard(
             icon: Icons.confirmation_number,
             label: context.tr('dashboard.vouchersToday'),
-            value: '${state.vouchersUsedToday}',
+            value: isActive ? '${state.vouchersUsedToday}' : '--',
             color: AppColors.secondary,
           ),
         ),
@@ -317,7 +319,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildSecondStatsRow(DashboardState state) {
+  Widget _buildSecondStatsRow(DashboardState state, bool isActive) {
     final revenue = state.dailyRevenue;
     final revenueText = revenue == revenue.roundToDouble()
         ? '\$${revenue.toStringAsFixed(0)}'
@@ -329,7 +331,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: _buildStatCard(
             icon: Icons.payments,
             label: context.tr('dashboard.dailyRevenue'),
-            value: revenueText,
+            value: isActive ? revenueText : '--',
             color: AppColors.success,
           ),
         ),
@@ -375,10 +377,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // ---------------------------------------------------------------------------
   // Data Usage Card (24h)
   // ---------------------------------------------------------------------------
-  Widget _buildDataUsageCard(DashboardState state) {
+  Widget _buildDataUsageCard(DashboardState state, bool isActive) {
     final usage = state.dataUsage24h;
     final totalInput = usage['totalInput'] as int? ?? 0;
     final totalOutput = usage['totalOutput'] as int? ?? 0;
+    final downloadText = isActive ? _formatBytes(totalInput) : '--';
+    final uploadText = isActive ? _formatBytes(totalOutput) : '--';
 
     return Card(
       child: Padding(
@@ -405,7 +409,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               style: const TextStyle(
                                   color: AppColors.textSecondary,
                                   fontSize: 12)),
-                          Text(_formatBytes(totalInput),
+                          Text(downloadText,
                               style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 15)),
@@ -427,7 +431,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               style: const TextStyle(
                                   color: AppColors.textSecondary,
                                   fontSize: 12)),
-                          Text(_formatBytes(totalOutput),
+                          Text(uploadText,
                               style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 15)),
@@ -521,7 +525,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // ---------------------------------------------------------------------------
   // Active Sessions by Router
   // ---------------------------------------------------------------------------
-  Widget _buildSessionsByRouterCard(DashboardState state) {
+  Widget _buildSessionsByRouterCard(DashboardState state, bool isActive) {
     final sessions = state.activeSessionsByRouter;
 
     return Card(
@@ -571,7 +575,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               AppSpacing.radiusSm),
                         ),
                         child: Text(
-                          '$count',
+                          isActive ? '$count' : '--',
                           style: const TextStyle(
                               color: AppColors.primary,
                               fontWeight: FontWeight.w600,

@@ -30,6 +30,23 @@ void main() {
     'updatedAt': '2026-01-01T00:00:00.000Z',
   });
 
+  final mockCreateResult = CreateRouterResult(
+    router: mockRouter,
+    setupGuide: RouterSetupGuide(
+      routerName: 'Router 1',
+      setupGuide: '/interface wireguard add ...',
+      tunnelIp: '10.10.0.2',
+      steps: const [
+        SetupStep(
+          step: 1,
+          title: 'Create WireGuard interface',
+          description: 'Adds the WG interface.',
+          command: '/interface wireguard add name=wasel-wg',
+        ),
+      ],
+    ),
+  );
+
   setUp(() {
     mockService = MockRouterService();
     notifier = RoutersNotifier(routerService: mockService);
@@ -64,15 +81,18 @@ void main() {
       expect(notifier.state.error, isNotNull);
     });
 
-    test('createRouter adds to list and returns true', () async {
+    test('createRouter adds to list, stores guide, and returns true', () async {
       when(() => mockService.createRouter(name: 'New Router'))
-          .thenAnswer((_) async => mockRouter);
+          .thenAnswer((_) async => mockCreateResult);
 
       final result = await notifier.createRouter(name: 'New Router');
 
       expect(result, true);
       expect(notifier.state.routers, hasLength(1));
       expect(notifier.state.selectedRouter, isNotNull);
+      expect(notifier.state.setupGuide, isNotNull);
+      expect(notifier.state.setupGuide?.tunnelIp, '10.10.0.2');
+      expect(notifier.state.setupGuide?.steps, hasLength(1));
       expect(notifier.state.isLoading, false);
     });
 
@@ -138,7 +158,6 @@ void main() {
         routerName: 'Router 1',
         setupGuide: '/interface wireguard add ...',
         tunnelIp: '10.10.0.2',
-        serverEndpoint: 'vpn.wasel.app:51820',
       );
       when(() => mockService.getSetupGuide('r-1'))
           .thenAnswer((_) async => guide);

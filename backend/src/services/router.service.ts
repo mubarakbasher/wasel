@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual, randomBytes } from 'crypto';
 import { pool } from '../config/database';
 import { config } from '../config';
 import logger from '../config/logger';
@@ -6,12 +7,12 @@ import { generateKeyPair, generatePresharedKey } from '../utils/wireguard';
 import { allocateNextTunnelIp, releaseTunnelSubnet, parseTunnelSubnet } from '../utils/ipAllocation';
 import { encrypt, decrypt, generateRadiusSecret, generateNasIdentifier } from '../utils/encryption';
 import { addPeer, removePeer } from './wireguardPeer';
-import { generateMikrotikConfigText, generateSetupSteps } from './wireguardConfig';
+import { generateMikrotikConfigText, generateSetupSteps, SetupStep } from './wireguardConfig';
 import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
 import { reloadFreeradiusClients } from './freeradius.service';
 import { runHealthCheck } from './routerHealth.service';
-import { schedulePostAddProvision } from './routerProvision.service';
+import { schedulePostAddProvision, provisionRouter } from './routerProvision.service';
 
 // ----- Interfaces -----
 
@@ -84,12 +85,14 @@ function toRouterInfo(row: RouterRow): RouterInfo {
 
 /**
  * Create a new router with WireGuard keys, tunnel IP, and RADIUS configuration.
+ * Auto-generates a `wasel_auto` RouterOS API password and embeds it in the
+ * returned setup steps so the operator never has to choose credentials manually.
  */
 export async function createRouter(
   userId: string,
-  data: { name: string; model?: string; rosVersion?: string; apiUser?: string; apiPass?: string },
+  data: { name: string },
   opts?: { skipQuotaCheck?: boolean },
-): Promise<RouterInfo> {
+): Promise<{ router: RouterInfo; vpnIp: string; steps: SetupStep[] }> {
   // Check router limit against subscription (can be skipped by admin override)
   if (!opts?.skipQuotaCheck) {
     const routerLimit = await getRouterLimit(userId);
@@ -115,11 +118,14 @@ export async function createRouter(
   // Generate RADIUS secret
   const radiusSecret = generateRadiusSecret();
 
+  // Auto-generate the wasel_auto RouterOS API password (32 hex chars)
+  const apiPassword = randomBytes(16).toString('hex');
+
   // Encrypt sensitive fields
   const wgPrivateKeyEnc = encrypt(routerPrivateKey);
   const wgPresharedKeyEnc = encrypt(presharedKey);
   const radiusSecretEnc = encrypt(radiusSecret);
-  const apiPassEnc = data.apiPass ? encrypt(data.apiPass) : null;
+  const apiPassEnc = encrypt(apiPassword);
 
   const client = await pool.connect();
   try {
@@ -132,14 +138,12 @@ export async function createRouter(
         user_id, name, model, ros_version, api_user, api_pass_enc,
         wg_public_key, wg_private_key_enc, wg_preshared_key_enc, tunnel_ip,
         radius_secret_enc, nas_identifier, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11, 'offline')
+      ) VALUES ($1, $2, NULL, NULL, $3, $4, $5, $6, $7, NULL, $8, $9, 'offline')
       RETURNING *`,
       [
         userId,
         data.name,
-        data.model || null,
-        data.rosVersion || null,
-        data.apiUser || null,
+        'wasel_auto',
         apiPassEnc,
         routerPublicKey,
         wgPrivateKeyEnc,
@@ -214,7 +218,29 @@ export async function createRouter(
 
     // Fire-and-forget Stage-2 auto-provision poller: watches for WireGuard
     // handshake then applies RADIUS / CoA / hotspot / firewall automatically.
+    // This is the fallback path; the callback endpoint triggers provisioning
+    // as soon as the operator runs step 7 on the router.
     schedulePostAddProvision(router.id, userId);
+
+    // Build the HMAC-signed callback URL embedded in the setup script.
+    // The router hits this URL in step 7 (/tool fetch) so provisioning
+    // starts immediately instead of waiting for the poller.
+    const sig = createHmac('sha256', config.JWT_ACCESS_SECRET).update(router.id).digest('hex');
+    const callbackUrl = `${config.PUBLIC_BASE_URL}/api/v1/public/routers/script-callback?routerId=${router.id}&sig=${sig}`;
+
+    const serverEndpoint = `${config.WG_SERVER_ENDPOINT}:${config.WG_SERVER_PORT}`;
+
+    const steps = generateSetupSteps({
+      routerPrivateKey,
+      routerTunnelIp: tunnel.routerIp,
+      serverPublicKey: config.WG_SERVER_PUBLIC_KEY,
+      serverEndpoint,
+      presharedKey,
+      radiusSecret,
+      radiusServerIp: '10.10.0.1',
+      apiPassword,
+      callbackUrl,
+    });
 
     logger.info('Router created', {
       routerId: router.id,
@@ -224,12 +250,64 @@ export async function createRouter(
       nasIdentifier,
     });
 
-    return toRouterInfo(router);
+    return {
+      router: toRouterInfo(router),
+      vpnIp: tunnel.routerIp,
+      steps,
+    };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Triggered by the script-callback endpoint when the operator runs step 7 on
+ * the router. Kicks off provisioning immediately rather than waiting for the
+ * background poller. Idempotent — silently no-ops if provisioning is already
+ * underway or completed.
+ */
+export async function finalizePendingRouter(routerId: string): Promise<void> {
+  const result = await pool.query<RouterRow>(
+    'SELECT * FROM routers WHERE id = $1',
+    [routerId],
+  );
+
+  if (result.rows.length === 0) {
+    logger.warn('finalizePendingRouter: router not found', { routerId });
+    return;
+  }
+
+  const router = result.rows[0];
+
+  // Check provision status — skip if already past "pending"
+  const statusResult = await pool.query<{ last_provision_status: string | null }>(
+    'SELECT last_provision_status FROM routers WHERE id = $1',
+    [routerId],
+  );
+  const provisionStatus = statusResult.rows[0]?.last_provision_status ?? null;
+
+  if (provisionStatus === 'in_progress' || provisionStatus === 'succeeded' || provisionStatus === 'partial') {
+    logger.info('finalizePendingRouter: provision already running/done, skipping', {
+      routerId,
+      provisionStatus,
+    });
+    return;
+  }
+
+  logger.info('finalizePendingRouter: script callback received, triggering provision', { routerId });
+
+  try {
+    await provisionRouter(router.user_id, routerId, { trigger: 'post-add' });
+  } catch (error) {
+    // Swallow — the response to the /tool fetch call on the router must be
+    // a 200 regardless; the poller will retry if provisioning fails here.
+    logger.warn('finalizePendingRouter: provision error (non-fatal)', {
+      routerId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -465,7 +543,17 @@ function buildSetupGuideFromRow(router: RouterRow): SetupGuideResult {
   const routerPrivateKey = decrypt(router.wg_private_key_enc);
   const radiusSecret = decrypt(router.radius_secret_enc);
   const presharedKey = router.wg_preshared_key_enc ? decrypt(router.wg_preshared_key_enc) : undefined;
+
+  // Decrypt the stored wasel_auto password so it can be shown in the setup guide.
+  // If the row pre-dates auto-provisioning (api_pass_enc is null), fall back to a
+  // placeholder so the rest of the guide still renders.
+  const apiPassword = router.api_pass_enc ? decrypt(router.api_pass_enc) : '<set manually>';
+
   const serverEndpoint = `${config.WG_SERVER_ENDPOINT}:${config.WG_SERVER_PORT}`;
+
+  // Rebuild the HMAC callback URL the same way createRouter does.
+  const sig = createHmac('sha256', config.JWT_ACCESS_SECRET).update(router.id).digest('hex');
+  const callbackUrl = `${config.PUBLIC_BASE_URL}/api/v1/public/routers/script-callback?routerId=${router.id}&sig=${sig}`;
 
   const configParams = {
     routerName: router.name,
@@ -476,6 +564,8 @@ function buildSetupGuideFromRow(router: RouterRow): SetupGuideResult {
     presharedKey,
     radiusSecret,
     radiusServerIp: '10.10.0.1', // VPS wg0 address — always the same for all routers
+    apiPassword,
+    callbackUrl,
   };
 
   return {
