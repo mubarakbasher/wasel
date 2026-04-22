@@ -30,9 +30,14 @@ vi.mock('../../services/wireguardPeer', () => ({
   getPeerStatus: getPeerStatusMock,
 }));
 
+const { listHotspotServersMock } = vi.hoisted(() => ({
+  listHotspotServersMock: vi.fn<(api: unknown) => Promise<unknown[]>>(),
+}));
+
 vi.mock('../../services/routerOs.service', () => ({
   testConnection: testConnectionMock,
   connectToRouter: connectToRouterMock,
+  listHotspotServers: listHotspotServersMock,
 }));
 
 vi.mock('../../services/radclient.service', () => ({
@@ -107,6 +112,8 @@ beforeEach(() => {
   mockQuery.mockReset();
   // default: loadRouterForHealth returns a row
   // each test layers the nas probe + any other calls on top
+  // listHotspotServers defaults to empty unless a test overrides it
+  listHotspotServersMock.mockResolvedValue([]);
 });
 
 // Helper to push the router row fetch followed by the nas probe result.
@@ -161,6 +168,11 @@ describe('runHealthCheck', () => {
     });
     execFileMock.mockImplementation((_cmd, _args, cb) => cb(null, '', ''));
     testConnectionMock.mockResolvedValueOnce(true);
+    // Active hotspot server using the 'default' profile — lets both
+    // hotspotUsesRadius and hotspotServerBound probes pass.
+    listHotspotServersMock.mockResolvedValue([
+      { id: '*1', name: 'wasel-hotspot', interface: 'bridge', profile: 'default', disabled: false },
+    ]);
     connectToRouterMock.mockImplementation(() =>
       Promise.resolve(connectStub((path) => {
         if (path === '/ip/hotspot/profile') return [{ name: 'default', 'use-radius': 'yes' }];

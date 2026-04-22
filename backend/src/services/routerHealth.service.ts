@@ -227,32 +227,57 @@ async function probeHotspotUsesRadius(
       const profiles = (await (api as any).menu('/ip/hotspot/profile').get()) as Array<
         Record<string, unknown>
       >;
-      const defaultProfile = profiles.find((p) => p.name === 'default') ?? profiles[0];
 
-      if (!defaultProfile) {
-        return {
-          id: 'hotspotUsesRadius',
-          label: 'Hotspot profile uses RADIUS',
-          status: 'fail',
-          detail: 'No hotspot profile found on router',
-          setupStep: 6,
-          remediation: 'Run step 6 of the setup guide: `/ip hotspot profile set default use-radius=yes`.',
-        };
+      // Check the profile(s) actually used by active hotspot servers. Falling
+      // back to 'default' when no hotspot server exists yet (bootstrap case).
+      const servers = await listHotspotServers(api);
+      const activeProfileNames = Array.from(
+        new Set(
+          servers
+            .filter((s) => !s.disabled)
+            .map((s) => s.profile)
+            .filter((p): p is string => Boolean(p)),
+        ),
+      );
+      const targetNames = activeProfileNames.length > 0 ? activeProfileNames : ['default'];
+      const targetProfiles = targetNames
+        .map((n) => profiles.find((p) => p.name === n))
+        .filter((p): p is Record<string, unknown> => Boolean(p));
+
+      if (targetProfiles.length === 0) {
+        const fallback = profiles.find((p) => p.name === 'default') ?? profiles[0];
+        if (!fallback) {
+          return {
+            id: 'hotspotUsesRadius',
+            label: 'Hotspot profile uses RADIUS',
+            status: 'fail',
+            detail: 'No hotspot profile found on router',
+            setupStep: 6,
+            remediation: 'Run step 6 of the setup guide: `/ip hotspot profile set default use-radius=yes`.',
+          };
+        }
+        targetProfiles.push(fallback);
       }
 
-      const useRadius = String(defaultProfile['use-radius'] ?? '').toLowerCase();
-      const ok = useRadius === 'yes' || useRadius === 'true';
+      const failing = targetProfiles.filter((p) => {
+        const v = String(p['use-radius'] ?? '').toLowerCase();
+        return v !== 'yes' && v !== 'true';
+      });
+
+      const ok = failing.length === 0;
+      const names = targetProfiles.map((p) => String(p.name)).join(', ');
+      const failNames = failing.map((p) => String(p.name)).join(', ');
       return {
         id: 'hotspotUsesRadius',
         label: 'Hotspot profile uses RADIUS',
         status: ok ? 'pass' : 'fail',
         detail: ok
-          ? `Profile "${defaultProfile.name}" has use-radius=yes`
-          : `Profile "${defaultProfile.name}" has use-radius=${useRadius || 'no'}`,
+          ? `Profile(s) "${names}" have use-radius=yes`
+          : `Profile(s) "${failNames}" still have use-radius=no`,
         setupStep: 6,
         remediation: ok
           ? undefined
-          : 'Run step 6 of the setup guide: `/ip hotspot profile set default use-radius=yes`.',
+          : `Set use-radius=yes on the profile used by your hotspot server: \`/ip hotspot profile set [find name=${failNames.split(',')[0].trim()}] use-radius=yes\`.`,
       };
     } finally {
       try { await client.disconnect(); } catch { /* ignore */ }

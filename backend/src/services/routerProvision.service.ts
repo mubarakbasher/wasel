@@ -261,9 +261,46 @@ export async function provisionRouter(
   });
 
   // Step 3: Hotspot profile — use-radius=yes
+  // We set 'default' PLUS every profile referenced by an active hotspot
+  // server. RouterOS's `/ip hotspot setup` wizard creates a non-default
+  // profile (commonly hsprof1) and binds the server to THAT, so touching
+  // only 'default' is a no-op on any router configured via the wizard.
   await runStep('hotspotProfile', async () => {
     const cmd = hotspotProfileCommand();
-    await setSingleton(api, cmd.menu, cmd.matcher, cmd.args);
+    // Always set 'default' as the fallback/bootstrap case.
+    try {
+      await setSingleton(api, cmd.menu, cmd.matcher, cmd.args);
+    } catch (err) {
+      // Some RouterOS versions reject radius-interim-update=received. Retry
+      // without it so use-radius=yes still lands.
+      logger.warn('hotspotProfile: full set failed on default, retrying with use-radius only', {
+        routerId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      await setSingleton(api, cmd.menu, cmd.matcher, { 'use-radius': 'yes' });
+    }
+
+    // Also set every profile that an active hotspot server is actually using.
+    const servers = await listHotspotServers(api);
+    const activeProfiles = Array.from(
+      new Set(
+        servers
+          .filter((s) => !s.disabled)
+          .map((s) => s.profile)
+          .filter((p): p is string => Boolean(p) && p !== 'default'),
+      ),
+    );
+    for (const profileName of activeProfiles) {
+      try {
+        await setSingleton(api, '/ip/hotspot/profile', { name: profileName }, cmd.args);
+      } catch {
+        await setSingleton(api, '/ip/hotspot/profile', { name: profileName }, { 'use-radius': 'yes' });
+      }
+      logger.info('Provision: set use-radius=yes on active hotspot profile', {
+        routerId,
+        profile: profileName,
+      });
+    }
   });
 
   // Step 4: Hotspot user profile defaults
