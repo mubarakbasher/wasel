@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "ts-node src/scripts/migrate.ts",
-    "migrate:prod": "node dist/scripts/migrate.js"
+    "migrate:prod": "node dist/scripts/migrate.js",
+    "reprovision:broken": "ts-node src/scripts/reprovisionBroken.ts",
+    "reprovision:broken:prod": "node dist/scripts/reprovisionBroken.js"
   },
   "keywords": [],
   "author": "",

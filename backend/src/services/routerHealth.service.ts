@@ -3,7 +3,6 @@ import { promisify } from 'util';
 import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
-import { decrypt } from '../utils/encryption';
 import { showFreeradiusClients } from './freeradius.service';
 import { getPeerStatus } from './wireguardPeer';
 import { connectToRouter, testConnection, listHotspotServers } from './routerOs.service';
@@ -392,14 +391,24 @@ async function probeFirewallAllowsRadius(
   });
 }
 
-async function probeSynthRadiusAuth(
-  tunnelIp: string,
-  radiusSecret: string,
-): Promise<ProbeResult> {
+/**
+ * Synthetic Access-Request to FreeRADIUS, signed with the `localhost` client's
+ * shared secret (testing123, defined in freeradius/raddb/clients.conf). This
+ * is a global health check on the FreeRADIUS service itself — it does NOT
+ * verify the per-router secret because radclient runs from 127.0.0.1 and
+ * FreeRADIUS authenticates the source IP, not the NAS-IP-Address attribute.
+ *
+ * The previous version of this probe signed with the per-router secret and
+ * therefore always timed out (the source-IP-matched localhost client uses
+ * testing123, not the router's secret). That false-negative was putting
+ * every router into overall=broken and disabling the auto-heal path that
+ * would otherwise re-provision routers stuck in a partial state.
+ */
+async function probeFreeradiusAlive(): Promise<ProbeResult> {
   return timed(async () => {
     const outcome = await sendAccessRequest({
-      secret: radiusSecret,
-      nasIp: tunnelIp,
+      secret: 'testing123',
+      nasIp: '127.0.0.1',
       username: '__wasel_healthcheck__',
       password: 'x',
       timeoutMs: 2_000,
@@ -407,18 +416,18 @@ async function probeSynthRadiusAuth(
 
     if (outcome === 'reject') {
       return {
-        id: 'synthRadiusAuth',
-        label: 'FreeRADIUS accepts packets from this router',
+        id: 'freeradiusAlive',
+        label: 'FreeRADIUS is alive and answering',
         status: 'pass',
-        detail: 'Expected Access-Reject received — FreeRADIUS knows this NAS and the shared secret matches.',
+        detail: 'FreeRADIUS responded with Access-Reject for the synthetic user — RADIUS service is healthy.',
       };
     }
 
     if (outcome === 'accept') {
       // Very unlikely — the synthetic user should never exist in radcheck.
       return {
-        id: 'synthRadiusAuth',
-        label: 'FreeRADIUS accepts packets from this router',
+        id: 'freeradiusAlive',
+        label: 'FreeRADIUS is alive and answering',
         status: 'fail',
         detail: 'Unexpected Access-Accept for synthetic health-check user',
         remediation: 'Contact support — the probe user unexpectedly authenticated.',
@@ -426,11 +435,11 @@ async function probeSynthRadiusAuth(
     }
 
     return {
-      id: 'synthRadiusAuth',
-      label: 'FreeRADIUS accepts packets from this router',
+      id: 'freeradiusAlive',
+      label: 'FreeRADIUS is alive and answering',
       status: 'fail',
-      detail: 'No RADIUS reply (timeout) — FreeRADIUS silently dropped the packet.',
-      remediation: 'FreeRADIUS is not accepting packets from this router — likely shared-secret mismatch; re-save the router.',
+      detail: 'No RADIUS reply (timeout) — FreeRADIUS may be down or unreachable from the backend.',
+      remediation: 'Check that the wasel-freeradius container is running and that radmin/radclient on the backend can reach 127.0.0.1:1812.',
     };
   });
 }
@@ -481,7 +490,10 @@ function computeOverall(probes: ProbeResult[]): RouterHealthReport['overall'] {
     probes.filter((p) => p.status === 'fail').map((p) => p.id),
   );
 
-  const brokenIds = ['nasRowPresent', 'wgHandshakeRecent', 'synthRadiusAuth'];
+  // freeradiusAlive is a GLOBAL signal (whole-RADIUS-down) — intentionally
+  // not in brokenIds because it's not per-router-actionable; auto-heal can't
+  // fix FreeRADIUS being down and the failure surfaces via the probe label.
+  const brokenIds = ['nasRowPresent', 'wgHandshakeRecent'];
   if (brokenIds.some((id) => failedIds.has(id))) return 'broken';
 
   if (failedIds.size > 0) return 'degraded';
@@ -624,20 +636,8 @@ export async function runHealthCheck(
     probes.push(await probeFirewallAllowsRadius(userId, routerId));
   }
 
-  // Probe 9 — synthetic RADIUS auth (the silent-failure detector)
-  if (router.radius_secret_enc) {
-    const secret = decrypt(router.radius_secret_enc);
-    probes.push(await probeSynthRadiusAuth(tunnelIp, secret));
-  } else {
-    probes.push({
-      id: 'synthRadiusAuth',
-      label: 'FreeRADIUS accepts packets from this router',
-      status: 'fail',
-      detail: 'Router has no stored RADIUS secret',
-      remediation: 'Re-save the router to regenerate credentials.',
-      durationMs: 0,
-    });
-  }
+  // Probe 9 — FreeRADIUS alive (global signal via localhost client)
+  probes.push(await probeFreeradiusAlive());
 
   // Probe 10 — hotspot server bound (skipped if API unreachable)
   if (p5.status === 'fail') {
@@ -665,9 +665,13 @@ export async function runHealthCheck(
     failed: probes.filter((p) => p.status === 'fail').map((p) => p.id),
   });
 
-  // Auto-heal hook: if degraded AND API is reachable AND provisioning seems needed
+  // Auto-heal hook: fire whenever the router isn't healthy AND the API is
+  // reachable AND provisioning would actually help. Previously gated on
+  // `=== 'degraded'` only, which was fatally combined with the broken
+  // synthRadiusAuth probe forcing every router into 'broken' — so auto-heal
+  // never fired in production.
   if (
-    report.overall === 'degraded' &&
+    report.overall !== 'healthy' &&
     p5.status === 'pass' &&
     autoHealAllowed(routerId)
   ) {

@@ -392,7 +392,7 @@ describe('runHealthCheck', () => {
     expect(p8?.detail).toContain('3799');
   });
 
-  it('fails probe 9 and marks overall broken when synthetic RADIUS times out', async () => {
+  it('fails freeradiusAlive probe and marks overall degraded when synthetic RADIUS times out', async () => {
     primeLoadAndNas(mockRouterRow(), true);
     showClientsMock.mockResolvedValueOnce('10.10.0.2 entry');
     getPeerStatusMock.mockResolvedValueOnce({
@@ -422,10 +422,14 @@ describe('runHealthCheck', () => {
 
     const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
 
-    const p9 = report.probes.find((p) => p.id === 'synthRadiusAuth');
+    // freeradiusAlive is a global signal (FreeRADIUS-up check) — failing it
+    // marks the report degraded, NOT broken, because it isn't per-router-
+    // actionable and shouldn't suppress auto-heal for routers that have
+    // genuine config issues elsewhere.
+    const p9 = report.probes.find((p) => p.id === 'freeradiusAlive');
     expect(p9?.status).toBe('fail');
     expect(p9?.detail).toContain('timeout');
-    expect(report.overall).toBe('broken');
+    expect(report.overall).toBe('degraded');
   });
 
   it('enforces the 30 s rate-limit unless force=true', async () => {
