@@ -11,6 +11,7 @@ import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
 import { reloadFreeradiusClients } from './freeradius.service';
 import { runHealthCheck } from './routerHealth.service';
+import { schedulePostAddProvision } from './routerProvision.service';
 
 // ----- Interfaces -----
 
@@ -210,6 +211,10 @@ export async function createRouter(
         error: err instanceof Error ? err.message : String(err),
       });
     });
+
+    // Fire-and-forget Stage-2 auto-provision poller: watches for WireGuard
+    // handshake then applies RADIUS / CoA / hotspot / firewall automatically.
+    schedulePostAddProvision(router.id, userId);
 
     logger.info('Router created', {
       routerId: router.id,

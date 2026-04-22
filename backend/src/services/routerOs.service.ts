@@ -365,3 +365,148 @@ export async function testConnection(
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Provision helpers — idempotent primitives used by routerProvision.service.ts
+// ---------------------------------------------------------------------------
+
+/**
+ * Upsert a RouterOS menu entry identified by a `comment` tag.
+ *
+ * - Empty list  → add entry (comment tag embedded in desired).
+ * - Exactly one → update in place (preserving the .id).
+ * - More than one → delete extras, update the first.
+ *
+ * This guarantees exactly-one invariant and is safe to re-run.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function upsertByComment(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api: any,
+  menu: string,
+  commentTag: string,
+  desired: Record<string, string>,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entries = (await (api as any).menu(menu).where('comment', commentTag).get()) as Array<Record<string, unknown>>;
+
+  if (entries.length === 0) {
+    await (api as any).menu(menu).add({ ...desired, comment: commentTag });
+    return;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const first = entries[0] as Record<string, unknown>;
+  const firstId = first['.id'] as string;
+
+  // Delete any duplicates beyond the first
+  for (let i = 1; i < entries.length; i++) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extra = entries[i] as Record<string, unknown>;
+    const extraId = extra['.id'] as string;
+    await (api as any).menu(menu).where('.id', extraId).remove();
+  }
+
+  // Update the surviving entry with desired fields
+  await (api as any).menu(menu).where('.id', firstId).update(desired);
+}
+
+/**
+ * Apply settings to a singleton RouterOS menu entry located by a field matcher.
+ *
+ * Examples:
+ *   setSingleton(api, '/radius/incoming', {}, { accept: 'yes', port: '3799' })
+ *   setSingleton(api, '/ip/hotspot/profile', { name: 'default' }, { 'use-radius': 'yes' })
+ *
+ * If the matcher is empty `{}`, the first entry in the menu is used (for menus
+ * that contain only one entry such as /radius/incoming).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function setSingleton(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api: any,
+  menu: string,
+  matcher: Record<string, string>,
+  args: Record<string, string>,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (api as any).menu(menu);
+  for (const [key, value] of Object.entries(matcher)) {
+    query = query.where(key, value);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entries = (await query.get()) as Array<Record<string, unknown>>;
+
+  if (entries.length === 0) {
+    // Singleton doesn't exist yet — add it (e.g., /radius/incoming on a fresh CHR)
+    await (api as any).menu(menu).add(args);
+    return;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entry = entries[0] as Record<string, unknown>;
+  const id = entry['.id'] as string;
+  await (api as any).menu(menu).where('.id', id).update(args);
+}
+
+export interface RouterInterface {
+  name: string;
+  type: string;
+  running: boolean;
+}
+
+export interface HotspotServer {
+  id: string;
+  name: string;
+  interface: string;
+  disabled: boolean;
+}
+
+export interface RouterAddress {
+  address: string;
+  interface: string;
+  network: string;
+}
+
+/**
+ * List all interfaces on the router.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function listInterfaces(api: any): Promise<RouterInterface[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entries = (await (api as any).menu('/interface').get()) as Array<Record<string, unknown>>;
+  return entries.map((e) => ({
+    name: String(e.name ?? ''),
+    type: String(e.type ?? ''),
+    running: String(e.running ?? 'false').toLowerCase() === 'true',
+  }));
+}
+
+/**
+ * List all configured hotspot servers on the router.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function listHotspotServers(api: any): Promise<HotspotServer[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entries = (await (api as any).menu('/ip/hotspot').get()) as Array<Record<string, unknown>>;
+  return entries.map((e) => ({
+    id: String(e['.id'] ?? ''),
+    name: String(e.name ?? ''),
+    interface: String(e.interface ?? ''),
+    disabled: String(e.disabled ?? 'false').toLowerCase() === 'true',
+  }));
+}
+
+/**
+ * List all IP addresses configured on the router.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function listAddresses(api: any): Promise<RouterAddress[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entries = (await (api as any).menu('/ip/address').get()) as Array<Record<string, unknown>>;
+  return entries.map((e) => ({
+    address: String(e.address ?? ''),
+    interface: String(e.interface ?? ''),
+    network: String(e.network ?? ''),
+  }));
+}

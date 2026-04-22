@@ -317,7 +317,13 @@ export interface SetupStep {
 
 /**
  * Generate structured setup steps for the mobile app UI.
- * Each step has a title, description, and copyable RouterOS command.
+ *
+ * After these 4 commands, the rest is configured automatically over the tunnel.
+ *
+ * Steps 1-4 bring the WireGuard tunnel up so Wasel can reach the router API.
+ * Steps 5-6 are verification — confirm the tunnel is active and responsive.
+ * RADIUS, CoA, hotspot profile, and firewall rules are applied automatically
+ * once the tunnel is detected.
  */
 export function generateSetupSteps(params: {
   routerPrivateKey: string;
@@ -362,44 +368,14 @@ export function generateSetupSteps(params: {
     },
     {
       step: 5,
-      title: 'Configure RADIUS authentication',
-      description: 'Points the router\'s hotspot to the Wasel RADIUS server on the VPN.',
-      command: `/radius add service=hotspot address=${params.radiusServerIp} secret="${params.radiusSecret}"`,
-    },
-    {
-      step: 6,
-      title: 'Enable RADIUS on the hotspot profile',
-      description: 'Tells the hotspot to authenticate users via RADIUS instead of local users.',
-      command: `/ip hotspot profile set default use-radius=yes radius-default-domain=""`,
-    },
-    {
-      step: 7,
-      title: 'Allow RADIUS auth/acct traffic',
-      description: 'Allows RADIUS authentication and accounting packets from the Wasel VPS.',
-      command: `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=1812,1813 action=accept comment="Allow RADIUS auth/acct from Wasel VPS" place-before=0`,
-    },
-    {
-      step: 8,
-      title: 'Allow RADIUS CoA traffic',
-      description: 'Allows RADIUS Change-of-Authorization packets for disconnecting users.',
-      command: `/ip firewall filter add chain=input protocol=udp src-address=${params.radiusServerIp} dst-port=3799 action=accept comment="Allow RADIUS CoA from Wasel VPS" place-before=1`,
-    },
-    {
-      step: 9,
-      title: 'Allow WireGuard traffic',
-      description: 'Allows incoming WireGuard VPN packets.',
-      command: `/ip firewall filter add chain=input protocol=udp dst-port=51820 action=accept comment="Allow WireGuard" place-before=2`,
-    },
-    {
-      step: 10,
       title: 'Verify the tunnel',
-      description: 'Check that the WireGuard peer is active and you can ping the VPS tunnel IP.',
+      description: 'Check that the WireGuard peer is active and the handshake is recent. Wasel will auto-configure RADIUS, hotspot, and firewall once this is seen.',
       command: `/interface wireguard peers print`,
     },
     {
-      step: 11,
+      step: 6,
       title: 'Ping the VPS',
-      description: 'You should see successful replies confirming the tunnel is working.',
+      description: 'You should see successful replies confirming the tunnel is working. Everything else is configured automatically.',
       command: `/ping ${params.radiusServerIp} count=4`,
     },
   ];

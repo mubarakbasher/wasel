@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../models/router_health.dart';
+import '../../providers/provision_poll_provider.dart';
 import '../../providers/routers_provider.dart';
 import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
@@ -250,8 +252,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
             color: isActive || isCompleted
                 ? AppColors.textPrimary
                 : AppColors.textTertiary,
-            fontWeight:
-                isActive ? FontWeight.w600 : FontWeight.w400,
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
           ),
         ),
       ],
@@ -323,7 +324,8 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Text(context.tr('routers.technicalDetails'), style: AppTypography.title3),
+          Text(context.tr('routers.technicalDetails'),
+              style: AppTypography.title3),
           const SizedBox(height: AppSpacing.sm),
           Text(
             context.tr('routers.technicalDetailsSubtitle'),
@@ -448,7 +450,8 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
         const SizedBox(height: AppSpacing.sm),
         Text(
           context.tr('routers.setupInstructions'),
-          style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
+          style:
+              AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.lg),
         Wrap(
@@ -504,13 +507,20 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
             label: Text(context.tr('routers.copyAllClipboard')),
           ),
         ),
+        // Auto-provisioning panel — only shown once the router is created.
+        if (_createdRouterId != null) ...[
+          const SizedBox(height: AppSpacing.xxl),
+          _AutoConfigPanel(routerId: _createdRouterId!),
+        ],
         const SizedBox(height: AppSpacing.lg),
       ],
     );
   }
 
+  // Backend now returns 6 steps: 4 WG bootstrap + 2 verification.
+  // Verification steps are step numbers 5 and 6.
   Widget _buildStepCard(SetupStep step) {
-    final isVerification = step.step >= 9;
+    final isVerification = step.step >= 5;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Container(
@@ -518,13 +528,14 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
           border: Border.all(
-            color: isVerification ? AppColors.success.withValues(alpha: 0.4) : AppColors.border,
+            color: isVerification
+                ? AppColors.success.withValues(alpha: 0.4)
+                : AppColors.border,
           ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(
                   AppSpacing.lg, AppSpacing.md, AppSpacing.md, 0),
@@ -561,7 +572,6 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                 ],
               ),
             ),
-            // Description
             Padding(
               padding: const EdgeInsets.fromLTRB(
                   AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
@@ -571,7 +581,6 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                     .copyWith(color: AppColors.textSecondary),
               ),
             ),
-            // Command box
             Container(
               margin: const EdgeInsets.fromLTRB(
                   AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.sm),
@@ -600,7 +609,8 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                       Clipboard.setData(ClipboardData(text: step.command));
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(context.tr('routers.stepCopied', [step.step.toString()])),
+                          content: Text(context.tr(
+                              'routers.stepCopied', [step.step.toString()])),
                           duration: const Duration(seconds: 1),
                         ),
                       );
@@ -658,8 +668,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                         ? const SizedBox(
                             height: 20,
                             width: 20,
-                            child:
-                                CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Text(context.tr('routers.createRouter')),
                   ),
@@ -691,6 +700,560 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
       child: Text(
         error,
         style: AppTypography.subhead.copyWith(color: AppColors.error),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-configuring panel — polls health and renders per-probe provisioning rows
+// ---------------------------------------------------------------------------
+
+/// Maps probe IDs to display labels in provisioning order.
+const _kProbeLabels = <String, String>{
+  'wgHandshakeRecent': 'WireGuard handshake',
+  'routerOsApiReachable': 'RouterOS API reachable',
+  'radiusClientConfigured': 'RADIUS client configured',
+  'hotspotUsesRadius': 'Hotspot profile uses RADIUS',
+  'firewallAllowsRadius': 'Firewall rules',
+  'hotspotServerBound': 'Hotspot server bound',
+  'synthRadiusAuth': 'Voucher auth works',
+};
+
+const _kProbeOrder = [
+  'wgHandshakeRecent',
+  'routerOsApiReachable',
+  'radiusClientConfigured',
+  'hotspotUsesRadius',
+  'firewallAllowsRadius',
+  'hotspotServerBound',
+  'synthRadiusAuth',
+];
+
+class _AutoConfigPanel extends ConsumerWidget {
+  final String routerId;
+
+  const _AutoConfigPanel({required this.routerId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pollState = ref.watch(provisionPollProvider(routerId));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PanelHeader(pollState: pollState, routerId: routerId),
+          const Divider(height: 1),
+          if (pollState.report?.needsHotspotConfirmation == true)
+            _HotspotConfirmCard(routerId: routerId, pollState: pollState),
+          _ProbeChecklist(report: pollState.report),
+          if (pollState.report?.provisionError?.isNotEmpty == true)
+            _ProvisionErrorExpander(
+                errors: pollState.report!.provisionError!),
+          if (pollState.isTimedOut)
+            _TimeoutBanner(routerId: routerId),
+          if (pollState.error != null && !pollState.isTimedOut)
+            _ErrorBanner(message: pollState.error!),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Panel header — title + overall status chip
+// ---------------------------------------------------------------------------
+
+class _PanelHeader extends StatelessWidget {
+  final ProvisionPollState pollState;
+  final String routerId;
+
+  const _PanelHeader({required this.pollState, required this.routerId});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('Auto-configuring router',
+                style: AppTypography.title3),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _StatusChip(pollState: pollState),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final ProvisionPollState pollState;
+
+  const _StatusChip({required this.pollState});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = _chipData();
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(label,
+          style: AppTypography.caption1.copyWith(
+              color: color, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  (String, Color) _chipData() {
+    if (pollState.isTimedOut) return ('Timed out', AppColors.error);
+
+    final status = pollState.report?.provisionStatus;
+    final overall = pollState.report?.overall;
+
+    if (status == null) return ('Waiting for tunnel', AppColors.textTertiary);
+    if (status == ProvisionStatus.succeeded &&
+        overall == OverallHealth.healthy) {
+      return ('Done', AppColors.success);
+    }
+    if (status == ProvisionStatus.partial) {
+      final errorCount =
+          pollState.report?.provisionError?.length ?? 0;
+      return ('Partial — $errorCount error${errorCount == 1 ? '' : 's'}',
+          AppColors.warning);
+    }
+    if (status == ProvisionStatus.failed) {
+      return ('Failed', AppColors.error);
+    }
+    if (status == ProvisionStatus.inProgress ||
+        status == ProvisionStatus.pending) {
+      return ('Configuring...', AppColors.primary);
+    }
+    return ('Configuring...', AppColors.primary);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Probe checklist
+// ---------------------------------------------------------------------------
+
+class _ProbeChecklist extends StatelessWidget {
+  final RouterHealthReport? report;
+
+  const _ProbeChecklist({this.report});
+
+  @override
+  Widget build(BuildContext context) {
+    // Build an index of probe ID → result for O(1) lookup.
+    final probeMap = <String, ProbeResult>{};
+    if (report != null) {
+      for (final p in report!.probes) {
+        probeMap[p.id] = p;
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+      child: Column(
+        children: _kProbeOrder.map((probeId) {
+          final probe = probeMap[probeId];
+          final label =
+              _kProbeLabels[probeId] ?? probe?.label ?? probeId;
+          return _ProbeCheckRow(
+            label: label,
+            probe: probe,
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _ProbeCheckRow extends StatelessWidget {
+  final String label;
+  final ProbeResult? probe;
+
+  const _ProbeCheckRow({required this.label, this.probe});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = probe?.status;
+
+    Widget leading;
+    Color labelColor = AppColors.textPrimary;
+
+    if (status == ProbeStatus.pass) {
+      leading = const Icon(Icons.check_circle, color: AppColors.success, size: 20);
+    } else if (status == ProbeStatus.fail) {
+      leading = const Icon(Icons.cancel, color: AppColors.error, size: 20);
+      labelColor = AppColors.error;
+    } else {
+      // null (not yet reached) or skipped.
+      if (probe == null) {
+        leading = const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+        labelColor = AppColors.textSecondary;
+      } else {
+        leading = Icon(Icons.remove_circle_outline,
+            color: AppColors.textTertiary, size: 20);
+        labelColor = AppColors.textTertiary;
+      }
+    }
+
+    if (status == ProbeStatus.fail &&
+        (probe!.remediation != null || probe!.setupStep != null)) {
+      return _FailRow(label: label, probe: probe!);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      child: Row(
+        children: [
+          leading,
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(label,
+                style: AppTypography.subhead.copyWith(color: labelColor)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FailRow extends StatelessWidget {
+  final String label;
+  final ProbeResult probe;
+
+  const _FailRow({required this.label, required this.probe});
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      leading: const Icon(Icons.cancel, color: AppColors.error, size: 20),
+      title: Text(label,
+          style: AppTypography.subhead.copyWith(color: AppColors.error)),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(
+          left: AppSpacing.xxl + AppSpacing.sm, bottom: AppSpacing.sm),
+      children: [
+        if (probe.remediation != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              probe.remediation!,
+              style: AppTypography.caption1
+                  .copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+        if (probe.setupStep != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => context.push(
+                '/routers/setup-guide',
+                extra: {
+                  'routerId': probe.id,
+                  'initialStep': probe.setupStep,
+                },
+              ),
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: Text('Open setup step ${probe.setupStep}'),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hotspot interface confirmation card
+// ---------------------------------------------------------------------------
+
+class _HotspotConfirmCard extends ConsumerStatefulWidget {
+  final String routerId;
+  final ProvisionPollState pollState;
+
+  const _HotspotConfirmCard(
+      {required this.routerId, required this.pollState});
+
+  @override
+  ConsumerState<_HotspotConfirmCard> createState() =>
+      _HotspotConfirmCardState();
+}
+
+class _HotspotConfirmCardState extends ConsumerState<_HotspotConfirmCard> {
+  String? _selectedInterface;
+
+  static const _kAllowedTypes = {'ether', 'bridge', 'wlan', 'vlan'};
+
+  List<RouterInterface> get _filteredInterfaces {
+    final report = widget.pollState.report;
+    if (report == null) return const [];
+    return report.availableInterfaces
+        .where((i) => _kAllowedTypes.contains(i.type))
+        .toList();
+  }
+
+  @override
+  void didUpdateWidget(_HotspotConfirmCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Pre-select suggested interface when it first arrives.
+    if (_selectedInterface == null) {
+      final suggested =
+          widget.pollState.report?.suggestedHotspotInterface;
+      if (suggested != null) {
+        _selectedInterface = suggested;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final interfaces = _filteredInterfaces;
+    final isConfirming = widget.pollState.isConfirmingInterface;
+
+    // Ensure selected value is in the list (guard against stale state).
+    final effectiveSelection =
+        interfaces.any((i) => i.name == _selectedInterface)
+            ? _selectedInterface
+            : (interfaces.isNotEmpty ? interfaces.first.name : null);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.wifi, color: AppColors.primary, size: 18),
+              const SizedBox(width: AppSpacing.xs),
+              Text('Choose the hotspot interface',
+                  style: AppTypography.subhead
+                      .copyWith(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            "Wasel couldn't find an existing hotspot on your router. "
+            'Pick the LAN interface where Wi-Fi clients connect.',
+            style: AppTypography.caption1
+                .copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (interfaces.isEmpty)
+            Text('No interfaces available',
+                style: AppTypography.caption1
+                    .copyWith(color: AppColors.textTertiary))
+          else
+            DropdownButtonFormField<String>(
+              initialValue: effectiveSelection,
+              decoration: const InputDecoration(
+                contentPadding: EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                isDense: true,
+              ),
+              items: interfaces
+                  .map((i) => DropdownMenuItem(
+                        value: i.name,
+                        child: Text('${i.name} (${i.type})'),
+                      ))
+                  .toList(),
+              onChanged: isConfirming
+                  ? null
+                  : (v) => setState(() => _selectedInterface = v),
+            ),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            height: 40,
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: (isConfirming || effectiveSelection == null)
+                  ? null
+                  : () => ref
+                      .read(provisionPollProvider(widget.routerId).notifier)
+                      .confirmInterface(effectiveSelection),
+              child: isConfirming
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Confirm'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Provision step error expander
+// ---------------------------------------------------------------------------
+
+class _ProvisionErrorExpander extends StatelessWidget {
+  final List<ProvisionStepError> errors;
+
+  const _ProvisionErrorExpander({required this.errors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: ExpansionTile(
+        leading: Icon(Icons.warning_amber_rounded,
+            color: AppColors.warning, size: 20),
+        title: Text('Show errors (${errors.length})',
+            style: AppTypography.caption1
+                .copyWith(color: AppColors.warning)),
+        tilePadding: EdgeInsets.zero,
+        childrenPadding:
+            const EdgeInsets.only(bottom: AppSpacing.sm),
+        children: errors
+            .map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.only(top: 5),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.error,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          '${e.step}: ${e.error}',
+                          style: AppTypography.caption1
+                              .copyWith(color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ))
+            .toList(),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Timeout banner
+// ---------------------------------------------------------------------------
+
+class _TimeoutBanner extends ConsumerWidget {
+  final String routerId;
+
+  const _TimeoutBanner({required this.routerId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border:
+            Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.timer_off, color: AppColors.error, size: 18),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'Auto-configuration timed out after 10 minutes.',
+              style: AppTypography.caption1
+                  .copyWith(color: AppColors.error),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          TextButton(
+            onPressed: () => ref
+                .read(provisionPollProvider(routerId).notifier)
+                .reprovision(),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.error,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Try again'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generic error banner (non-fatal poll errors)
+// ---------------------------------------------------------------------------
+
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+
+  const _ErrorBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border:
+            Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: AppColors.warning, size: 18),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTypography.caption1
+                  .copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
       ),
     );
   }

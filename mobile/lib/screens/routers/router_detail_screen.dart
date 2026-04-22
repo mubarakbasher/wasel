@@ -9,6 +9,7 @@ import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../routers/reprovision_sheet.dart';
 
 class RouterDetailScreen extends ConsumerStatefulWidget {
   final String routerId;
@@ -450,6 +451,16 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           height: 48,
           width: double.infinity,
           child: OutlinedButton.icon(
+            onPressed: () => _showReprovisionSheet(router.id as String),
+            icon: const Icon(Icons.sync),
+            label: const Text('Re-apply config'),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        SizedBox(
+          height: 48,
+          width: double.infinity,
+          child: OutlinedButton.icon(
             onPressed: () =>
                 context.push('/routers/edit', extra: router.id),
             icon: const Icon(Icons.edit),
@@ -457,6 +468,15 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _showReprovisionSheet(String routerId) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => ReprovisionSheet(routerId: routerId),
     );
   }
 

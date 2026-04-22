@@ -7,6 +7,7 @@ import {
   updateRouterSchema,
   routerIdParamSchema,
   healthQuerySchema,
+  confirmHotspotInterfaceSchema,
 } from '../validators/router.validators';
 import * as routerController from '../controllers/router.controller';
 
@@ -70,6 +71,22 @@ router.get(
   requireSubscription,
   validate({ params: routerIdParamSchema, query: healthQuerySchema }),
   routerController.getRouterHealth,
+);
+
+router.post(
+  '/:id/reprovision',
+  authenticate,
+  requireSubscription,
+  validate({ params: routerIdParamSchema }),
+  routerController.reprovisionRouter,
+);
+
+router.post(
+  '/:id/provision/hotspot',
+  authenticate,
+  requireSubscription,
+  validate({ params: routerIdParamSchema, body: confirmHotspotInterfaceSchema }),
+  routerController.confirmHotspot,
 );
 
 export default router;

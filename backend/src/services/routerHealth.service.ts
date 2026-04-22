@@ -6,8 +6,9 @@ import { AppError } from '../middleware/errorHandler';
 import { decrypt } from '../utils/encryption';
 import { showFreeradiusClients } from './freeradius.service';
 import { getPeerStatus } from './wireguardPeer';
-import { connectToRouter, testConnection } from './routerOs.service';
+import { connectToRouter, testConnection, listHotspotServers } from './routerOs.service';
 import { sendAccessRequest } from './radclient.service';
+import { provisionRouter, autoHealAllowed, recordAutoHeal } from './routerProvision.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -53,6 +54,7 @@ interface RouterHealthRow {
   radius_secret_enc: string | null;
   last_health_check_at: Date | null;
   last_health_report: unknown;
+  provision_applied_at: Date | null;
 }
 
 // ----- Internal probe helpers -----
@@ -408,6 +410,45 @@ async function probeSynthRadiusAuth(
   });
 }
 
+async function probeHotspotServerBound(
+  userId: string,
+  routerId: string,
+): Promise<ProbeResult> {
+  return timed(async () => {
+    let client: import('routeros-client').RouterOSClient | null = null;
+    try {
+      const conn = await connectToRouter(routerId, userId);
+      client = conn.client;
+      const servers = await listHotspotServers(conn.api);
+      const active = servers.filter((s) => !s.disabled);
+      const ok = active.length > 0;
+      return {
+        id: 'hotspotServerBound',
+        label: 'Hotspot server is bound to an interface',
+        status: ok ? 'pass' : 'fail',
+        detail: ok
+          ? `Hotspot server "${active[0].name}" bound to "${active[0].interface}"`
+          : 'No enabled hotspot server found on router',
+        remediation: ok
+          ? undefined
+          : 'No hotspot server is configured. The app will prompt you to confirm an interface for automatic setup.',
+      };
+    } catch {
+      // API unreachable — skip rather than fail to avoid noise
+      return {
+        id: 'hotspotServerBound',
+        label: 'Hotspot server is bound to an interface',
+        status: 'skipped',
+        detail: 'Skipped — RouterOS API unreachable',
+      };
+    } finally {
+      if (client) {
+        try { await client.disconnect(); } catch { /* ignore */ }
+      }
+    }
+  });
+}
+
 // ----- Orchestrator -----
 
 function computeOverall(probes: ProbeResult[]): RouterHealthReport['overall'] {
@@ -432,7 +473,7 @@ async function loadRouterForHealth(
 ): Promise<RouterHealthRow> {
   const result = await pool.query<RouterHealthRow>(
     `SELECT id, tunnel_ip, wg_public_key, radius_secret_enc,
-            last_health_check_at, last_health_report
+            last_health_check_at, last_health_report, provision_applied_at
        FROM routers
       WHERE id = $1 AND user_id = $2`,
     [routerId, userId],
@@ -568,6 +609,17 @@ export async function runHealthCheck(
     });
   }
 
+  // Probe 10 — hotspot server bound (skipped if API unreachable)
+  if (p5.status === 'fail') {
+    probes.push(skipped(
+      'hotspotServerBound',
+      'Hotspot server is bound to an interface',
+      'Skipped — RouterOS API unreachable',
+    ));
+  } else {
+    probes.push(await probeHotspotServerBound(userId, routerId));
+  }
+
   const report: RouterHealthReport = {
     routerId,
     ranAt: new Date().toISOString(),
@@ -582,6 +634,26 @@ export async function runHealthCheck(
     overall: report.overall,
     failed: probes.filter((p) => p.status === 'fail').map((p) => p.id),
   });
+
+  // Auto-heal hook: if degraded AND API is reachable AND provisioning seems needed
+  if (
+    report.overall === 'degraded' &&
+    p5.status === 'pass' &&
+    autoHealAllowed(routerId)
+  ) {
+    const failedIds = new Set(probes.filter((p) => p.status === 'fail').map((p) => p.id));
+    const provisionNeeded =
+      router.provision_applied_at === null ||
+      failedIds.has('radiusClientConfigured') ||
+      failedIds.has('hotspotUsesRadius') ||
+      failedIds.has('firewallAllowsRadius');
+
+    if (provisionNeeded) {
+      recordAutoHeal(routerId);
+      logger.info('Auto-heal: triggering re-provision', { routerId, userId });
+      void provisionRouter(userId, routerId, { trigger: 'auto-heal' });
+    }
+  }
 
   return report;
 }

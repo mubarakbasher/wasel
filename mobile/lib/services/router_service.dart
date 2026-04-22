@@ -203,4 +203,19 @@ class RouterService {
     return RouterSetupGuide.fromJson(
         response.data['data'] as Map<String, dynamic>);
   }
+
+  /// POST /routers/:id/reprovision — triggers re-running auto-provisioning.
+  /// Returns 202 Accepted; the caller should then poll health to track progress.
+  Future<void> reprovisionRouter(String id) async {
+    await _api.dio.post('/routers/$id/reprovision');
+  }
+
+  /// POST /routers/:id/provision/hotspot — confirms the hotspot interface.
+  /// Called when the operator selects a LAN interface for the hotspot server.
+  Future<void> confirmHotspotInterface(String id, String interfaceName) async {
+    await _api.dio.post(
+      '/routers/$id/provision/hotspot',
+      data: {'interface': interfaceName},
+    );
+  }
 }
