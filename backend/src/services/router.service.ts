@@ -10,7 +10,7 @@ import { addPeer, removePeer } from './wireguardPeer';
 import { generateMikrotikConfigText, generateSetupSteps, SetupStep } from './wireguardConfig';
 import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
-import { reloadFreeradiusClients } from './freeradius.service';
+import { reloadFreeradiusClients, forceReloadAndVerify } from './freeradius.service';
 import { runHealthCheck } from './routerHealth.service';
 import { schedulePostAddProvision, provisionRouter } from './routerProvision.service';
 
@@ -189,8 +189,18 @@ export async function createRouter(
     // Poke FreeRADIUS so the NAS row we just committed is actually loaded
     // — without this, Access-Request packets from the new router are
     // silently dropped as "unknown client" until the next freeradius
-    // restart / SIGHUP. Debounced + non-fatal inside the service itself.
-    void reloadFreeradiusClients();
+    // restart / SIGHUP. We AWAIT this (verify + retry + escape-hatch
+    // container restart) so the response reflects truthful state: the
+    // NAS is loaded when createRouter resolves.
+    const reloadResult = await forceReloadAndVerify(tunnel.routerIp);
+    if (!reloadResult.ok || reloadResult.verified === false) {
+      logger.warn('createRouter: FreeRADIUS could not confirm the new NAS', {
+        routerId: router.id,
+        tunnelIp: tunnel.routerIp,
+        attempts: reloadResult.attempts,
+        hardRestarted: reloadResult.hardRestarted ?? false,
+      });
+    }
 
     // Add WireGuard peer (non-fatal if wg isn't available in dev)
     try {
@@ -298,6 +308,21 @@ export async function finalizePendingRouter(routerId: string): Promise<void> {
   }
 
   logger.info('finalizePendingRouter: script callback received, triggering provision', { routerId });
+
+  // Make sure FreeRADIUS has loaded this router's NAS row BEFORE we run
+  // the provision's synth-auth probe, otherwise the very first health
+  // check after onboarding fails spuriously.
+  if (router.tunnel_ip) {
+    const reloadResult = await forceReloadAndVerify(router.tunnel_ip);
+    if (!reloadResult.ok || reloadResult.verified === false) {
+      logger.warn('finalizePendingRouter: FreeRADIUS reload could not confirm NAS', {
+        routerId,
+        tunnelIp: router.tunnel_ip,
+        attempts: reloadResult.attempts,
+        hardRestarted: reloadResult.hardRestarted ?? false,
+      });
+    }
+  }
 
   try {
     await provisionRouter(router.user_id, routerId, { trigger: 'post-add' });

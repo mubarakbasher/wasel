@@ -143,17 +143,19 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     mockSubscriptionQuery(mockQuery);
     // checkQuota (2 queries)
     mockCheckQuotaQueries(mockQuery);
-    // verifyRouterOwnership
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: TEST_ROUTER_ID }] });
+    // verifyRouterOwnership now returns tunnel_ip (needed for NAS-scoping)
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
     // username uniqueness check — not taken
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    // Transaction queries: BEGIN + INSERT voucher_meta + 3x radcheck inserts
+    // Transaction queries: BEGIN + INSERT voucher_meta + 4x radcheck inserts
+    //                      (Cleartext, NAS-IP-Address, Simultaneous-Use, Max-All-Session)
     //                      + UPDATE subscriptions + COMMIT
     mockClientQuery
       .mockResolvedValueOnce(undefined) // BEGIN
       .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] }) // INSERT voucher_meta
       .mockResolvedValueOnce(undefined) // INSERT radcheck Cleartext-Password
+      .mockResolvedValueOnce(undefined) // INSERT radcheck NAS-IP-Address
       .mockResolvedValueOnce(undefined) // INSERT radcheck Simultaneous-Use
       .mockResolvedValueOnce(undefined) // INSERT radcheck limit attribute (time)
       .mockResolvedValueOnce(undefined) // UPDATE subscriptions vouchers_used

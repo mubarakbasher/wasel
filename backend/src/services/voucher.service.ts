@@ -310,16 +310,18 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
 }
 
 /**
- * Verify router belongs to the user.
+ * Verify router belongs to the user. Returns the router's tunnel_ip
+ * since most callers need it to NAS-scope the vouchers they create.
  */
-async function verifyRouterOwnership(userId: string, routerId: string): Promise<void> {
-  const result = await pool.query(
-    'SELECT id FROM routers WHERE id = $1 AND user_id = $2',
+async function verifyRouterOwnership(userId: string, routerId: string): Promise<{ tunnelIp: string | null }> {
+  const result = await pool.query<{ tunnel_ip: string | null }>(
+    'SELECT tunnel_ip FROM routers WHERE id = $1 AND user_id = $2',
     [routerId, userId],
   );
   if (result.rows.length === 0) {
     throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
   }
+  return { tunnelIp: result.rows[0].tunnel_ip };
 }
 
 /**
@@ -338,6 +340,12 @@ type PgClient = { query: (...args: any[]) => Promise<any> };
 
 /**
  * Insert RADIUS entries for a new-style voucher (no profiles).
+ *
+ * The voucher is NAS-scoped via a `NAS-IP-Address == <tunnel_ip>` check
+ * attribute so the same username cannot be replayed on a different
+ * router in the same FreeRADIUS deployment. Scope is enforced at the
+ * authorize stage (FreeRADIUS compares the Access-Request's NAS-IP to
+ * this value and rejects mismatches).
  */
 async function insertRadiusEntriesV2(
   client: PgClient,
@@ -345,12 +353,19 @@ async function insertRadiusEntriesV2(
   password: string,
   limitType: 'time' | 'data',
   normalizedLimitValue: number,
-  validitySeconds?: number | null,
+  validitySeconds: number | null | undefined,
+  tunnelIp: string,
 ): Promise<void> {
   // radcheck: Cleartext-Password
   await client.query(
     'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
     [username, 'Cleartext-Password', ':=', password],
+  );
+
+  // radcheck: NAS-IP-Address — binds this voucher to its home router
+  await client.query(
+    'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+    [username, 'NAS-IP-Address', '==', tunnelIp],
   );
 
   // radcheck: Simultaneous-Use (default 1)
@@ -409,7 +424,14 @@ export async function createVouchers(
     price: number;
   },
 ): Promise<VoucherInfo[]> {
-  await verifyRouterOwnership(userId, routerId);
+  const { tunnelIp } = await verifyRouterOwnership(userId, routerId);
+  if (!tunnelIp) {
+    throw new AppError(
+      409,
+      'Router is still being provisioned — tunnel IP not yet allocated. Try again once the router is online.',
+      'ROUTER_NOT_READY',
+    );
+  }
 
   const count = data.count;
   const normalizedValue = normalizeLimit(data.limitValue, data.limitUnit);
@@ -469,11 +491,14 @@ export async function createVouchers(
       );
       vouchers.push(result.rows[0]);
 
-      // Insert RADIUS entries (username = password, no radusergroup)
+      // Insert RADIUS entries (username = password, no radusergroup).
+      // tunnelIp scopes the voucher to its home router — FreeRADIUS
+      // rejects Access-Requests where the NAS-IP doesn't match.
       await insertRadiusEntriesV2(
         client, cred.username, cred.username,
         data.limitType, normalizedValue,
         data.validitySeconds,
+        tunnelIp,
       );
     }
 
