@@ -26,14 +26,10 @@ RUN npm install --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY src/migrations/sql ./dist/migrations/sql
 
-# Create non-root user and fix ownership. The `freerad` group is shared
-# with the freeradius container via the freeradius_control named volume —
-# the app user joins that group (GID 101 matches the Debian freeradius
-# image default) so it can read/write the radmin Unix socket.
-RUN addgroup -S -g 101 freerad 2>/dev/null || true \
-    && addgroup -S app \
+# Create non-root user. The radmin socket in the freeradius_control volume
+# is chmod 0666 by the freeradius entrypoint, so no GID matching is needed.
+RUN addgroup -S app \
     && adduser -S -G app -s /sbin/nologin app \
-    && addgroup app freerad \
     && mkdir -p /app/uploads \
     && chown -R app:app /app
 
