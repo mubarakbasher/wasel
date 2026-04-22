@@ -1,8 +1,16 @@
+import { access } from 'fs/promises';
+import { constants as fsConstants } from 'fs';
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import * as adminService from '../services/admin.service';
 import * as auditService from '../services/audit.service';
 import * as routerService from '../services/router.service';
+import {
+  forceReloadFreeradiusClients,
+  getLastReloadStatus,
+  getRadminSocketPath,
+  showFreeradiusClients,
+} from '../services/freeradius.service';
 import { redact } from '../utils/redact';
 
 export async function listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -337,6 +345,84 @@ export async function getSystemStatus(req: AuthenticatedRequest, res: Response, 
   try {
     const status = await adminService.getSystemStatus();
     res.status(200).json({ success: true, data: status });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function socketReachability(): Promise<{ path: string; exists: boolean; readable: boolean; writable: boolean }> {
+  const path = getRadminSocketPath();
+  let exists = false;
+  let readable = false;
+  let writable = false;
+  try {
+    await access(path, fsConstants.F_OK);
+    exists = true;
+  } catch {
+    exists = false;
+  }
+  if (exists) {
+    try { await access(path, fsConstants.R_OK); readable = true; } catch { /* noop */ }
+    try { await access(path, fsConstants.W_OK); writable = true; } catch { /* noop */ }
+  }
+  return { path, exists, readable, writable };
+}
+
+/**
+ * GET /admin/freeradius/status
+ *
+ * Returns enough state for an admin to diagnose a "new routers can't
+ * authenticate" outage without SSH access:
+ *  - socket presence / permissions from the backend's POV
+ *  - last reload attempt result (success/failure with real stderr)
+ *  - the current `show clients` output, so the admin can verify whether
+ *    a specific NAS is loaded in FreeRADIUS
+ */
+export async function getFreeradiusStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const [socket, clients] = await Promise.all([
+      socketReachability(),
+      showFreeradiusClients(),
+    ]);
+    res.status(200).json({
+      success: true,
+      data: {
+        socket,
+        lastReload: getLastReloadStatus(),
+        clients: {
+          raw: clients,
+          lineCount: clients ? clients.split('\n').filter((l) => l.trim().length > 0).length : 0,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /admin/freeradius/reload
+ *
+ * Force an immediate (non-debounced) HUP. Returns the full radmin
+ * result so the operator can see why it failed if it did. This is the
+ * primary manual-recovery lever when the debounced reload has silently
+ * failed and new routers are stuck as "unknown client".
+ */
+export async function reloadFreeradius(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await forceReloadFreeradiusClients();
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'freeradius.reload',
+      targetEntity: 'system',
+      targetId: 'freeradius',
+      details: { ok: result.ok, exitCode: result.exitCode, durationMs: result.durationMs },
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(result.ok ? 200 : 502).json({
+      success: result.ok,
+      data: result,
+    });
   } catch (error) {
     next(error);
   }

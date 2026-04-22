@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile, ExecFileException } from 'child_process';
 import { promisify } from 'util';
 import logger from '../config/logger';
 
@@ -23,47 +23,102 @@ const DEBOUNCE_MS = 2_000;
 
 let pendingReload: NodeJS.Timeout | null = null;
 
+export interface RadminResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  durationMs: number;
+  error?: string;
+}
+
+export interface LastReloadStatus {
+  attemptedAt: string;
+  result: RadminResult;
+}
+
+let lastReloadStatus: LastReloadStatus | null = null;
+
 /**
- * Invoke `radmin -f <sock> -e "show clients"` and return stdout. Exposed
- * for use by the router-health probe that checks whether FreeRADIUS has
- * actually picked up a given NAS client. Swallowed errors turn into an
- * empty string so callers can treat "radmin failed" as "not visible".
+ * Invoke `radmin -f <sock> -e <command>` capturing stdout, stderr, and
+ * exit code. A non-zero exit still produces a structured result instead
+ * of an opaque exception so callers can surface the real failure reason
+ * (socket missing, permission denied, unknown command, etc.).
  */
-export async function showFreeradiusClients(): Promise<string> {
+async function runRadmin(command: string): Promise<RadminResult> {
+  const started = Date.now();
   try {
-    const { stdout } = await execFileAsync('radmin', [
+    const { stdout, stderr } = await execFileAsync('radmin', [
       '-f',
       RADMIN_SOCKET,
       '-e',
-      'show clients',
+      command,
     ]);
-    return stdout;
-  } catch (error) {
+    return {
+      ok: true,
+      stdout: stdout ?? '',
+      stderr: stderr ?? '',
+      exitCode: 0,
+      durationMs: Date.now() - started,
+    };
+  } catch (err) {
+    const e = err as ExecFileException & { stdout?: string; stderr?: string };
+    return {
+      ok: false,
+      stdout: e.stdout ?? '',
+      stderr: e.stderr ?? '',
+      exitCode: typeof e.code === 'number' ? e.code : null,
+      durationMs: Date.now() - started,
+      error: e.message,
+    };
+  }
+}
+
+/**
+ * Invoke `radmin -e "show clients"` and return stdout. Exposed for use
+ * by the router-health probe that checks whether FreeRADIUS has actually
+ * picked up a given NAS client. Swallowed errors turn into an empty
+ * string so callers can treat "radmin failed" as "not visible".
+ */
+export async function showFreeradiusClients(): Promise<string> {
+  const result = await runRadmin('show clients');
+  if (!result.ok) {
     logger.warn('radmin show clients failed', {
       socket: RADMIN_SOCKET,
-      error: error instanceof Error ? error.message : String(error),
+      exitCode: result.exitCode,
+      stderr: result.stderr.trim(),
+      error: result.error,
     });
     return '';
   }
+  return result.stdout;
 }
 
 /**
  * Perform the actual HUP. Non-fatal: we log a warning on failure rather
  * than throwing, because a reload failure should never block a router
- * CRUD operation — the nas row is already committed and the next
- * scheduled reload (or a manual `docker compose kill -s HUP freeradius`)
- * will eventually catch up.
+ * CRUD operation — the nas row is already committed and an admin can
+ * manually retry via POST /admin/freeradius/reload.
  */
-async function executeReload(): Promise<void> {
-  try {
-    await execFileAsync('radmin', ['-f', RADMIN_SOCKET, '-e', 'hup']);
-    logger.info('FreeRADIUS reload triggered via radmin HUP');
-  } catch (error) {
+async function executeReload(): Promise<RadminResult> {
+  const result = await runRadmin('hup');
+  lastReloadStatus = {
+    attemptedAt: new Date().toISOString(),
+    result,
+  };
+  if (result.ok) {
+    logger.info('FreeRADIUS reload triggered via radmin HUP', {
+      durationMs: result.durationMs,
+    });
+  } else {
     logger.warn('FreeRADIUS reload failed (non-fatal)', {
       socket: RADMIN_SOCKET,
-      error: error instanceof Error ? error.message : String(error),
+      exitCode: result.exitCode,
+      stderr: result.stderr.trim(),
+      error: result.error,
     });
   }
+  return result;
 }
 
 /**
@@ -73,7 +128,8 @@ async function executeReload(): Promise<void> {
  * "unknown client".
  *
  * Calls within the debounce window are coalesced — only the last call
- * actually fires. Never throws; errors surface only through logs.
+ * actually fires. Never throws; errors surface only through logs and
+ * through `getLastReloadStatus()` / the admin status endpoint.
  */
 export async function reloadFreeradiusClients(): Promise<void> {
   if (pendingReload) {
@@ -84,4 +140,31 @@ export async function reloadFreeradiusClients(): Promise<void> {
     pendingReload = null;
     void executeReload();
   }, DEBOUNCE_MS);
+}
+
+/**
+ * Trigger an immediate (non-debounced) HUP and return the detailed
+ * result. Intended for the admin recovery endpoint — when the debounced
+ * path has silently failed in production, an operator needs a way to
+ * force a reload and see the real stderr without SSH access.
+ */
+export async function forceReloadFreeradiusClients(): Promise<RadminResult> {
+  if (pendingReload) {
+    clearTimeout(pendingReload);
+    pendingReload = null;
+  }
+  return executeReload();
+}
+
+/**
+ * Return the result of the most recent HUP attempt (debounced or forced).
+ * Returns null if no reload has ever been attempted since process start.
+ */
+export function getLastReloadStatus(): LastReloadStatus | null {
+  return lastReloadStatus;
+}
+
+/** Exposed for the admin status endpoint. */
+export function getRadminSocketPath(): string {
+  return RADMIN_SOCKET;
 }
