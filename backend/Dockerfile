@@ -31,7 +31,11 @@ COPY --from=builder /app/dist ./dist
 COPY src/migrations/sql ./dist/migrations/sql
 
 # Create non-root user. The radmin socket in the freeradius_control volume
-# is chmod 0666 by the freeradius entrypoint, so no GID matching is needed.
+# is chmod 0666 by the freeradius entrypoint, so no GID matching is needed
+# there. The docker.sock mount DOES need GID matching so `docker restart
+# wasel-freeradius` works from the backend; that's handled at runtime by
+# docker-entrypoint.sh, which reads the socket's host GID and adds app to
+# a matching group before dropping privileges.
 # Entrypoint runs as root to chown the uploads volume (named volumes can carry
 # stale ownership from earlier image builds), then drops to `app` via su-exec.
 RUN addgroup -S app \

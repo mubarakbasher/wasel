@@ -162,11 +162,30 @@ async function dockerRestartFreeradius(): Promise<RadminResult> {
     };
   } catch (err) {
     const e = err as ExecFileException & { stdout?: string; stderr?: string };
+    const stderr = (e.stderr ?? '').trim();
+    const combined = `${stderr}\n${e.message ?? ''}`;
+
+    // Classify the two most common failure modes so operators see an
+    // actionable line in the logs instead of a raw exec dump.
+    let diagnosis: string | undefined;
+    if (/permission denied/i.test(combined) && /docker\.sock/i.test(combined)) {
+      diagnosis =
+        'backend user cannot access /var/run/docker.sock — verify docker-entrypoint.sh '
+        + 'resolves the host docker group GID and adds `app` to it, and that '
+        + 'docker-compose mounts /var/run/docker.sock into the backend service';
+    } else if (/command not found|not found.*docker/i.test(combined) || e.code === 127) {
+      diagnosis = 'docker CLI is missing from the backend image — rebuild with docker-cli apk package';
+    } else if (/Cannot connect to the Docker daemon/i.test(combined)) {
+      diagnosis =
+        'docker daemon unreachable — /var/run/docker.sock is not mounted or the daemon is down on the host';
+    }
+
     logger.error('FreeRADIUS: docker restart failed', {
       container: FREERADIUS_CONTAINER,
       exitCode: e.code ?? null,
-      stderr: (e.stderr ?? '').trim(),
+      stderr,
       error: e.message,
+      diagnosis,
     });
     return {
       ok: false,
@@ -174,7 +193,7 @@ async function dockerRestartFreeradius(): Promise<RadminResult> {
       stderr: e.stderr ?? '',
       exitCode: typeof e.code === 'number' ? e.code : null,
       durationMs: Date.now() - started,
-      error: e.message,
+      error: diagnosis ? `${diagnosis} (${e.message})` : e.message,
       attempts: 1,
       hardRestarted: false,
     };
