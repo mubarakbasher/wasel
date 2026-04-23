@@ -399,10 +399,12 @@ export async function getFreeradiusStatus(req: AuthenticatedRequest, res: Respon
 /**
  * POST /admin/freeradius/reload
  *
- * Force an immediate (non-debounced) HUP. Returns the full radmin
- * result so the operator can see why it failed if it did. This is the
- * primary manual-recovery lever when the debounced reload has silently
- * failed and new routers are stuck as "unknown client".
+ * Force an immediate (non-debounced) `docker restart wasel-freeradius`
+ * so the FreeRADIUS container re-reads the nas table at startup. Returns
+ * the full result so the operator can see docker's stderr if the command
+ * failed (e.g. docker socket not mounted, CLI missing). Primary manual-
+ * recovery lever when the debounced reload has silently failed and new
+ * routers are stuck as "unknown client".
  */
 export async function reloadFreeradius(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {

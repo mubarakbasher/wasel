@@ -41,10 +41,19 @@ services:
       - /etc/wireguard:/etc/wireguard
       - backend_uploads:/app/uploads
       - ./backend/secrets:/app/secrets:ro
-      # Shared with the freeradius container. The radmin Unix socket lives
-      # at /var/run/freeradius/radmin.sock; we use it to trigger HUP reloads
-      # of the nas client table after a router is added / updated / deleted.
+      # Shared with the freeradius container. Still mounted because radmin
+      # is used by the reconciliation probe and router-health check to run
+      # `show clients` against FreeRADIUS's in-memory table — but NOT for
+      # reloads any more. See freeradius.service.ts for why.
       - freeradius_control:/var/run/freeradius
+      # Docker socket — lets the backend run `docker restart wasel-freeradius`
+      # after a `nas` table write. FreeRADIUS 3.2.4 does not reload
+      # SQL-loaded dynamic clients on HUP, so a full container restart is
+      # the only reliable way to make a freshly-inserted NAS row start
+      # authenticating. Matches Wassal's docker-compose.prod.yml:70 pattern.
+      # Security: this grants the backend effective root on the host;
+      # acceptable because the Wasel VPS hosts only Wasel services.
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy

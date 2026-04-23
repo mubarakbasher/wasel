@@ -7,46 +7,42 @@ const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 
 /**
- * Unix-domain socket exposed by FreeRADIUS via the control-socket
- * virtual server (freeradius/raddb/sites-enabled/control-socket). The
- * backend container mounts the parent directory from the freeradius
- * container through the `freeradius_control` named volume.
+ * Unix-domain socket exposed by FreeRADIUS via the control-socket virtual
+ * server (freeradius/raddb/sites-enabled/control-socket). The backend
+ * container mounts the parent directory from the freeradius container
+ * through the `freeradius_control` named volume.
+ *
+ * We use this socket only for `radmin -e "show clients"` probes now — not
+ * for reloads. FreeRADIUS 3.2.4 does not re-read SQL-loaded dynamic
+ * clients on HUP, so a full container restart is the only reliable path
+ * to pick up a freshly-inserted `nas` row.
  */
 const RADMIN_SOCKET = '/var/run/freeradius/radmin.sock';
 
 /**
- * How long to wait after the last reload request before actually firing
- * the HUP. Bulk router operations (initial provisioning scripts, admin
- * backfills) can easily touch the nas table a dozen times per second —
- * debouncing coalesces those into one reload so FreeRADIUS isn't
- * thrashing its connection pool.
+ * Coalesce bursts of NAS writes into one restart. When a script imports
+ * three routers in rapid succession, each write calls
+ * `reloadFreeradiusClients()`; within this window only the last call
+ * actually fires, so FR restarts once instead of three times.
  */
 const DEBOUNCE_MS = 2_000;
 
 /**
- * Retry schedule for verify-then-retry on HUP. Each value is a delay in
- * milliseconds between the HUP attempt and the `show clients` verification
- * probe. Total wall-clock ceiling ≈ 5.5 s.
+ * How long to wait for FreeRADIUS to come back up and load the nas table
+ * after a `docker restart`. Poll `isNasVisible()` every 500ms until the
+ * expected NAS appears. 15s is generous — a healthy 3.2.4 container boots
+ * in 2-4 seconds.
  */
-const VERIFY_RETRY_DELAYS_MS = [500, 1500, 3500];
+const POST_RESTART_WAIT_MS = 15_000;
+const POST_RESTART_POLL_MS = 500;
 
 /**
- * Name of the FreeRADIUS container. Used by the escape-hatch hard-restart
- * when radmin HUP has failed to propagate a NAS change. Overridable via env
- * in case the operator renamed the compose service.
+ * Name of the FreeRADIUS container to restart. Overridable via env in
+ * case the operator renamed the compose service.
  */
 const FREERADIUS_CONTAINER = process.env.FREERADIUS_CONTAINER_NAME ?? 'wasel-freeradius';
 
-/**
- * Minimum wall-clock time since the last successful HUP before the escape
- * hatch is willing to `docker restart freeradius`. Prevents a flapping
- * socket from cycling the container every request.
- */
-const ESCAPE_HATCH_COOLDOWN_MS = 5 * 60 * 1000;
-
 let pendingReload: NodeJS.Timeout | null = null;
-let lastSuccessfulReloadAt: number | null = null;
-let lastEscapeHatchAt: number | null = null;
 
 export interface RadminResult {
   ok: boolean;
@@ -57,9 +53,9 @@ export interface RadminResult {
   error?: string;
   /** Set when the caller asked us to verify that `expectedNas` is visible. */
   verified?: boolean;
-  /** How many HUP attempts it took (1 = first try, >1 = after retry). */
+  /** Kept for backwards-compat with the admin status endpoint. Always 1 for docker restart. */
   attempts?: number;
-  /** True if the escape-hatch docker restart fired during this call. */
+  /** True when a docker-restart actually ran during this call. Always true on the new path. */
   hardRestarted?: boolean;
 }
 
@@ -106,8 +102,8 @@ async function runRadmin(command: string): Promise<RadminResult> {
 }
 
 /**
- * Invoke `radmin -e "show clients"` and return stdout. Exposed for use
- * by the router-health probe that checks whether FreeRADIUS has actually
+ * Invoke `radmin -e "show clients"` and return stdout. Exposed for use by
+ * the router-health probe that checks whether FreeRADIUS has actually
  * picked up a given NAS client. Swallowed errors turn into an empty
  * string so callers can treat "radmin failed" as "not visible".
  */
@@ -141,142 +137,111 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Perform a `docker restart` on the FreeRADIUS container as a last resort
- * when radmin HUP has repeatedly failed. Requires the backend container
- * to have the Docker socket mounted OR the `docker` CLI to be available
- * with credentials — in practice the VPS deploy gives the backend this
- * via the `DOCKER_HOST`/compose setup.
+ * `docker restart <FREERADIUS_CONTAINER>`. Requires /var/run/docker.sock
+ * to be mounted into this container and the `docker` CLI in the image —
+ * both wired up by docker-compose.yml + backend/Dockerfile.
  *
- * Cooldown-gated: we won't fire this more than once per 5 min.
+ * Returns a RadminResult-shaped object so executeReloadInternal callers
+ * and the admin status endpoint keep rendering the same fields.
  */
-async function hardRestartFreeradius(): Promise<boolean> {
-  const now = Date.now();
-  if (lastEscapeHatchAt && now - lastEscapeHatchAt < ESCAPE_HATCH_COOLDOWN_MS) {
-    logger.warn('FreeRADIUS escape-hatch suppressed by cooldown', {
-      lastFiredAt: new Date(lastEscapeHatchAt).toISOString(),
-      cooldownMs: ESCAPE_HATCH_COOLDOWN_MS,
-    });
-    return false;
-  }
-  lastEscapeHatchAt = now;
-  logger.error('FreeRADIUS escape-hatch: hard-restarting container', {
-    container: FREERADIUS_CONTAINER,
-  });
+async function dockerRestartFreeradius(): Promise<RadminResult> {
+  const started = Date.now();
+  logger.info('FreeRADIUS: issuing docker restart', { container: FREERADIUS_CONTAINER });
   try {
-    await execAsync(`docker restart ${FREERADIUS_CONTAINER}`, { timeout: 15_000 });
-    logger.info('FreeRADIUS container restarted via escape-hatch', {
-      container: FREERADIUS_CONTAINER,
+    const { stdout, stderr } = await execAsync(`docker restart ${FREERADIUS_CONTAINER}`, {
+      timeout: 20_000,
     });
-    return true;
+    return {
+      ok: true,
+      stdout: stdout ?? '',
+      stderr: stderr ?? '',
+      exitCode: 0,
+      durationMs: Date.now() - started,
+      attempts: 1,
+      hardRestarted: true,
+    };
   } catch (err) {
-    logger.error('FreeRADIUS escape-hatch restart failed', {
+    const e = err as ExecFileException & { stdout?: string; stderr?: string };
+    logger.error('FreeRADIUS: docker restart failed', {
       container: FREERADIUS_CONTAINER,
-      error: err instanceof Error ? err.message : String(err),
+      exitCode: e.code ?? null,
+      stderr: (e.stderr ?? '').trim(),
+      error: e.message,
     });
-    return false;
+    return {
+      ok: false,
+      stdout: e.stdout ?? '',
+      stderr: e.stderr ?? '',
+      exitCode: typeof e.code === 'number' ? e.code : null,
+      durationMs: Date.now() - started,
+      error: e.message,
+      attempts: 1,
+      hardRestarted: false,
+    };
   }
 }
 
 /**
- * Internal: run HUP, then (if expectedNas supplied) verify the NAS is
- * visible in the running FreeRADIUS client table. Retries on failure.
+ * Restart FreeRADIUS, then (if expectedNas supplied) poll until the NAS
+ * appears in `show clients` or we hit the POST_RESTART_WAIT_MS ceiling.
  */
 async function executeReloadInternal(expectedNas?: string): Promise<RadminResult> {
-  const started = Date.now();
-  let lastResult: RadminResult | null = null;
-  let attempt = 0;
+  const result = await dockerRestartFreeradius();
 
-  for (; attempt < VERIFY_RETRY_DELAYS_MS.length + 1; attempt++) {
-    lastResult = await runRadmin('hup');
-    if (!lastResult.ok) {
-      // radmin itself failed — no point checking visibility this round.
-      if (attempt < VERIFY_RETRY_DELAYS_MS.length) {
-        await sleep(VERIFY_RETRY_DELAYS_MS[attempt]);
-        continue;
-      }
-      break;
-    }
-
-    if (!expectedNas) {
-      // No verification requested — one successful HUP is enough.
-      break;
-    }
-
-    // Give FreeRADIUS a beat to actually reload the clients table before
-    // we probe for the new NAS.
-    await sleep(VERIFY_RETRY_DELAYS_MS[Math.min(attempt, VERIFY_RETRY_DELAYS_MS.length - 1)]);
-
-    if (await isNasVisible(expectedNas)) {
-      lastResult.verified = true;
-      break;
-    }
-    // Not visible yet — fall through to next retry attempt.
+  if (!result.ok) {
+    // docker CLI missing, socket not mounted, or daemon unreachable.
+    // Nothing else we can try from inside the backend container.
+    lastReloadStatus = { attemptedAt: new Date().toISOString(), result };
+    return result;
   }
 
-  const result: RadminResult = {
-    ...(lastResult ?? { ok: false, stdout: '', stderr: '', exitCode: null, durationMs: 0 }),
-    attempts: attempt + (lastResult?.ok && lastResult?.verified ? 1 : attempt),
-    durationMs: Date.now() - started,
-  };
-  // Re-set attempts to a sensible count: number of HUPs fired.
-  result.attempts = Math.min(attempt + 1, VERIFY_RETRY_DELAYS_MS.length + 1);
-
-  if (result.ok && (result.verified || !expectedNas)) {
-    lastSuccessfulReloadAt = Date.now();
-    logger.info('FreeRADIUS reload succeeded', {
+  if (!expectedNas) {
+    logger.info('FreeRADIUS restarted (no NAS verification requested)', {
       durationMs: result.durationMs,
-      attempts: result.attempts,
-      verified: result.verified ?? null,
-      expectedNas: expectedNas ?? null,
     });
-  } else {
-    logger.error('FreeRADIUS reload failed after retries', {
-      socket: RADMIN_SOCKET,
-      exitCode: result.exitCode,
-      stderr: result.stderr.trim(),
-      error: result.error,
-      attempts: result.attempts,
-      expectedNas: expectedNas ?? null,
-      verified: result.verified ?? false,
-    });
+    lastReloadStatus = { attemptedAt: new Date().toISOString(), result };
+    return result;
+  }
 
-    // Escape hatch: if we haven't had a successful reload in a while (or
-    // ever), nuke the container. Keep it as a last resort — gated by a
-    // 5-minute cooldown to avoid cycle-on-cycle.
-    const neverSucceeded = lastSuccessfulReloadAt === null;
-    const stale = lastSuccessfulReloadAt !== null && Date.now() - lastSuccessfulReloadAt > ESCAPE_HATCH_COOLDOWN_MS;
-    if (neverSucceeded || stale) {
-      result.hardRestarted = await hardRestartFreeradius();
-      if (result.hardRestarted) {
-        // After a hard restart, FreeRADIUS re-reads the nas table at
-        // startup so our expectedNas will be picked up in the next few
-        // seconds. Mark successful so callers don't double-fire.
-        lastSuccessfulReloadAt = Date.now();
-      }
+  // Poll until FR is back up and the NAS is visible, or we give up.
+  const pollStart = Date.now();
+  const deadline = pollStart + POST_RESTART_WAIT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POST_RESTART_POLL_MS);
+    if (await isNasVisible(expectedNas)) {
+      result.verified = true;
+      logger.info('FreeRADIUS restarted and NAS visible', {
+        expectedNas,
+        restartMs: result.durationMs,
+        waitMs: Date.now() - pollStart,
+      });
+      lastReloadStatus = { attemptedAt: new Date().toISOString(), result };
+      return result;
     }
   }
 
-  lastReloadStatus = {
-    attemptedAt: new Date(started).toISOString(),
-    result,
-  };
+  // Restart succeeded but the NAS never showed up — the row may have been
+  // deleted between the write and the restart, or radmin is broken.
+  result.verified = false;
+  logger.warn('FreeRADIUS restarted but NAS did not appear in show clients', {
+    expectedNas,
+    restartMs: result.durationMs,
+    waitMs: Date.now() - pollStart,
+  });
+  lastReloadStatus = { attemptedAt: new Date().toISOString(), result };
   return result;
 }
 
 /**
  * Request FreeRADIUS to re-read its clients (nas table, clients.conf
  * includes, etc.) so a freshly-inserted NAS row starts authenticating
- * immediately instead of silently rejecting Access-Request packets as
- * "unknown client".
+ * immediately. Calls within DEBOUNCE_MS are coalesced — only the last
+ * call actually fires. Never throws; errors surface through logs and
+ * `getLastReloadStatus()`.
  *
- * Calls within the debounce window are coalesced — only the last call
- * actually fires. Never throws; errors surface only through logs and
- * through `getLastReloadStatus()` / the admin status endpoint.
- *
- * For the single-router create-path that needs to KNOW the row has been
- * loaded before returning to the caller, use `forceReloadAndVerify()`
- * instead — this function's debounce makes it unsuitable for the happy
- * path.
+ * Use this from fire-and-forget call sites (update, delete) where the
+ * caller doesn't need to know the NAS is loaded before returning. For
+ * paths that must verify (create, finalize), use `forceReloadAndVerify()`.
  */
 export async function reloadFreeradiusClients(): Promise<void> {
   if (pendingReload) {
@@ -290,11 +255,11 @@ export async function reloadFreeradiusClients(): Promise<void> {
 }
 
 /**
- * Immediate, non-debounced, verify-then-retry reload. Use this in the
- * router create and script-callback paths so the caller gets truthful
- * state: when this resolves, FreeRADIUS has actually loaded the given
- * NAS (or we've escalated to an escape-hatch container restart + logged
- * an error). Never throws — errors are in the returned result.
+ * Immediate, non-debounced, verify-after-restart reload. Use this in the
+ * router create and finalize paths so the caller gets truthful state:
+ * when this resolves, FreeRADIUS has been restarted and (if ok) the NAS
+ * is visible in its in-memory client list. Never throws — errors surface
+ * in the returned result.
  */
 export async function forceReloadAndVerify(expectedNas: string): Promise<RadminResult> {
   if (pendingReload) {
@@ -305,12 +270,10 @@ export async function forceReloadAndVerify(expectedNas: string): Promise<RadminR
 }
 
 /**
- * Trigger an immediate (non-debounced) HUP and return the detailed
+ * Trigger an immediate (non-debounced) restart and return the detailed
  * result. Intended for the admin recovery endpoint — when the debounced
  * path has silently failed in production, an operator needs a way to
- * force a reload and see the real stderr without SSH access. Does not
- * verify visibility since the admin may be reloading for reasons other
- * than adding a specific NAS.
+ * force a reload and see the real stderr without SSH access.
  */
 export async function forceReloadFreeradiusClients(): Promise<RadminResult> {
   if (pendingReload) {
@@ -322,9 +285,14 @@ export async function forceReloadFreeradiusClients(): Promise<RadminResult> {
 
 /**
  * Compare the `nas` table in PostgreSQL against FreeRADIUS's in-memory
- * client list and fire a forced HUP if any DB row is missing. Intended
- * to run once at backend boot so a FreeRADIUS cold-start or a missed
- * reload during a backend restart converges back to a consistent state.
+ * client list and fire a restart if any DB row is missing. Runs once at
+ * backend boot so a FreeRADIUS cold-start or a missed reload during a
+ * backend restart converges back to a consistent state.
+ *
+ * Gated: if radmin is not responding (FreeRADIUS still booting), skip —
+ * depends_on and the container's own startup will load the nas table at
+ * startup time, so no restart is needed. Restarting an already-booting
+ * container would just extend the window where vouchers can't auth.
  *
  * Non-fatal: logs and swallows all errors. Callers should `void` it or
  * catch to avoid blocking server startup on RADIUS issues.
@@ -338,6 +306,15 @@ export async function reconcileNasOnStartup(): Promise<void> {
     }
 
     const memory = await showFreeradiusClients();
+    if (!memory) {
+      // radmin unavailable — FR probably booting. It will load the nas
+      // table itself as part of startup; don't restart.
+      logger.info('FreeRADIUS reconciliation: radmin not responding (FR booting?), skipping', {
+        dbRowCount: dbRows.rows.length,
+      });
+      return;
+    }
+
     const missing = dbRows.rows
       .map((r) => r.nasname)
       .filter((ip) => {
@@ -352,16 +329,12 @@ export async function reconcileNasOnStartup(): Promise<void> {
       return;
     }
 
-    logger.warn('FreeRADIUS reconciliation: drift detected, forcing reload', {
+    logger.warn('FreeRADIUS reconciliation: drift detected, restarting', {
       missingCount: missing.length,
       sample: missing.slice(0, 5),
       total: dbRows.rows.length,
     });
 
-    // One forced HUP brings ALL missing rows in at once. We don't verify
-    // per-nasname since a cold-started FreeRADIUS may take a second or
-    // two to load the full table — the ordinary HUP path + retry is
-    // enough for bootstrap.
     await executeReloadInternal();
   } catch (err) {
     logger.warn('FreeRADIUS reconciliation failed (non-fatal)', {
@@ -371,8 +344,9 @@ export async function reconcileNasOnStartup(): Promise<void> {
 }
 
 /**
- * Return the result of the most recent HUP attempt (debounced or forced).
- * Returns null if no reload has ever been attempted since process start.
+ * Return the result of the most recent restart attempt (debounced or
+ * forced). Returns null if no reload has ever been attempted since
+ * process start.
  */
 export function getLastReloadStatus(): LastReloadStatus | null {
   return lastReloadStatus;

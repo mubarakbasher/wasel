@@ -12,10 +12,14 @@ RUN npm run build
 FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 # - wireguard-tools: wg CLI used by wireguardPeer.ts
-# - freeradius: ships radmin (control-socket HUP after nas table changes)
-#   and radclient (synthetic RADIUS auth probe in routerHealth.service.ts)
+# - freeradius: ships radclient (synthetic RADIUS auth probe in
+#   routerHealth.service.ts) and radmin (used only by the reconciliation
+#   probe's `show clients` call — reloads now use `docker restart`).
 # - iputils: `ping` used by the tunnel-reachability health probe
-RUN apk add --no-cache wireguard-tools libcap freeradius iputils su-exec \
+# - docker-cli: used to `docker restart wasel-freeradius` after nas writes.
+#   The host docker daemon socket is mounted via docker-compose.yml; this
+#   package supplies only the client binary, no daemon.
+RUN apk add --no-cache wireguard-tools libcap freeradius iputils su-exec docker-cli \
     && setcap cap_net_admin+eip /usr/bin/wg
 
 WORKDIR /app
