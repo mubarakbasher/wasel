@@ -21,8 +21,17 @@ sql {
     # Group attribute
     group_attribute = "SQL-Group"
 
-    # Read NAS clients from the 'nas' table
-    read_clients = yes
+    # NAS clients are loaded ENTIRELY via the dynamic_client_server vserver
+    # (see clients.conf and sites-enabled/dynamic-clients), NOT via the
+    # boot-time bulk SELECT. read_clients = yes used to coexist with
+    # dynamic_clients but caused a footgun: rows loaded at boot become
+    # *static* in-memory clients with no TTL, so a delete-then-recreate-
+    # same-tunnel-IP swap (or a secret rotation) leaves FR auth'ing
+    # against the stale secret forever — dynamic_clients only fires for
+    # UNKNOWN IPs, never for already-loaded ones. With read_clients = no
+    # every client is dynamic, every row change is picked up within
+    # `lifetime` seconds (clients.conf), and there is one source of truth.
+    read_clients = no
     client_table = "nas"
 
     # Use standard PostgreSQL queries
