@@ -10,6 +10,7 @@ import { addPeer, removePeer } from './wireguardPeer';
 import { generateMikrotikConfigText, generateSetupSteps, SetupStep } from './wireguardConfig';
 import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
+import { reloadFreeradiusClients, forceReloadAndVerify } from './freeradius.service';
 import { runHealthCheck } from './routerHealth.service';
 import { schedulePostAddProvision, provisionRouter } from './routerProvision.service';
 
@@ -185,10 +186,21 @@ export async function createRouter(
 
     await client.query('COMMIT');
 
-    // FreeRADIUS picks the new NAS up on its first Access-Request via the
-    // dynamic_clients path (see freeradius/raddb/sites-enabled/dynamic-
-    // clients). No reload / HUP / docker-restart is needed — the nas
-    // INSERT above is the only onboarding side effect required.
+    // Poke FreeRADIUS so the NAS row we just committed is actually loaded
+    // — without this, Access-Request packets from the new router are
+    // silently dropped as "unknown client" until the next freeradius
+    // restart / SIGHUP. We AWAIT this (verify + retry + escape-hatch
+    // container restart) so the response reflects truthful state: the
+    // NAS is loaded when createRouter resolves.
+    const reloadResult = await forceReloadAndVerify(tunnel.routerIp);
+    if (!reloadResult.ok || reloadResult.verified === false) {
+      logger.warn('createRouter: FreeRADIUS could not confirm the new NAS', {
+        routerId: router.id,
+        tunnelIp: tunnel.routerIp,
+        attempts: reloadResult.attempts,
+        hardRestarted: reloadResult.hardRestarted ?? false,
+      });
+    }
 
     // Add WireGuard peer (non-fatal if wg isn't available in dev)
     try {
@@ -297,6 +309,21 @@ export async function finalizePendingRouter(routerId: string): Promise<void> {
 
   logger.info('finalizePendingRouter: script callback received, triggering provision', { routerId });
 
+  // Make sure FreeRADIUS has loaded this router's NAS row BEFORE we run
+  // the provision's synth-auth probe, otherwise the very first health
+  // check after onboarding fails spuriously.
+  if (router.tunnel_ip) {
+    const reloadResult = await forceReloadAndVerify(router.tunnel_ip);
+    if (!reloadResult.ok || reloadResult.verified === false) {
+      logger.warn('finalizePendingRouter: FreeRADIUS reload could not confirm NAS', {
+        routerId,
+        tunnelIp: router.tunnel_ip,
+        attempts: reloadResult.attempts,
+        hardRestarted: reloadResult.hardRestarted ?? false,
+      });
+    }
+  }
+
   try {
     await provisionRouter(router.user_id, routerId, { trigger: 'post-add' });
   } catch (error) {
@@ -393,15 +420,13 @@ export async function updateRouter(
 
   const updatedRouter = result.rows[0];
 
-  // Sync NAS shortname if name changed. The updated row will be picked up
-  // by FreeRADIUS the next time the dynamic client entry expires
-  // (lifetime = 3600s in clients.conf); within-cache renames don't need a
-  // reload because shortname isn't used for auth, only for reporting.
+  // Sync NAS shortname if name changed
   if (data.name !== undefined && updatedRouter.tunnel_ip) {
     await pool.query(
       'UPDATE nas SET shortname = $1, description = $2 WHERE nasname = $3',
       [updatedRouter.nas_identifier, data.name, updatedRouter.tunnel_ip],
     );
+    void reloadFreeradiusClients();
   }
 
   logger.info('Router updated', { routerId, userId });
@@ -424,13 +449,10 @@ export async function deleteRouter(userId: string, routerId: string): Promise<vo
 
   const router = result.rows[0];
 
-  // Delete NAS entry. If FreeRADIUS has already cached this IP as a
-  // dynamic client, the cached entry stays valid until `lifetime` expires
-  // (3600s) — acceptable because the WireGuard peer is also removed
-  // below so the tunnel is gone and no packets will actually arrive from
-  // that IP in the meantime.
+  // Delete NAS entry
   if (router.tunnel_ip) {
     await pool.query('DELETE FROM nas WHERE nasname = $1', [router.tunnel_ip]);
+    void reloadFreeradiusClients();
   }
 
   // Release the tunnel subnet back to the free pool before deleting the

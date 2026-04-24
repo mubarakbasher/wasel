@@ -57,7 +57,10 @@ vi.mock('../services/routerOs.service', () => ({
 }));
 
 vi.mock('../services/freeradius.service', () => ({
+  reloadFreeradiusClients: vi.fn().mockResolvedValue(undefined),
+  forceReloadAndVerify: vi.fn().mockResolvedValue({ ok: true, stdout: '', stderr: '', exitCode: 0, durationMs: 1, verified: true, attempts: 1 }),
   showFreeradiusClients: vi.fn().mockResolvedValue(''),
+  reconcileNasOnStartup: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../services/routerHealth.service', () => ({

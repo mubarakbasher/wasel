@@ -90,11 +90,10 @@ router.delete(
 // System status
 router.get('/system-status', adminController.getSystemStatus);
 
-// FreeRADIUS diagnostics — lists which NASes FR has currently loaded so
-// an admin can sanity-check that a given router reached FR at least
-// once. The dynamic_clients path means a freshly-added NAS won't appear
-// here until its first real Access-Request.
+// FreeRADIUS diagnostics / manual recovery — lets an admin unblock
+// production (new NAS rows invisible to freeradius) without SSH access.
 router.get('/freeradius/status', adminController.getFreeradiusStatus);
+router.post('/freeradius/reload', adminController.reloadFreeradius);
 
 // Support messages
 router.get('/support/unread-count', supportController.adminUnreadCount);

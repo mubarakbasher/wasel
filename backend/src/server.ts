@@ -10,6 +10,7 @@ import { startValidityExpirationJob } from './jobs/validityExpiration';
 import { startUsageLimitEnforcementJob } from './jobs/usageLimitEnforcement';
 import { startMonitoring } from './services/wireguardMonitor';
 import { syncPeersFromDatabase } from './services/wireguardPeer';
+import { reconcileNasOnStartup } from './services/freeradius.service';
 import { runMigrations } from './migrations/runner';
 
 // ── Crash handlers ────────────────────────────────────────────────────────────
@@ -94,6 +95,11 @@ async function startServer(): Promise<void> {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+
+    // Reconcile FreeRADIUS in-memory client table with the DB. Cold-starts
+    // and missed reloads during a backend restart can leave drift that
+    // silently breaks voucher auth; this catches it on boot.
+    void reconcileNasOnStartup();
 
     // Start background jobs
     startPurgeUnverifiedJob();

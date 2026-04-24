@@ -23,6 +23,7 @@ const { execFileMock } = vi.hoisted(() => ({
 
 vi.mock('../../services/freeradius.service', () => ({
   showFreeradiusClients: showClientsMock,
+  reloadFreeradiusClients: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../services/wireguardPeer', () => ({
@@ -139,22 +140,81 @@ describe('runHealthCheck', () => {
     });
   });
 
-  it('short-circuits when the nas row is missing (no downstream probes run)', async () => {
+  it('short-circuits when the nas row is missing (no probes 3-9)', async () => {
     primeLoadAndNas(mockRouterRow(), false);
+    showClientsMock.mockResolvedValueOnce('');
     allowPersist();
 
     const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
 
     expect(report.overall).toBe('broken');
-    expect(report.probes.map((p) => p.id)).toEqual(['nasRowPresent']);
+    expect(report.probes.map((p) => p.id)).toEqual([
+      'nasRowPresent',
+      'freeradiusSeesNas',
+    ]);
     expect(report.probes[0].status).toBe('fail');
   });
 
-  // Note: the old probeFreeradiusSeesNas was removed when new-router
-  // onboarding switched to the dynamic_clients path (a freshly-added NAS
-  // doesn't appear in `show clients` output until its first auth, so the
-  // signal was misleading). Admin `/admin/freeradius/status` still
-  // exposes the raw `show clients` output for manual diagnostics.
+  it('passes probe 2 when radmin output lists the tunnel IP', async () => {
+    primeLoadAndNas(mockRouterRow(), true);
+    showClientsMock.mockResolvedValueOnce('Client 10.10.0.2 ...');
+    getPeerStatusMock.mockResolvedValueOnce({
+      publicKey: 'pk-router',
+      endpoint: '',
+      allowedIps: '',
+      latestHandshake: Math.floor(Date.now() / 1000) - 5,
+      transferRx: 0,
+      transferTx: 0,
+    });
+    execFileMock.mockImplementation((_cmd, _args, cb) => cb(null, '', ''));
+    testConnectionMock.mockResolvedValueOnce(true);
+    // Active hotspot server using the 'default' profile — lets both
+    // hotspotUsesRadius and hotspotServerBound probes pass.
+    listHotspotServersMock.mockResolvedValue([
+      { id: '*1', name: 'wasel-hotspot', interface: 'bridge', profile: 'default', disabled: false },
+    ]);
+    connectToRouterMock.mockImplementation(() =>
+      Promise.resolve(connectStub((path) => {
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', 'use-radius': 'yes' }];
+        if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
+        if (path === '/ip/firewall/filter') return [
+          { action: 'accept', protocol: 'udp', 'dst-port': '1812,1813', disabled: 'false' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '3799', disabled: 'false' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '51820', disabled: 'false' },
+        ];
+        return [];
+      })),
+    );
+    sendAccessRequestMock.mockResolvedValueOnce('reject');
+    allowPersist();
+
+    const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
+
+    const p2 = report.probes.find((p) => p.id === 'freeradiusSeesNas');
+    expect(p2?.status).toBe('pass');
+    expect(report.overall).toBe('healthy');
+  });
+
+  it('fails probe 2 when radmin output does not mention the tunnel IP', async () => {
+    primeLoadAndNas(mockRouterRow(), true);
+    showClientsMock.mockResolvedValueOnce('Client 10.10.0.99 ...');
+    getPeerStatusMock.mockResolvedValueOnce({
+      publicKey: 'pk-router',
+      endpoint: '',
+      allowedIps: '',
+      latestHandshake: Math.floor(Date.now() / 1000) - 5,
+      transferRx: 0,
+      transferTx: 0,
+    });
+    execFileMock.mockImplementation((_cmd, _args, cb) => cb(null, '', ''));
+    testConnectionMock.mockResolvedValueOnce(false);
+    sendAccessRequestMock.mockResolvedValueOnce('timeout');
+    allowPersist();
+
+    const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
+    const p2 = report.probes.find((p) => p.id === 'freeradiusSeesNas');
+    expect(p2?.status).toBe('fail');
+  });
 
   it('fails probe 3 when WireGuard handshake is stale', async () => {
     primeLoadAndNas(mockRouterRow(), true);
