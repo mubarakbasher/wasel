@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import { pool } from '../config/database';
 import { config } from '../config';
 import logger from '../config/logger';
@@ -12,7 +12,6 @@ import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
 import { reloadFreeradiusClients, forceReloadAndVerify } from './freeradius.service';
 import { runHealthCheck } from './routerHealth.service';
-import { schedulePostAddProvision, provisionRouter } from './routerProvision.service';
 
 // ----- Interfaces -----
 
@@ -226,18 +225,6 @@ export async function createRouter(
       });
     });
 
-    // Fire-and-forget Stage-2 auto-provision poller: watches for WireGuard
-    // handshake then applies RADIUS / CoA / hotspot / firewall automatically.
-    // This is the fallback path; the callback endpoint triggers provisioning
-    // as soon as the operator runs step 7 on the router.
-    schedulePostAddProvision(router.id, userId);
-
-    // Build the HMAC-signed callback URL embedded in the setup script.
-    // The router hits this URL in step 7 (/tool fetch) so provisioning
-    // starts immediately instead of waiting for the poller.
-    const sig = createHmac('sha256', config.JWT_ACCESS_SECRET).update(router.id).digest('hex');
-    const callbackUrl = `${config.PUBLIC_BASE_URL}/api/v1/public/routers/script-callback?routerId=${router.id}&sig=${sig}`;
-
     const serverEndpoint = `${config.WG_SERVER_ENDPOINT}:${config.WG_SERVER_PORT}`;
 
     const steps = generateSetupSteps({
@@ -249,7 +236,6 @@ export async function createRouter(
       radiusSecret,
       radiusServerIp: '10.10.0.1',
       apiPassword,
-      callbackUrl,
     });
 
     logger.info('Router created', {
@@ -270,69 +256,6 @@ export async function createRouter(
     throw error;
   } finally {
     client.release();
-  }
-}
-
-/**
- * Triggered by the script-callback endpoint when the operator runs step 7 on
- * the router. Kicks off provisioning immediately rather than waiting for the
- * background poller. Idempotent — silently no-ops if provisioning is already
- * underway or completed.
- */
-export async function finalizePendingRouter(routerId: string): Promise<void> {
-  const result = await pool.query<RouterRow>(
-    'SELECT * FROM routers WHERE id = $1',
-    [routerId],
-  );
-
-  if (result.rows.length === 0) {
-    logger.warn('finalizePendingRouter: router not found', { routerId });
-    return;
-  }
-
-  const router = result.rows[0];
-
-  // Check provision status — skip if already past "pending"
-  const statusResult = await pool.query<{ last_provision_status: string | null }>(
-    'SELECT last_provision_status FROM routers WHERE id = $1',
-    [routerId],
-  );
-  const provisionStatus = statusResult.rows[0]?.last_provision_status ?? null;
-
-  if (provisionStatus === 'in_progress' || provisionStatus === 'succeeded' || provisionStatus === 'partial') {
-    logger.info('finalizePendingRouter: provision already running/done, skipping', {
-      routerId,
-      provisionStatus,
-    });
-    return;
-  }
-
-  logger.info('finalizePendingRouter: script callback received, triggering provision', { routerId });
-
-  // Make sure FreeRADIUS has loaded this router's NAS row BEFORE we run
-  // the provision's synth-auth probe, otherwise the very first health
-  // check after onboarding fails spuriously.
-  if (router.tunnel_ip) {
-    const reloadResult = await forceReloadAndVerify(router.tunnel_ip);
-    if (!reloadResult.ok || reloadResult.verified === false) {
-      logger.warn('finalizePendingRouter: FreeRADIUS reload could not confirm NAS', {
-        routerId,
-        tunnelIp: router.tunnel_ip,
-        attempts: reloadResult.attempts,
-        hardRestarted: reloadResult.hardRestarted ?? false,
-      });
-    }
-  }
-
-  try {
-    await provisionRouter(router.user_id, routerId, { trigger: 'post-add' });
-  } catch (error) {
-    // Swallow — the response to the /tool fetch call on the router must be
-    // a 200 regardless; the poller will retry if provisioning fails here.
-    logger.warn('finalizePendingRouter: provision error (non-fatal)', {
-      routerId,
-      error: error instanceof Error ? error.message : String(error),
-    });
   }
 }
 
@@ -576,10 +499,6 @@ function buildSetupGuideFromRow(router: RouterRow): SetupGuideResult {
 
   const serverEndpoint = `${config.WG_SERVER_ENDPOINT}:${config.WG_SERVER_PORT}`;
 
-  // Rebuild the HMAC callback URL the same way createRouter does.
-  const sig = createHmac('sha256', config.JWT_ACCESS_SECRET).update(router.id).digest('hex');
-  const callbackUrl = `${config.PUBLIC_BASE_URL}/api/v1/public/routers/script-callback?routerId=${router.id}&sig=${sig}`;
-
   const configParams = {
     routerName: router.name,
     routerPrivateKey,
@@ -590,7 +509,6 @@ function buildSetupGuideFromRow(router: RouterRow): SetupGuideResult {
     radiusSecret,
     radiusServerIp: '10.10.0.1', // VPS wg0 address — always the same for all routers
     apiPassword,
-    callbackUrl,
   };
 
   return {

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,8 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
 import '../../models/router_health.dart';
-import '../../providers/provision_poll_provider.dart';
 import '../../providers/routers_provider.dart';
+import '../../services/api_client.dart';
 import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -69,7 +70,6 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
         _steps = guide?.steps;
       });
 
-      // Scroll to reveal generated content after the frame is built.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
@@ -166,16 +166,16 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                     .copyWith(color: AppColors.textSecondary),
               ),
               const SizedBox(height: AppSpacing.lg),
+              _CopyAllButton(
+                onPressed: () => _copyAllCommands(),
+              ),
+              const SizedBox(height: AppSpacing.md),
               if (_steps != null && _steps!.isNotEmpty)
                 ..._steps!.map((step) => _buildStepCard(step))
               else
                 _buildNoStepsFallback(state),
-              const SizedBox(height: AppSpacing.md),
-              _CopyAllButton(
-                onPressed: () => _copyAllCommands(),
-              ),
               const SizedBox(height: AppSpacing.xxl),
-              _AutoConfigPanel(routerId: _generatedRouterId!),
+              _VerifyConnectionPanel(routerId: _generatedRouterId!),
               const SizedBox(height: AppSpacing.lg),
               _DoneButton(onPressed: _finish),
               const SizedBox(height: AppSpacing.lg),
@@ -187,11 +187,11 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
   }
 
   void _copyAllCommands() {
-    final commands = (_steps ?? []).map((s) => s.command).join('\n');
+    final commands = (_steps ?? []).map((s) => s.command).join('\n\n');
     if (commands.isEmpty) return;
     Clipboard.setData(ClipboardData(text: commands));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr('routers.guideCopied'))),
+      SnackBar(content: Text(context.tr('routers.copyAllSnackbar'))),
     );
   }
 
@@ -217,9 +217,11 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
     );
   }
 
-  // Step 7 is the final "notify Wasel" step — highlight it green.
+  // Step 13 is the last firewall rule — the script is now self-contained; no
+  // special "final step" semantics, but we give step 13 a green tint to signal
+  // the operator that pasting is complete after this command.
   Widget _buildStepCard(SetupStep step) {
-    final isFinal = step.step == 7;
+    final isFinal = step.step == 13;
     // Step 5 creates the wasel_auto API user — give it a subtle tint.
     final isApiUser = step.step == 5;
 
@@ -228,8 +230,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
         : isApiUser
             ? AppColors.primary.withValues(alpha: 0.3)
             : AppColors.border;
-    final badgeColor =
-        isFinal ? AppColors.success : AppColors.primary;
+    final badgeColor = isFinal ? AppColors.success : AppColors.primary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -539,7 +540,7 @@ class _CopyAllButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: const Icon(Icons.copy),
-        label: Text(context.tr('routers.copyAllClipboard')),
+        label: Text(context.tr('routers.copyAllCommands')),
       ),
     );
   }
@@ -563,39 +564,87 @@ class _DoneButton extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-configuring panel — polls health and renders per-probe provisioning rows
+// Verify connection panel — single on-demand health check, no polling
 // ---------------------------------------------------------------------------
 
-/// Maps probe IDs to display labels in provisioning order.
-const _kProbeLabels = <String, String>{
-  'wgHandshakeRecent': 'WireGuard handshake',
-  'routerOsApiReachable': 'RouterOS API reachable',
-  'radiusClientConfigured': 'RADIUS client configured',
-  'hotspotUsesRadius': 'Hotspot profile uses RADIUS',
-  'firewallAllowsRadius': 'Firewall rules',
-  'hotspotServerBound': 'Hotspot server bound',
-  'synthRadiusAuth': 'Voucher auth works',
-};
+enum _VerifyState { idle, loading, online, tunnelOnly, noHandshake, error }
 
-const _kProbeOrder = [
-  'wgHandshakeRecent',
-  'routerOsApiReachable',
-  'radiusClientConfigured',
-  'hotspotUsesRadius',
-  'firewallAllowsRadius',
-  'hotspotServerBound',
-  'synthRadiusAuth',
-];
-
-class _AutoConfigPanel extends ConsumerWidget {
+class _VerifyConnectionPanel extends StatefulWidget {
   final String routerId;
 
-  const _AutoConfigPanel({required this.routerId});
+  const _VerifyConnectionPanel({required this.routerId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pollState = ref.watch(provisionPollProvider(routerId));
+  State<_VerifyConnectionPanel> createState() => _VerifyConnectionPanelState();
+}
 
+class _VerifyConnectionPanelState extends State<_VerifyConnectionPanel> {
+  _VerifyState _verifyState = _VerifyState.idle;
+  String? _errorMessage;
+
+  Future<void> _verify() async {
+    setState(() {
+      _verifyState = _VerifyState.loading;
+      _errorMessage = null;
+    });
+
+    try {
+      final response = await ApiClient().get<Map<String, dynamic>>(
+        '/routers/${widget.routerId}/health',
+        queryParameters: {'refresh': 'true'},
+      );
+      final payload = response.data?['data'];
+      if (payload is! Map<String, dynamic>) {
+        throw Exception('Malformed health response');
+      }
+      final report = RouterHealthReport.fromJson(payload);
+
+      if (!mounted) return;
+      setState(() {
+        if (report.isFullyOnline) {
+          _verifyState = _VerifyState.online;
+        } else if (report.isTunnelOnlyUp) {
+          _verifyState = _VerifyState.tunnelOnly;
+        } else {
+          _verifyState = _VerifyState.noHandshake;
+        }
+      });
+    } on DioException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _verifyState = _VerifyState.error;
+        _errorMessage = _extractDioError(e);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _verifyState = _VerifyState.error;
+        _errorMessage = e.toString();
+      });
+    }
+  }
+
+  String _extractDioError(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      final error = data['error'];
+      if (error is Map<String, dynamic> && error.containsKey('message')) {
+        return error['message'] as String;
+      }
+      if (data.containsKey('message')) return data['message'] as String;
+    }
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout) {
+      return 'Connection timed out.';
+    }
+    if (e.type == DioExceptionType.connectionError) {
+      return 'No internet connection.';
+    }
+    return e.message ?? e.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -605,17 +654,25 @@ class _AutoConfigPanel extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PanelHeader(pollState: pollState, routerId: routerId),
+          _VerifyHeader(verifyState: _verifyState),
           const Divider(height: 1),
-          _ProbeChecklist(report: pollState.report),
-          if (pollState.report?.provisionError?.isNotEmpty == true)
-            _ProvisionErrorExpander(
-                errors: pollState.report!.provisionError!),
-          if (pollState.isTimedOut)
-            _TimeoutBanner(routerId: routerId),
-          if (pollState.error != null && !pollState.isTimedOut)
-            _ErrorBanner(message: pollState.error!),
-          const SizedBox(height: AppSpacing.sm),
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _VerifyStatusMessage(
+                  verifyState: _verifyState,
+                  errorMessage: _errorMessage,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                _VerifyButton(
+                  verifyState: _verifyState,
+                  onVerify: _verify,
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -623,14 +680,13 @@ class _AutoConfigPanel extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Panel header — title + overall status chip
+// Verify panel sub-widgets
 // ---------------------------------------------------------------------------
 
-class _PanelHeader extends StatelessWidget {
-  final ProvisionPollState pollState;
-  final String routerId;
+class _VerifyHeader extends StatelessWidget {
+  final _VerifyState verifyState;
 
-  const _PanelHeader({required this.pollState, required this.routerId});
+  const _VerifyHeader({required this.verifyState});
 
   @override
   Widget build(BuildContext context) {
@@ -639,25 +695,27 @@ class _PanelHeader extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text('Auto-configuring router',
-                style: AppTypography.title3),
+            child: Text(
+              context.tr('routers.verifyConnection'),
+              style: AppTypography.title3,
+            ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          _StatusChip(pollState: pollState),
+          _VerifyChip(verifyState: verifyState),
         ],
       ),
     );
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  final ProvisionPollState pollState;
+class _VerifyChip extends StatelessWidget {
+  final _VerifyState verifyState;
 
-  const _StatusChip({required this.pollState});
+  const _VerifyChip({required this.verifyState});
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = _chipData();
+    final (label, color) = _chipData(context);
     return Container(
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md, vertical: AppSpacing.xs),
@@ -666,319 +724,102 @@ class _StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Text(label,
-          style: AppTypography.caption1.copyWith(
-              color: color, fontWeight: FontWeight.w600)),
-    );
-  }
-
-  (String, Color) _chipData() {
-    if (pollState.isTimedOut) return ('Timed out', AppColors.error);
-
-    final status = pollState.report?.provisionStatus;
-    final overall = pollState.report?.overall;
-
-    if (status == null) return ('Waiting for tunnel', AppColors.textTertiary);
-    if (status == ProvisionStatus.succeeded &&
-        overall == OverallHealth.healthy) {
-      return ('Done', AppColors.success);
-    }
-    if (status == ProvisionStatus.partial) {
-      final errorCount =
-          pollState.report?.provisionError?.length ?? 0;
-      return ('Partial — $errorCount error${errorCount == 1 ? '' : 's'}',
-          AppColors.warning);
-    }
-    if (status == ProvisionStatus.failed) {
-      return ('Failed', AppColors.error);
-    }
-    if (status == ProvisionStatus.inProgress ||
-        status == ProvisionStatus.pending) {
-      return ('Configuring...', AppColors.primary);
-    }
-    return ('Configuring...', AppColors.primary);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Probe checklist
-// ---------------------------------------------------------------------------
-
-class _ProbeChecklist extends StatelessWidget {
-  final RouterHealthReport? report;
-
-  const _ProbeChecklist({this.report});
-
-  @override
-  Widget build(BuildContext context) {
-    // Build an index of probe ID → result for O(1) lookup.
-    final probeMap = <String, ProbeResult>{};
-    if (report != null) {
-      for (final p in report!.probes) {
-        probeMap[p.id] = p;
-      }
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-      child: Column(
-        children: _kProbeOrder.map((probeId) {
-          final probe = probeMap[probeId];
-          final label =
-              _kProbeLabels[probeId] ?? probe?.label ?? probeId;
-          return _ProbeCheckRow(
-            label: label,
-            probe: probe,
-          );
-        }).toList(),
+      child: Text(
+        label,
+        style: AppTypography.caption1
+            .copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }
+
+  (String, Color) _chipData(BuildContext context) {
+    switch (verifyState) {
+      case _VerifyState.idle:
+        return (context.tr('routers.verifyChipIdle'), AppColors.textTertiary);
+      case _VerifyState.loading:
+        return (context.tr('routers.verifyChipChecking'), AppColors.primary);
+      case _VerifyState.online:
+        return (context.tr('routers.verifyChipOnline'), AppColors.success);
+      case _VerifyState.tunnelOnly:
+        return (context.tr('routers.verifyChipTunnelOnly'), AppColors.warning);
+      case _VerifyState.noHandshake:
+        return (context.tr('routers.verifyChipNoHandshake'), AppColors.error);
+      case _VerifyState.error:
+        return (context.tr('routers.verifyChipError'), AppColors.error);
+    }
+  }
 }
 
-class _ProbeCheckRow extends StatelessWidget {
-  final String label;
-  final ProbeResult? probe;
+class _VerifyStatusMessage extends StatelessWidget {
+  final _VerifyState verifyState;
+  final String? errorMessage;
 
-  const _ProbeCheckRow({required this.label, this.probe});
+  const _VerifyStatusMessage({
+    required this.verifyState,
+    this.errorMessage,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final status = probe?.status;
-
-    Widget leading;
-    Color labelColor = AppColors.textPrimary;
-
-    if (status == ProbeStatus.pass) {
-      leading = const Icon(Icons.check_circle, color: AppColors.success, size: 20);
-    } else if (status == ProbeStatus.fail) {
-      leading = const Icon(Icons.cancel, color: AppColors.error, size: 20);
-      labelColor = AppColors.error;
-    } else {
-      // null (not yet reached) or skipped.
-      if (probe == null) {
-        leading = const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
+    switch (verifyState) {
+      case _VerifyState.idle:
+        return Text(
+          context.tr('routers.verifyIdleHint'),
+          style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         );
-        labelColor = AppColors.textSecondary;
-      } else {
-        leading = Icon(Icons.remove_circle_outline,
-            color: AppColors.textTertiary, size: 20);
-        labelColor = AppColors.textTertiary;
-      }
+      case _VerifyState.loading:
+        return const Center(child: CircularProgressIndicator());
+      case _VerifyState.online:
+        return Text(
+          context.tr('routers.verifyOnlineMessage'),
+          style: AppTypography.subhead.copyWith(color: AppColors.success),
+        );
+      case _VerifyState.tunnelOnly:
+        return Text(
+          context.tr('routers.verifyTunnelOnlyMessage'),
+          style: AppTypography.subhead.copyWith(color: AppColors.warning),
+        );
+      case _VerifyState.noHandshake:
+        return Text(
+          context.tr('routers.verifyNoHandshakeMessage'),
+          style: AppTypography.subhead.copyWith(color: AppColors.error),
+        );
+      case _VerifyState.error:
+        return Text(
+          errorMessage ?? context.tr('routers.verifyErrorMessage'),
+          style: AppTypography.subhead.copyWith(color: AppColors.error),
+        );
     }
-
-    if (status == ProbeStatus.fail &&
-        (probe!.remediation != null || probe!.setupStep != null)) {
-      return _FailRow(label: label, probe: probe!);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-      child: Row(
-        children: [
-          leading,
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(label,
-                style: AppTypography.subhead.copyWith(color: labelColor)),
-          ),
-        ],
-      ),
-    );
   }
 }
 
-class _FailRow extends StatelessWidget {
-  final String label;
-  final ProbeResult probe;
+class _VerifyButton extends StatelessWidget {
+  final _VerifyState verifyState;
+  final VoidCallback onVerify;
 
-  const _FailRow({required this.label, required this.probe});
+  const _VerifyButton({required this.verifyState, required this.onVerify});
 
   @override
   Widget build(BuildContext context) {
-    return ExpansionTile(
-      leading: const Icon(Icons.cancel, color: AppColors.error, size: 20),
-      title: Text(label,
-          style: AppTypography.subhead.copyWith(color: AppColors.error)),
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: const EdgeInsets.only(
-          left: AppSpacing.xxl + AppSpacing.sm, bottom: AppSpacing.sm),
-      children: [
-        if (probe.remediation != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              probe.remediation!,
-              style: AppTypography.caption1
-                  .copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-        if (probe.setupStep != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => context.push(
-                '/routers/setup-guide',
-                extra: {
-                  'routerId': probe.id,
-                  'initialStep': probe.setupStep,
-                },
-              ),
-              icon: const Icon(Icons.open_in_new, size: 16),
-              label: Text('Open setup step ${probe.setupStep}'),
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
+    final isLoading = verifyState == _VerifyState.loading;
+    final label = (verifyState == _VerifyState.tunnelOnly ||
+            verifyState == _VerifyState.noHandshake ||
+            verifyState == _VerifyState.error)
+        ? context.tr('routers.verifyRetry')
+        : context.tr('routers.verifyButton');
 
-// ---------------------------------------------------------------------------
-// Provision step error expander
-// ---------------------------------------------------------------------------
-
-class _ProvisionErrorExpander extends StatelessWidget {
-  final List<ProvisionStepError> errors;
-
-  const _ProvisionErrorExpander({required this.errors});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: ExpansionTile(
-        leading: Icon(Icons.warning_amber_rounded,
-            color: AppColors.warning, size: 20),
-        title: Text('Show errors (${errors.length})',
-            style: AppTypography.caption1
-                .copyWith(color: AppColors.warning)),
-        tilePadding: EdgeInsets.zero,
-        childrenPadding:
-            const EdgeInsets.only(bottom: AppSpacing.sm),
-        children: errors
-            .map((e) => Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        margin: const EdgeInsets.only(top: 5),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.error,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          '${e.step}: ${e.error}',
-                          style: AppTypography.caption1
-                              .copyWith(color: AppColors.textSecondary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ))
-            .toList(),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Timeout banner
-// ---------------------------------------------------------------------------
-
-class _TimeoutBanner extends ConsumerWidget {
-  final String routerId;
-
-  const _TimeoutBanner({required this.routerId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border:
-            Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.timer_off, color: AppColors.error, size: 18),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              'Auto-configuration timed out after 10 minutes.',
-              style: AppTypography.caption1
-                  .copyWith(color: AppColors.error),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          TextButton(
-            onPressed: () => ref
-                .read(provisionPollProvider(routerId).notifier)
-                .reprovision(),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.error,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text('Try again'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Generic error banner (non-fatal poll errors)
-// ---------------------------------------------------------------------------
-
-class _ErrorBanner extends StatelessWidget {
-  final String message;
-
-  const _ErrorBanner({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border:
-            Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded,
-              color: AppColors.warning, size: 18),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTypography.caption1
-                  .copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
+    return SizedBox(
+      height: 44,
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: isLoading ? null : onVerify,
+        child: isLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(label),
       ),
     );
   }

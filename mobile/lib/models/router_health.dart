@@ -1,47 +1,4 @@
 // ---------------------------------------------------------------------------
-// Provision status
-// ---------------------------------------------------------------------------
-
-enum ProvisionStatus {
-  pending,
-  inProgress,
-  succeeded,
-  partial,
-  failed;
-
-  static ProvisionStatus? fromString(String? value) {
-    switch (value) {
-      case 'pending':
-        return ProvisionStatus.pending;
-      case 'in_progress':
-        return ProvisionStatus.inProgress;
-      case 'succeeded':
-        return ProvisionStatus.succeeded;
-      case 'partial':
-        return ProvisionStatus.partial;
-      case 'failed':
-        return ProvisionStatus.failed;
-      default:
-        return null;
-    }
-  }
-}
-
-class ProvisionStepError {
-  final String step;
-  final String error;
-
-  const ProvisionStepError({required this.step, required this.error});
-
-  factory ProvisionStepError.fromJson(Map<String, dynamic> json) {
-    return ProvisionStepError(
-      step: json['step'] as String? ?? '',
-      error: json['error'] as String? ?? '',
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Probe status
 // ---------------------------------------------------------------------------
 
@@ -132,17 +89,12 @@ class RouterHealthReport {
   final DateTime ranAt;
   final OverallHealth overall;
   final List<ProbeResult> probes;
-  final ProvisionStatus? provisionStatus;
-  final List<ProvisionStepError>? provisionError;
-  final DateTime? provisionAppliedAt;
+
   const RouterHealthReport({
     required this.routerId,
     required this.ranAt,
     required this.overall,
     required this.probes,
-    this.provisionStatus,
-    this.provisionError,
-    this.provisionAppliedAt,
   });
 
   factory RouterHealthReport.fromJson(Map<String, dynamic> json) {
@@ -150,20 +102,11 @@ class RouterHealthReport {
             ?.map((p) => ProbeResult.fromJson(p as Map<String, dynamic>))
             .toList() ??
         [];
-    final provisionErrorList = (json['provisionError'] as List<dynamic>?)
-        ?.map((e) => ProvisionStepError.fromJson(e as Map<String, dynamic>))
-        .toList();
     return RouterHealthReport(
       routerId: json['routerId'] as String,
       ranAt: DateTime.parse(json['ranAt'] as String),
       overall: OverallHealth.fromString(json['overall'] as String),
       probes: probesList,
-      provisionStatus:
-          ProvisionStatus.fromString(json['provisionStatus'] as String?),
-      provisionError: provisionErrorList,
-      provisionAppliedAt: json['provisionAppliedAt'] != null
-          ? DateTime.parse(json['provisionAppliedAt'] as String)
-          : null,
     );
   }
 
@@ -173,13 +116,23 @@ class RouterHealthReport {
       'ranAt': ranAt.toIso8601String(),
       'overall': overall.name,
       'probes': probes.map((p) => p.toJson()).toList(),
-      'provisionStatus': provisionStatus?.name,
-      'provisionError':
-          provisionError?.map((e) => {'step': e.step, 'error': e.error}).toList(),
-      'provisionAppliedAt': provisionAppliedAt?.toIso8601String(),
     };
   }
 
   int get passingCount =>
       probes.where((p) => p.status == ProbeStatus.pass).length;
+
+  /// True when WG handshake probe passed AND synthetic RADIUS auth probe passed.
+  bool get isFullyOnline {
+    final wg = probes.where((p) => p.id == 'wgHandshakeRecent').firstOrNull;
+    final radius = probes.where((p) => p.id == 'synthRadiusAuth').firstOrNull;
+    return wg?.status == ProbeStatus.pass && radius?.status == ProbeStatus.pass;
+  }
+
+  /// True when WG handshake passed but RADIUS auth did not pass.
+  bool get isTunnelOnlyUp {
+    final wg = probes.where((p) => p.id == 'wgHandshakeRecent').firstOrNull;
+    final radius = probes.where((p) => p.id == 'synthRadiusAuth').firstOrNull;
+    return wg?.status == ProbeStatus.pass && radius?.status != ProbeStatus.pass;
+  }
 }

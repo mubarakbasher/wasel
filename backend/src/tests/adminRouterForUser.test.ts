@@ -41,7 +41,14 @@ vi.mock('../utils/ipAllocation', () => ({
 
 vi.mock('../services/wireguardConfig', () => ({
   generateMikrotikConfigText: vi.fn().mockReturnValue('# Mikrotik config'),
-  generateSetupSteps: vi.fn().mockReturnValue([]),
+  generateSetupSteps: vi.fn().mockReturnValue(
+    Array.from({ length: 13 }, (_, i) => ({
+      step: i + 1,
+      title: `Step ${i + 1}`,
+      description: `Description ${i + 1}`,
+      command: `/command-${i + 1}`,
+    })),
+  ),
 }));
 
 vi.mock('../services/routerOs.service', () => ({
@@ -66,11 +73,6 @@ vi.mock('../services/routerHealth.service', () => ({
     overall: 'healthy',
     probes: [],
   }),
-}));
-
-vi.mock('../services/routerProvision.service', () => ({
-  schedulePostAddProvision: vi.fn(),
-  provisionRouter: vi.fn().mockResolvedValue({}),
 }));
 
 // ---------------------------------------------------------------------------

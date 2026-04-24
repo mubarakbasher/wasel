@@ -72,12 +72,4 @@ router.get(
   routerController.getRouterHealth,
 );
 
-router.post(
-  '/:id/reprovision',
-  authenticate,
-  requireSubscription,
-  validate({ params: routerIdParamSchema }),
-  routerController.reprovisionRouter,
-);
-
 export default router;

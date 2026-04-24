@@ -7,7 +7,6 @@ import { showFreeradiusClients } from './freeradius.service';
 import { getPeerStatus } from './wireguardPeer';
 import { connectToRouter, testConnection, listHotspotServers } from './routerOs.service';
 import { sendAccessRequest } from './radclient.service';
-import { provisionRouter, autoHealAllowed, recordAutoHeal } from './routerProvision.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -53,7 +52,6 @@ interface RouterHealthRow {
   radius_secret_enc: string | null;
   last_health_check_at: Date | null;
   last_health_report: unknown;
-  provision_applied_at: Date | null;
 }
 
 // ----- Internal probe helpers -----
@@ -510,7 +508,7 @@ async function loadRouterForHealth(
 ): Promise<RouterHealthRow> {
   const result = await pool.query<RouterHealthRow>(
     `SELECT id, tunnel_ip, wg_public_key, radius_secret_enc,
-            last_health_check_at, last_health_report, provision_applied_at
+            last_health_check_at, last_health_report
        FROM routers
       WHERE id = $1 AND user_id = $2`,
     [routerId, userId],
@@ -664,30 +662,6 @@ export async function runHealthCheck(
     overall: report.overall,
     failed: probes.filter((p) => p.status === 'fail').map((p) => p.id),
   });
-
-  // Auto-heal hook: fire whenever the router isn't healthy AND the API is
-  // reachable AND provisioning would actually help. Previously gated on
-  // `=== 'degraded'` only, which was fatally combined with the broken
-  // synthRadiusAuth probe forcing every router into 'broken' — so auto-heal
-  // never fired in production.
-  if (
-    report.overall !== 'healthy' &&
-    p5.status === 'pass' &&
-    autoHealAllowed(routerId)
-  ) {
-    const failedIds = new Set(probes.filter((p) => p.status === 'fail').map((p) => p.id));
-    const provisionNeeded =
-      router.provision_applied_at === null ||
-      failedIds.has('radiusClientConfigured') ||
-      failedIds.has('hotspotUsesRadius') ||
-      failedIds.has('firewallAllowsRadius');
-
-    if (provisionNeeded) {
-      recordAutoHeal(routerId);
-      logger.info('Auto-heal: triggering re-provision', { routerId, userId });
-      void provisionRouter(userId, routerId, { trigger: 'auto-heal' });
-    }
-  }
 
   return report;
 }

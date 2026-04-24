@@ -404,14 +404,33 @@ class AppLocalizations {
     'routers.generating': 'Generating...',
     'routers.vpnAssigned': 'Your VPN IP: {0}',
     'routers.scriptInstructions':
-        'Paste these commands into your Mikrotik terminal (SSH, Winbox terminal, or WebFig). The last step tells Wasel you\'re done.',
+        'Paste these 13 commands into your Mikrotik terminal (SSH, Winbox terminal, or WebFig). Once pasted, your router is fully configured.',
     'routers.nameYourRouter':
-        'Give your router a name. Wasel will generate a setup script you paste into RouterOS.',
-    'routers.finalStep': 'Final — notifies Wasel',
+        'Give your router a name. Wasel will generate a self-contained setup script you paste into RouterOS.',
     'routers.leaveWarningTitle': 'Leave this screen?',
     'routers.leaveWarningBody':
         'The script has been generated but setup is not complete. Leaving now will leave this router in a pending state.',
     'routers.leaveAnyway': 'Leave anyway',
+    'routers.copyAllCommands': 'Copy all commands',
+    'routers.copyAllSnackbar': 'Copied — paste into RouterOS terminal',
+    'routers.verifyConnection': 'Verify connection',
+    'routers.verifyChipIdle': 'Not checked',
+    'routers.verifyChipChecking': 'Checking...',
+    'routers.verifyChipOnline': 'Online',
+    'routers.verifyChipTunnelOnly': 'Tunnel up, RADIUS not verified',
+    'routers.verifyChipNoHandshake': 'No handshake',
+    'routers.verifyChipError': 'Error',
+    'routers.verifyIdleHint':
+        'Paste the script into your RouterOS terminal, then tap Verify.',
+    'routers.verifyOnlineMessage':
+        'Router is online. WireGuard handshake present and RADIUS auth verified.',
+    'routers.verifyTunnelOnlyMessage':
+        'Tunnel is up but RADIUS auth could not be verified yet. Tap Try again in a few seconds.',
+    'routers.verifyNoHandshakeMessage':
+        'No WireGuard handshake. Paste the script into your RouterOS terminal, then tap Verify.',
+    'routers.verifyErrorMessage': 'Could not reach the server.',
+    'routers.verifyButton': 'Verify connection',
+    'routers.verifyRetry': 'Try again',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} selected',
@@ -1033,14 +1052,33 @@ class AppLocalizations {
     'routers.generating': 'جارٍ الإنشاء...',
     'routers.vpnAssigned': 'عنوان VPN الخاص بك: {0}',
     'routers.scriptInstructions':
-        'الصق هذه الأوامر في طرفية Mikrotik (SSH أو Winbox أو WebFig). الخطوة الأخيرة تُعلم واصل بأنك انتهيت.',
+        'الصق هذه الأوامر الـ 13 في طرفية Mikrotik (SSH أو Winbox أو WebFig). بمجرد اللصق يكون الراوتر مهيأً بالكامل.',
     'routers.nameYourRouter':
-        'أعط راوترك اسماً. سيقوم واصل بإنشاء سكريبت إعداد تلصقه في RouterOS.',
-    'routers.finalStep': 'أخيراً — يُعلم واصل',
+        'أعط راوترك اسماً. سيقوم واصل بإنشاء سكريبت إعداد متكامل تلصقه في RouterOS.',
     'routers.leaveWarningTitle': 'مغادرة هذه الشاشة؟',
     'routers.leaveWarningBody':
         'تم إنشاء السكريبت لكن الإعداد لم يكتمل. المغادرة الآن ستترك هذا الراوتر في حالة معلقة.',
     'routers.leaveAnyway': 'غادر على أي حال',
+    'routers.copyAllCommands': 'نسخ جميع الأوامر',
+    'routers.copyAllSnackbar': 'تم النسخ — الصق في طرفية RouterOS',
+    'routers.verifyConnection': 'التحقق من الاتصال',
+    'routers.verifyChipIdle': 'لم يُتحقق بعد',
+    'routers.verifyChipChecking': 'جارٍ التحقق...',
+    'routers.verifyChipOnline': 'متصل',
+    'routers.verifyChipTunnelOnly': 'النفق متصل، RADIUS لم يُتحقق',
+    'routers.verifyChipNoHandshake': 'لا يوجد handshake',
+    'routers.verifyChipError': 'خطأ',
+    'routers.verifyIdleHint':
+        'الصق السكريبت في طرفية RouterOS ثم اضغط تحقق.',
+    'routers.verifyOnlineMessage':
+        'الراوتر متصل. WireGuard handshake موجود وتم التحقق من RADIUS.',
+    'routers.verifyTunnelOnlyMessage':
+        'النفق متصل لكن لم يتم التحقق من RADIUS بعد. اضغط حاول مجدداً بعد ثوانٍ.',
+    'routers.verifyNoHandshakeMessage':
+        'لا يوجد WireGuard handshake. الصق السكريبت في طرفية RouterOS ثم اضغط تحقق.',
+    'routers.verifyErrorMessage': 'تعذّر الوصول إلى الخادم.',
+    'routers.verifyButton': 'تحقق من الاتصال',
+    'routers.verifyRetry': 'حاول مجدداً',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} محدد',

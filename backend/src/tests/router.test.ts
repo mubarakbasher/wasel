@@ -43,9 +43,16 @@ vi.mock('../utils/ipAllocation', () => ({
 
 vi.mock('../services/wireguardConfig', () => ({
   generateMikrotikConfigText: vi.fn().mockReturnValue('# Mikrotik Setup Commands\n/interface wireguard add ...'),
-  generateSetupSteps: vi.fn().mockReturnValue([
-    { step: 1, title: 'Step 1', commands: ['/interface wireguard add ...'] },
-  ]),
+  generateSetupSteps: vi.fn().mockReturnValue(
+    Array.from({ length: 13 }, (_, i) => ({
+      step: i + 1,
+      title: `Step ${i + 1}`,
+      description: `Description ${i + 1}`,
+      command: i === 6
+        ? '/radius add service=hotspot,login address=10.10.0.1 secret="test-secret" src-address=10.10.0.2 comment=wasel'
+        : `/command-${i + 1}`,
+    })),
+  ),
 }));
 
 vi.mock('../services/routerOs.service', () => ({
@@ -70,11 +77,6 @@ vi.mock('../services/routerHealth.service', () => ({
     overall: 'healthy',
     probes: [],
   }),
-}));
-
-vi.mock('../services/routerProvision.service', () => ({
-  schedulePostAddProvision: vi.fn(),
-  provisionRouter: vi.fn().mockResolvedValue({}),
 }));
 
 const now = new Date();
@@ -203,6 +205,8 @@ describe('POST /api/v1/routers', () => {
     expect(res.body.data.router.name).toBe('Office Router');
     expect(res.body.data.router.tunnelIp).toBe('10.10.0.2');
     expect(Array.isArray(res.body.data.steps)).toBe(true);
+    expect(res.body.data.steps).toHaveLength(13);
+    expect(res.body.data.steps[6].command).toMatch(/^\/radius add service=hotspot,login address=10\.10\.0\.1/);
   });
 });
 
