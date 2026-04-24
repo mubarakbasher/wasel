@@ -24,14 +24,10 @@ COPY raddb/mods-enabled/sqlcounter /etc/freeradius/mods-enabled/sqlcounter
 # the file we COPY is the one the running server reads.
 COPY raddb/radiusd.conf /etc/freeradius/radiusd.conf
 
-# Override sites-enabled with our auth/acct/coa config and the
-# dynamic-clients virtual server used to look up unknown NASes from the
-# `nas` table on-demand (replaces the prior read_clients + docker-restart
-# approach — see sites-enabled/dynamic-clients header for detail).
-COPY raddb/sites-enabled/default         /etc/freeradius/sites-enabled/default
-COPY raddb/sites-enabled/coa             /etc/freeradius/sites-enabled/coa
-COPY raddb/sites-enabled/control-socket  /etc/freeradius/sites-enabled/control-socket
-COPY raddb/sites-enabled/dynamic-clients /etc/freeradius/sites-enabled/dynamic-clients
+# Override sites-enabled with our auth/acct/coa config
+COPY raddb/sites-enabled/default        /etc/freeradius/sites-enabled/default
+COPY raddb/sites-enabled/coa            /etc/freeradius/sites-enabled/coa
+COPY raddb/sites-enabled/control-socket /etc/freeradius/sites-enabled/control-socket
 
 # Add custom clients (WireGuard subnet)
 COPY raddb/clients.conf /etc/freeradius/clients.conf
