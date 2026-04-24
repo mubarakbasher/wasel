@@ -341,11 +341,14 @@ type PgClient = { query: (...args: any[]) => Promise<any> };
 /**
  * Insert RADIUS entries for a new-style voucher (no profiles).
  *
- * The voucher is NAS-scoped via a `NAS-IP-Address == <tunnel_ip>` check
- * attribute so the same username cannot be replayed on a different
- * router in the same FreeRADIUS deployment. Scope is enforced at the
- * authorize stage (FreeRADIUS compares the Access-Request's NAS-IP to
- * this value and rejects mismatches).
+ * No per-voucher NAS scoping: vouchers authenticate on any NAS that
+ * successfully presents its shared secret. Voucher usernames are random
+ * 8-char strings and Simultaneous-Use=1 prevents replay within a router,
+ * so cross-router replay is a negligible concern. A previous NAS-IP-Address
+ * scope row (commit 588eeb5) compared against the NAS-self-reported
+ * NAS-IP-Address AVP (RFC 2865 §5.4), which RouterOS sets to the router's
+ * own IP — not the WireGuard peer IP — so the comparison structurally
+ * could not succeed on this deployment's topology.
  */
 async function insertRadiusEntriesV2(
   client: PgClient,
@@ -354,18 +357,11 @@ async function insertRadiusEntriesV2(
   limitType: 'time' | 'data',
   normalizedLimitValue: number,
   validitySeconds: number | null | undefined,
-  tunnelIp: string,
 ): Promise<void> {
   // radcheck: Cleartext-Password
   await client.query(
     'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
     [username, 'Cleartext-Password', ':=', password],
-  );
-
-  // radcheck: NAS-IP-Address — binds this voucher to its home router
-  await client.query(
-    'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
-    [username, 'NAS-IP-Address', '==', tunnelIp],
   );
 
   // radcheck: Simultaneous-Use (default 1)
@@ -492,13 +488,10 @@ export async function createVouchers(
       vouchers.push(result.rows[0]);
 
       // Insert RADIUS entries (username = password, no radusergroup).
-      // tunnelIp scopes the voucher to its home router — FreeRADIUS
-      // rejects Access-Requests where the NAS-IP doesn't match.
       await insertRadiusEntriesV2(
         client, cred.username, cred.username,
         data.limitType, normalizedValue,
         data.validitySeconds,
-        tunnelIp,
       );
     }
 
