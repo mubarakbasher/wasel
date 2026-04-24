@@ -90,10 +90,8 @@ router.delete(
 // System status
 router.get('/system-status', adminController.getSystemStatus);
 
-// FreeRADIUS diagnostics / manual recovery — lets an admin unblock
-// production (new NAS rows invisible to freeradius) without SSH access.
+// FreeRADIUS diagnostics — lets an admin inspect radmin socket and client list.
 router.get('/freeradius/status', adminController.getFreeradiusStatus);
-router.post('/freeradius/reload', adminController.reloadFreeradius);
 
 // Support messages
 router.get('/support/unread-count', supportController.adminUnreadCount);

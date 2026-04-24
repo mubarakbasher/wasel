@@ -41,19 +41,10 @@ services:
       - /etc/wireguard:/etc/wireguard
       - backend_uploads:/app/uploads
       - ./backend/secrets:/app/secrets:ro
-      # Shared with the freeradius container. Still mounted because radmin
-      # is used by the reconciliation probe and router-health check to run
-      # `show clients` against FreeRADIUS's in-memory table — but NOT for
-      # reloads any more. See freeradius.service.ts for why.
+      # Shared with the freeradius container so the backend can run
+      # read-only `radmin -e "show clients"` probes for reconciliation
+      # and router-health checks.
       - freeradius_control:/var/run/freeradius
-      # Docker socket — lets the backend run `docker restart wasel-freeradius`
-      # after a `nas` table write. FreeRADIUS 3.2.4 does not reload
-      # SQL-loaded dynamic clients on HUP, so a full container restart is
-      # the only reliable way to make a freshly-inserted NAS row start
-      # authenticating. Matches Wassal's docker-compose.prod.yml:70 pattern.
-      # Security: this grants the backend effective root on the host;
-      # acceptable because the Wasel VPS hosts only Wasel services.
-      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,13 +110,6 @@ services:
     # alongside `build:` is rejected by modern buildx.
     build: ./freeradius
     image: wasel-freeradius:3.2.4
-    # Pinned so `docker restart wasel-freeradius` from the backend container
-    # resolves to a real container. Without this, compose auto-generates
-    # `wasel-freeradius-1` and backend/src/services/freeradius.service.ts's
-    # dockerRestartFreeradius() fails with "No such container" — the restart
-    # never runs, newly-INSERTed nas rows are never reloaded, and every new
-    # router gets "unknown client" drops until FR is manually restarted.
-    container_name: wasel-freeradius
     network_mode: host
     environment:
       RADIUS_DB_HOST: 127.0.0.1
@@ -134,8 +118,9 @@ services:
       RADIUS_DB_USER: wasel
       RADIUS_DB_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in compose env-file}
     volumes:
-      # Shared with the backend container so it can issue `radmin -f
-      # /var/run/freeradius/radmin.sock -e "hup"` after nas table writes.
+      # Shared with the backend container for read-only radmin probes
+      # (`radmin -e "show clients"`). Dynamic clients are loaded via SQL
+      # at FR startup — no HUP or container restart needed for new NAS rows.
       - freeradius_control:/var/run/freeradius
     depends_on:
       postgres:

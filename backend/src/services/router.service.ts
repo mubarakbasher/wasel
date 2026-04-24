@@ -10,7 +10,6 @@ import { addPeer, removePeer } from './wireguardPeer';
 import { generateMikrotikConfigText, generateSetupSteps, SetupStep } from './wireguardConfig';
 import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
-import { reloadFreeradiusClients, forceReloadAndVerify } from './freeradius.service';
 import { runHealthCheck } from './routerHealth.service';
 
 // ----- Interfaces -----
@@ -185,22 +184,6 @@ export async function createRouter(
 
     await client.query('COMMIT');
 
-    // Poke FreeRADIUS so the NAS row we just committed is actually loaded
-    // — without this, Access-Request packets from the new router are
-    // silently dropped as "unknown client" until the next freeradius
-    // restart / SIGHUP. We AWAIT this (verify + retry + escape-hatch
-    // container restart) so the response reflects truthful state: the
-    // NAS is loaded when createRouter resolves.
-    const reloadResult = await forceReloadAndVerify(tunnel.routerIp);
-    if (!reloadResult.ok || reloadResult.verified === false) {
-      logger.warn('createRouter: FreeRADIUS could not confirm the new NAS', {
-        routerId: router.id,
-        tunnelIp: tunnel.routerIp,
-        attempts: reloadResult.attempts,
-        hardRestarted: reloadResult.hardRestarted ?? false,
-      });
-    }
-
     // Add WireGuard peer (non-fatal if wg isn't available in dev)
     try {
       await addPeer({
@@ -349,7 +332,6 @@ export async function updateRouter(
       'UPDATE nas SET shortname = $1, description = $2 WHERE nasname = $3',
       [updatedRouter.nas_identifier, data.name, updatedRouter.tunnel_ip],
     );
-    void reloadFreeradiusClients();
   }
 
   logger.info('Router updated', { routerId, userId });
@@ -375,7 +357,6 @@ export async function deleteRouter(userId: string, routerId: string): Promise<vo
   // Delete NAS entry
   if (router.tunnel_ip) {
     await pool.query('DELETE FROM nas WHERE nasname = $1', [router.tunnel_ip]);
-    void reloadFreeradiusClients();
   }
 
   // Release the tunnel subnet back to the free pool before deleting the

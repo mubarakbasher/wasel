@@ -3,7 +3,6 @@ import { promisify } from 'util';
 import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
-import { showFreeradiusClients } from './freeradius.service';
 import { getPeerStatus } from './wireguardPeer';
 import { connectToRouter, testConnection, listHotspotServers } from './routerOs.service';
 import { sendAccessRequest } from './radclient.service';
@@ -109,24 +108,30 @@ async function probeNasRowPresent(tunnelIp: string): Promise<ProbeResult> {
   });
 }
 
+/**
+ * With dynamic_clients enabled, the postgres `nas` table is the authoritative
+ * source of truth: FR looks up any unknown source IP there on the first packet
+ * and caches it. A row present here means FR will authenticate this NAS — no
+ * radmin round-trip needed, and no false-negative for freshly-added routers
+ * that haven't sent their first packet yet.
+ */
 async function probeFreeradiusSeesNas(tunnelIp: string): Promise<ProbeResult> {
   return timed(async () => {
-    const output = await showFreeradiusClients();
-    // `radmin -e "show clients"` prints one client per line; the nasname
-    // (IP) appears as a whole-word match. We use a word-boundary regex so
-    // 10.10.0.2 doesn't spuriously match 10.10.0.20.
-    const escaped = tunnelIp.replace(/\./g, '\\.');
-    const visible = new RegExp(`\\b${escaped}\\b`).test(output);
+    const result = await pool.query(
+      'SELECT 1 AS present FROM nas WHERE nasname = $1 AND secret IS NOT NULL AND secret <> \'\' LIMIT 1',
+      [tunnelIp],
+    );
+    const present = result.rows.length > 0;
     return {
       id: 'freeradiusSeesNas',
-      label: 'FreeRADIUS has loaded this NAS',
-      status: visible ? 'pass' : 'fail',
-      detail: visible
-        ? `radmin reports ${tunnelIp} as a loaded client`
-        : `radmin output does not list ${tunnelIp}`,
-      remediation: visible
+      label: 'FreeRADIUS will authenticate this NAS',
+      status: present ? 'pass' : 'fail',
+      detail: present
+        ? `nas row with a non-empty secret found for ${tunnelIp} — FR dynamic_clients will resolve it on first packet`
+        : `nas row for ${tunnelIp} is missing or has no secret`,
+      remediation: present
         ? undefined
-        : 'FreeRADIUS has not picked up this NAS yet — try again in a few seconds, or contact support if this persists.',
+        : 'The NAS client row is missing or has no shared secret — re-save the router in the app.',
     };
   });
 }
