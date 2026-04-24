@@ -29,14 +29,16 @@ COPY raddb/sites-enabled/default        /etc/freeradius/sites-enabled/default
 COPY raddb/sites-enabled/coa            /etc/freeradius/sites-enabled/coa
 COPY raddb/sites-enabled/control-socket /etc/freeradius/sites-enabled/control-socket
 
-# Disable the base image's inner-tunnel (EAP-TTLS/PEAP inner-auth vserver).
-# Wasel is voucher-PAP-only over WireGuard — no EAP on the wire — so the
-# tunnel is unused. On FR 3.2.8 the upstream inner-tunnel fails to compile
-# against our sites-enabled/default override with:
-#   sites-enabled/inner-tunnel[230]: Failed to find "pap" as a module or policy
-# even though mods-enabled/pap is loaded; removing the symlink is simpler
-# and more correct than patching inner-tunnel we don't use.
-RUN rm -f /etc/freeradius/sites-enabled/inner-tunnel
+# Disable the base image's inner-tunnel (EAP-TTLS/PEAP inner-auth vserver)
+# and the eap module itself. Wasel is voucher-PAP-only over WireGuard —
+# no EAP on the wire — so both are unused. On FR 3.2.8 the upstream eap
+# module fails to instantiate with
+#   mods-enabled/eap[14]: Failed to find 'Auth-Type EAP' section.
+#   Instantiation failed for module "eap"
+# because our sites-enabled/default has no `Auth-Type EAP {}` section.
+# Simplest fix is to remove the enabled-by-default symlinks for both.
+RUN rm -f /etc/freeradius/sites-enabled/inner-tunnel \
+    && rm -f /etc/freeradius/mods-enabled/eap
 
 # Add custom clients (WireGuard subnet)
 COPY raddb/clients.conf /etc/freeradius/clients.conf
