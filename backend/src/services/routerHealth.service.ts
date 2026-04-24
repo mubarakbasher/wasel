@@ -3,7 +3,6 @@ import { promisify } from 'util';
 import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
-import { showFreeradiusClients } from './freeradius.service';
 import { getPeerStatus } from './wireguardPeer';
 import { connectToRouter, testConnection, listHotspotServers } from './routerOs.service';
 import { sendAccessRequest } from './radclient.service';
@@ -107,28 +106,6 @@ async function probeNasRowPresent(tunnelIp: string): Promise<ProbeResult> {
       remediation: present
         ? undefined
         : 'The NAS client row is missing — re-save the router in the app.',
-    };
-  });
-}
-
-async function probeFreeradiusSeesNas(tunnelIp: string): Promise<ProbeResult> {
-  return timed(async () => {
-    const output = await showFreeradiusClients();
-    // `radmin -e "show clients"` prints one client per line; the nasname
-    // (IP) appears as a whole-word match. We use a word-boundary regex so
-    // 10.10.0.2 doesn't spuriously match 10.10.0.20.
-    const escaped = tunnelIp.replace(/\./g, '\\.');
-    const visible = new RegExp(`\\b${escaped}\\b`).test(output);
-    return {
-      id: 'freeradiusSeesNas',
-      label: 'FreeRADIUS has loaded this NAS',
-      status: visible ? 'pass' : 'fail',
-      detail: visible
-        ? `radmin reports ${tunnelIp} as a loaded client`
-        : `radmin output does not list ${tunnelIp}`,
-      remediation: visible
-        ? undefined
-        : 'FreeRADIUS has not picked up this NAS yet — try again in a few seconds, or contact support if this persists.',
     };
   });
 }
@@ -579,14 +556,14 @@ export async function runHealthCheck(
   const tunnelIp = router.tunnel_ip;
   const probes: ProbeResult[] = [];
 
-  // Probe 1 — database nas row
+  // Probe 1 — database nas row. Previously we also ran a
+  // probeFreeradiusSeesNas here, but with the dynamic_clients path a
+  // freshly-added NAS doesn't appear in `show clients` output until its
+  // first real Access-Request, so the signal was misleading. The admin
+  // /admin/freeradius/status endpoint still exposes `show clients` for
+  // manual diagnostics.
   const p1 = await probeNasRowPresent(tunnelIp);
   probes.push(p1);
-
-  // Probe 2 — FreeRADIUS has loaded it (runs regardless of p1 because
-  // a present row that freeradius can't see is still informative)
-  const p2 = await probeFreeradiusSeesNas(tunnelIp);
-  probes.push(p2);
 
   // Short-circuit: no nas row = every other probe is meaningless.
   if (p1.status === 'fail') {

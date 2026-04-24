@@ -6,8 +6,6 @@ import * as adminService from '../services/admin.service';
 import * as auditService from '../services/audit.service';
 import * as routerService from '../services/router.service';
 import {
-  forceReloadFreeradiusClients,
-  getLastReloadStatus,
   getRadminSocketPath,
   showFreeradiusClients,
 } from '../services/freeradius.service';
@@ -367,12 +365,14 @@ async function socketReachability(): Promise<{ path: string; exists: boolean; re
 /**
  * GET /admin/freeradius/status
  *
- * Returns enough state for an admin to diagnose a "new routers can't
- * authenticate" outage without SSH access:
+ * Returns enough state for an admin to diagnose FreeRADIUS reachability:
  *  - socket presence / permissions from the backend's POV
- *  - last reload attempt result (success/failure with real stderr)
- *  - the current `show clients` output, so the admin can verify whether
- *    a specific NAS is loaded in FreeRADIUS
+ *  - the current `show clients` output, so the admin can verify which
+ *    NASes are loaded in FreeRADIUS
+ *
+ * No reload-history field now that new routers are picked up via the
+ * dynamic_clients path in freeradius/raddb/sites-enabled/dynamic-clients
+ * instead of being pushed in by a backend-triggered restart.
  */
 export async function getFreeradiusStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -384,42 +384,11 @@ export async function getFreeradiusStatus(req: AuthenticatedRequest, res: Respon
       success: true,
       data: {
         socket,
-        lastReload: getLastReloadStatus(),
         clients: {
           raw: clients,
           lineCount: clients ? clients.split('\n').filter((l) => l.trim().length > 0).length : 0,
         },
       },
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * POST /admin/freeradius/reload
- *
- * Force an immediate (non-debounced) `docker restart wasel-freeradius`
- * so the FreeRADIUS container re-reads the nas table at startup. Returns
- * the full result so the operator can see docker's stderr if the command
- * failed (e.g. docker socket not mounted, CLI missing). Primary manual-
- * recovery lever when the debounced reload has silently failed and new
- * routers are stuck as "unknown client".
- */
-export async function reloadFreeradius(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const result = await forceReloadFreeradiusClients();
-    await auditService.logAction({
-      adminId: req.user!.id,
-      action: 'freeradius.reload',
-      targetEntity: 'system',
-      targetId: 'freeradius',
-      details: { ok: result.ok, exitCode: result.exitCode, durationMs: result.durationMs },
-      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
-    });
-    res.status(result.ok ? 200 : 502).json({
-      success: result.ok,
-      data: result,
     });
   } catch (error) {
     next(error);
