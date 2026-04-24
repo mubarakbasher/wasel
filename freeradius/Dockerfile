@@ -25,9 +25,10 @@ COPY raddb/mods-enabled/sqlcounter /etc/freeradius/mods-enabled/sqlcounter
 COPY raddb/radiusd.conf /etc/freeradius/radiusd.conf
 
 # Override sites-enabled with our auth/acct/coa config
-COPY raddb/sites-enabled/default        /etc/freeradius/sites-enabled/default
-COPY raddb/sites-enabled/coa            /etc/freeradius/sites-enabled/coa
-COPY raddb/sites-enabled/control-socket /etc/freeradius/sites-enabled/control-socket
+COPY raddb/sites-enabled/default         /etc/freeradius/sites-enabled/default
+COPY raddb/sites-enabled/coa             /etc/freeradius/sites-enabled/coa
+COPY raddb/sites-enabled/control-socket  /etc/freeradius/sites-enabled/control-socket
+COPY raddb/sites-enabled/dynamic-clients /etc/freeradius/sites-enabled/dynamic-clients
 
 # Disable the base image's inner-tunnel (EAP-TTLS/PEAP inner-auth vserver)
 # and the eap module itself. Wasel is voucher-PAP-only over WireGuard —

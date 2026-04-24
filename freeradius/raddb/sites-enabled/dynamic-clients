@@ -1,0 +1,48 @@
+######################################################################
+#
+#   dynamic_client_server — On-demand NAS client loader.
+#
+#   Triggered by `dynamic_clients = dynamic_client_server` in clients.conf
+#   whenever an Access-Request arrives from a 10.10.0.0/16 source IP that
+#   is NOT already in FR's in-memory client table. Looks the NAS up in the
+#   `nas` table by source IP, populates the FreeRADIUS-Client-* control
+#   attributes, and returns ok so FR builds and caches the client. Cached
+#   for `lifetime` seconds (clients.conf), then re-fetched on the next
+#   packet after expiry.
+#
+#   Two SQL queries per cold lookup. Acceptable cost — fires only on the
+#   first packet of a new router (or after 3600s idle), never on hot-path
+#   voucher auth.
+#
+#   Both shortname AND secret must come back non-empty; either being NULL
+#   rejects the lookup and FR falls back to "Ignoring request ... from
+#   unknown client" — so a partially-written nas row can never register a
+#   client with an empty secret.
+#
+######################################################################
+
+server dynamic_client_server {
+
+    authorize {
+        update control {
+            &FreeRADIUS-Client-IP-Address := "%{Packet-Src-IP-Address}"
+            &FreeRADIUS-Client-Shortname  := "%{sql:SELECT shortname FROM nas WHERE nasname='%{Packet-Src-IP-Address}'}"
+            &FreeRADIUS-Client-Secret     := "%{sql:SELECT secret    FROM nas WHERE nasname='%{Packet-Src-IP-Address}'}"
+            &FreeRADIUS-Client-NAS-Type   := "other"
+            &FreeRADIUS-Client-Require-MA := "no"
+        }
+
+        #
+        #  Require-MA = no matches require_message_authenticator = no in
+        #  radiusd.conf's security{} block. RouterOS 6.x does not send
+        #  Message-Authenticator on Access-Request, so forcing it would
+        #  reject every real packet from a hotspot.
+        #
+        if (&control:FreeRADIUS-Client-Secret && &control:FreeRADIUS-Client-Shortname) {
+            ok
+        }
+        else {
+            reject
+        }
+    }
+}
