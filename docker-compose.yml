@@ -119,6 +119,13 @@ services:
     # alongside `build:` is rejected by modern buildx.
     build: ./freeradius
     image: wasel-freeradius:3.2.4
+    # Pinned so `docker restart wasel-freeradius` from the backend container
+    # resolves to a real container. Without this, compose auto-generates
+    # `wasel-freeradius-1` and backend/src/services/freeradius.service.ts's
+    # dockerRestartFreeradius() fails with "No such container" — the restart
+    # never runs, newly-INSERTed nas rows are never reloaded, and every new
+    # router gets "unknown client" drops until FR is manually restarted.
+    container_name: wasel-freeradius
     network_mode: host
     environment:
       RADIUS_DB_HOST: 127.0.0.1
