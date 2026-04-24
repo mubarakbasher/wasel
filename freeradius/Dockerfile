@@ -17,6 +17,13 @@ COPY raddb/mods-enabled/sql /etc/freeradius/sql.template
 # Copy sqlcounter module config for time/data limit enforcement
 COPY raddb/mods-enabled/sqlcounter /etc/freeradius/mods-enabled/sqlcounter
 
+# Override main radiusd.conf with Wasel's version. Without this COPY the
+# repo's raddb/radiusd.conf is dead — commit 7bd107c's move of the
+# BlastRADIUS mitigation knobs (require_message_authenticator = no,
+# limit_proxy_state = no) into the security{} block only takes effect if
+# the file we COPY is the one the running server reads.
+COPY raddb/radiusd.conf /etc/freeradius/radiusd.conf
+
 # Override sites-enabled with our auth/acct/coa config
 COPY raddb/sites-enabled/default        /etc/freeradius/sites-enabled/default
 COPY raddb/sites-enabled/coa            /etc/freeradius/sites-enabled/coa
@@ -27,10 +34,6 @@ COPY raddb/clients.conf /etc/freeradius/clients.conf
 
 # Add Mikrotik vendor dictionary
 COPY dictionary /etc/freeradius/dictionary
-
-# Log to stdout for Docker
-RUN sed -i 's/destination = files/destination = stdout/' /etc/freeradius/radiusd.conf && \
-    sed -i 's/auth = no/auth = yes/' /etc/freeradius/radiusd.conf
 
 # Ensure correct ownership
 RUN chown -R freerad:freerad /etc/freeradius
