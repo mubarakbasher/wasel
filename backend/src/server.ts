@@ -7,6 +7,7 @@ import { startPurgeUnverifiedJob } from './jobs/purgeUnverified';
 import { startSubscriptionNotificationJob } from './jobs/subscriptionNotifications';
 import { startQuotaMonitorJob } from './jobs/quotaMonitor';
 import { startValidityExpirationJob } from './jobs/validityExpiration';
+import { startValidityCoaDisconnectJob } from './jobs/validityCoaDisconnect';
 import { startUsageLimitEnforcementJob } from './jobs/usageLimitEnforcement';
 import { startMonitoring } from './services/wireguardMonitor';
 import { syncPeersFromDatabase } from './services/wireguardPeer';
@@ -100,6 +101,7 @@ async function startServer(): Promise<void> {
     startSubscriptionNotificationJob();
     startQuotaMonitorJob();
     startValidityExpirationJob();
+    startValidityCoaDisconnectJob();
     startUsageLimitEnforcementJob();
     startMonitoring();
 

@@ -191,8 +191,13 @@ export function generateMikrotikConfig(params: {
     // 9. Hotspot profile — enable RADIUS authentication
     `/ip hotspot profile set default use-radius=yes`,
 
-    // 10. Hotspot user profile timing defaults
-    `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m`,
+    // 10. Hotspot user profile — timing defaults + disable MAC-cookie auto-login.
+    //     add-mac-cookie=no + mac-cookie-timeout=0s force RouterOS to send a fresh
+    //     RADIUS Access-Request on every reconnect. With the default add-mac-cookie=yes
+    //     a returning client with the same MAC is auto-logged in for up to 3 days
+    //     without contacting FreeRADIUS, so voucher validity (rlm_expiration) and
+    //     disable status are silently bypassed across sessions.
+    `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m add-mac-cookie=no mac-cookie-timeout=0s`,
 
     // 11. Firewall — allow RADIUS auth from VPS
     `/ip firewall filter add chain=input action=accept protocol=udp src-address=${params.radiusServerIp} dst-port=1812 comment=wasel-radius-auth place-before=0`,
@@ -316,10 +321,14 @@ STEP 9: Enable RADIUS on the hotspot profile
   /ip hotspot profile set default use-radius=yes
 
 --------------------------------------------------------------------------------
-STEP 10: Set hotspot user profile timing defaults
+STEP 10: Set hotspot user profile timing defaults + disable MAC-cookie
 --------------------------------------------------------------------------------
+add-mac-cookie=no forces RouterOS to re-authenticate every reconnect via RADIUS.
+Without this the router auto-resumes returning clients from a 3-day MAC cookie
+and voucher validity (and disable status) are silently bypassed across sessions.
 
-  /ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m
+  /ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m \\
+     add-mac-cookie=no mac-cookie-timeout=0s
 
 --------------------------------------------------------------------------------
 STEP 11: Firewall — allow RADIUS authentication traffic
@@ -452,9 +461,9 @@ export function generateSetupSteps(params: {
     },
     {
       step: 10,
-      title: 'Set hotspot user profile timing defaults',
-      description: 'Sets sensible idle and keepalive timeouts. Per-voucher limits still come from RADIUS reply attributes.',
-      command: `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m`,
+      title: 'Set hotspot user profile defaults + disable MAC-cookie auto-login',
+      description: 'Sets idle and keepalive timeouts, and disables the MAC-cookie that would otherwise auto-resume returning clients without contacting RADIUS — required so voucher validity and disable status are enforced on every reconnect.',
+      command: `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m add-mac-cookie=no mac-cookie-timeout=0s`,
     },
     {
       step: 11,

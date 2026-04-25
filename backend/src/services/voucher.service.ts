@@ -401,6 +401,20 @@ async function insertRadiusEntriesV2(
 
   // Expiration is NOT set here — the validityExpiration job sets it
   // after first login (validity from first use, not from creation).
+
+  // Session-Timeout caps the *first* session at validity_seconds. Without this
+  // the first session has no validity-derived upper bound (rlm_expiration only
+  // takes effect on the next Access-Request, after the validityExpiration cron
+  // has written the Expiration radcheck row). On any subsequent re-auth,
+  // rlm_expiration overwrites Session-Timeout with the correct remaining time
+  // via FR's `:=` semantics, so this radreply value never masks the wall-clock
+  // validity check.
+  if (validitySeconds && validitySeconds > 0) {
+    await client.query(
+      'INSERT INTO radreply (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+      [username, 'Session-Timeout', ':=', String(validitySeconds)],
+    );
+  }
 }
 
 // ----- Service Functions -----

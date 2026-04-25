@@ -173,6 +173,53 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.data[0].username).toBe('testuser1');
     expect(res.body.data[0].profileName).toBe('Basic Plan');
+
+    // No validitySeconds in validBody → no Session-Timeout radreply row.
+    const sessionTimeoutCalls = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && c[0].includes('radreply') && Array.isArray(c[1]) && c[1][1] === 'Session-Timeout',
+    );
+    expect(sessionTimeoutCalls).toHaveLength(0);
+  });
+
+  it('inserts Session-Timeout radreply when validitySeconds is set (caps the first session at validity_seconds)', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // Transaction now also includes the radreply Session-Timeout INSERT.
+    mockClientQuery
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] }) // INSERT voucher_meta
+      .mockResolvedValueOnce(undefined) // radcheck Cleartext-Password
+      .mockResolvedValueOnce(undefined) // radcheck Simultaneous-Use
+      .mockResolvedValueOnce(undefined) // radcheck Max-All-Session
+      .mockResolvedValueOnce(undefined) // radreply Session-Timeout
+      .mockResolvedValueOnce(undefined) // UPDATE subscriptions
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ ...validBody, validitySeconds: 86400 });
+
+    expect(res.status).toBe(201);
+
+    // Exactly one radreply Session-Timeout INSERT, value = '86400', for the
+    // same generated username used in the radcheck Cleartext-Password row.
+    const radcheckPasswordCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('radcheck') && Array.isArray(c[1]) && c[1][1] === 'Cleartext-Password',
+    );
+    expect(radcheckPasswordCall).toBeDefined();
+    const generatedUsername = radcheckPasswordCall![1][0];
+
+    const sessionTimeoutCalls = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && c[0].includes('radreply') && Array.isArray(c[1]) && c[1][1] === 'Session-Timeout',
+    );
+    expect(sessionTimeoutCalls).toHaveLength(1);
+    expect(sessionTimeoutCalls[0][1]).toEqual([generatedUsername, 'Session-Timeout', ':=', '86400']);
   });
 });
 

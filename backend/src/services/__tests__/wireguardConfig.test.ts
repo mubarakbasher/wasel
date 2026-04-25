@@ -132,6 +132,12 @@ describe('generateSetupSteps', () => {
     expect(steps[12].command).toContain('comment=wasel-wg');
   });
 
+  it('step 10 disables the MAC cookie so RADIUS is consulted on every reconnect', () => {
+    const steps = generateSetupSteps(BASE_PARAMS);
+    expect(steps[9].command).toContain('add-mac-cookie=no');
+    expect(steps[9].command).toContain('mac-cookie-timeout=0s');
+  });
+
   it('every step has a non-empty title, description, and command', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
     for (const s of steps) {
@@ -172,5 +178,11 @@ describe('generateMikrotikConfigText', () => {
   it('does not contain radius-interim-update', () => {
     const text = generateMikrotikConfigText(TEXT_PARAMS);
     expect(text).not.toContain('radius-interim-update');
+  });
+
+  it('disables MAC cookie auto-login on the user profile', () => {
+    const text = generateMikrotikConfigText(TEXT_PARAMS);
+    expect(text).toContain('add-mac-cookie=no');
+    expect(text).toContain('mac-cookie-timeout=0s');
   });
 });
