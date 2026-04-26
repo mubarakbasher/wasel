@@ -48,11 +48,17 @@ export function startValidityExpirationJob(): void {
         // Guard against a concurrent cron tick inserting a second Expiration
         // row for the same voucher: emit the INSERT conditionally so two
         // replicas racing on the same username produce one row, not two.
+        // Explicit ::varchar casts on every $-param: without them Postgres
+        // fails with 42P08 ("text versus character varying") because node-pg
+        // sends parameters as text by default and they are referenced in
+        // both the SELECT projection (varchar target columns) and the WHERE
+        // clause (varchar column comparisons), producing an ambiguous type.
         await pool.query(
           `INSERT INTO radcheck (username, attribute, op, value)
-           SELECT $1, $2, $3, $4
+           SELECT $1::varchar, $2::varchar, $3::varchar, $4::varchar
            WHERE NOT EXISTS (
-             SELECT 1 FROM radcheck WHERE username = $1 AND attribute = $2
+             SELECT 1 FROM radcheck
+             WHERE username = $1::varchar AND attribute = $2::varchar
            )`,
           [row.radius_username, 'Expiration', ':=', formatted],
         );
