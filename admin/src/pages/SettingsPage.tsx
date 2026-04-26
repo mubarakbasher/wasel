@@ -11,6 +11,7 @@ import {
   Plus,
 } from 'lucide-react';
 import api from '../lib/api';
+import { formatDate } from '../lib/datetime';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
 import { useAuth } from '../hooks/useAuth';
@@ -410,7 +411,7 @@ function AdminsTab() {
                     <StatusBadge status={a.is_active ? 'active' : 'inactive'} />
                   </td>
                   <td className="px-4 py-3 text-gray-700">
-                    {new Date(a.created_at).toLocaleDateString()}
+                    {formatDate(a.created_at)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">

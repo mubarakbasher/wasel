@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Send } from 'lucide-react';
 import api from '../lib/api';
+import { formatDateTime } from '../lib/datetime';
 import ErrorPanel from '../components/ErrorPanel';
 
 interface SupportMessage {
@@ -125,7 +126,7 @@ export default function ConversationPage() {
                         isAdmin ? 'text-indigo-100' : 'text-slate-500'
                       }`}
                     >
-                      {new Date(m.createdAt).toLocaleString()}
+                      {formatDateTime(m.createdAt)}
                     </div>
                   </div>
                 </div>

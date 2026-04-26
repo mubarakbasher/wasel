@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, ChevronDown, ChevronUp } from 'lucide-react';
 import api from '../lib/api';
+import { formatDateTime } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import ErrorPanel from '../components/ErrorPanel';
 
@@ -72,7 +73,7 @@ export default function AuditLogsPage() {
       key: 'created_at',
       header: 'Timestamp',
       render: (row) => (
-        <span className="whitespace-nowrap">{new Date(row.created_at).toLocaleString()}</span>
+        <span className="whitespace-nowrap">{formatDateTime(row.created_at)}</span>
       ),
     },
     {

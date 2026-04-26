@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus, AlertTriangle, FileText, Copy, Check } from 'lucide-react';
 import api from '../lib/api';
+import { formatDate, formatDateTime } from '../lib/datetime';
 import ErrorPanel from '../components/ErrorPanel';
 import StatusBadge from '../components/StatusBadge';
 
@@ -153,7 +154,7 @@ export default function UserDetailPage() {
               <InfoRow label="Role" value={data.user.role} />
               <InfoRow
                 label="Created"
-                value={new Date(data.user.created_at).toLocaleString()}
+                value={formatDateTime(data.user.created_at)}
               />
             </div>
           </div>
@@ -175,7 +176,7 @@ export default function UserDetailPage() {
                     label="Ends on"
                     value={
                       data.subscription.endDate
-                        ? new Date(data.subscription.endDate).toLocaleDateString()
+                        ? formatDate(data.subscription.endDate)
                         : '—'
                     }
                   />
@@ -237,7 +238,7 @@ export default function UserDetailPage() {
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-slate-600">
-                          {new Date(r.created_at).toLocaleDateString()}
+                          {formatDate(r.created_at)}
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <button

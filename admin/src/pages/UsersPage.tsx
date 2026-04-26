@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, MoreVertical, Check, X, Loader2 } from 'lucide-react';
 import api from '../lib/api';
+import { formatDate } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
@@ -124,7 +125,7 @@ export default function UsersPage() {
     {
       key: 'created_at',
       header: 'Created',
-      render: (row) => new Date(row.created_at).toLocaleDateString(),
+      render: (row) => formatDate(row.created_at),
     },
     {
       key: 'actions',

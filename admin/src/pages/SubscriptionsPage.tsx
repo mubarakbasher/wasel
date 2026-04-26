@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MoreVertical, Loader2 } from 'lucide-react';
 import api from '../lib/api';
+import { formatDate } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
@@ -168,12 +169,12 @@ export default function SubscriptionsPage() {
     {
       key: 'start_date',
       header: 'Start Date',
-      render: (row) => new Date(row.start_date).toLocaleDateString(),
+      render: (row) => formatDate(row.start_date),
     },
     {
       key: 'end_date',
       header: 'End Date',
-      render: (row) => new Date(row.end_date).toLocaleDateString(),
+      render: (row) => formatDate(row.end_date),
     },
     {
       key: 'vouchers',
@@ -397,9 +398,9 @@ export default function SubscriptionsPage() {
                   <span className="font-medium">{confirmAction.subscription.user_name}</span> by 30 days? New end date
                   will be{' '}
                   <span className="font-medium">
-                    {new Date(
+                    {formatDate(
                       new Date(confirmAction.subscription.end_date).getTime() + 30 * 24 * 60 * 60 * 1000,
-                    ).toLocaleDateString()}
+                    )}
                   </span>
                   .
                 </>

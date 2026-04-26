@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import api from '../lib/api';
+import { formatDateTime } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
@@ -102,7 +103,7 @@ export default function RoutersPage() {
       header: 'Last Seen',
       render: (row) =>
         row.last_seen ? (
-          <span title={new Date(row.last_seen).toLocaleString()}>{relativeTime(row.last_seen)}</span>
+          <span title={formatDateTime(row.last_seen)}>{relativeTime(row.last_seen)}</span>
         ) : (
           <span className="text-gray-400">-</span>
         ),
@@ -117,7 +118,7 @@ export default function RoutersPage() {
     {
       key: 'created_at',
       header: 'Created',
-      render: (row) => new Date(row.created_at).toLocaleString(),
+      render: (row) => formatDateTime(row.created_at),
     },
   ];
 

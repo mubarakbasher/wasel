@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, ExternalLink, XCircle } from 'lucide-react';
 import api, { resolveAssetUrl } from '../lib/api';
+import { formatDateTime } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
@@ -153,7 +154,7 @@ export default function PaymentsPage() {
     {
       key: 'created_at',
       header: 'Date',
-      render: (row) => new Date(row.created_at).toLocaleString(),
+      render: (row) => formatDateTime(row.created_at),
     },
     {
       key: 'actions',

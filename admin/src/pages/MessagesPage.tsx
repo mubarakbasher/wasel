@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import api from '../lib/api';
+import { formatDateTime } from '../lib/datetime';
 import ErrorPanel from '../components/ErrorPanel';
 
 interface Conversation {
@@ -122,7 +123,7 @@ export default function MessagesPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600">
-                      {new Date(c.lastMessageAt).toLocaleString()}
+                      {formatDateTime(c.lastMessageAt)}
                     </td>
                   </tr>
                 ))
