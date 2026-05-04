@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../config/app_config.dart';
 import '../navigation/app_router.dart' show appNavigatorKey;
 import 'secure_storage.dart';
 
@@ -68,10 +69,8 @@ class ApiClient {
   factory ApiClient() => _instance;
 
   ApiClient._internal() {
-    const baseUrl = 'https://api.wa-sel.com/api/v1';
-
     _dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
+      baseUrl: AppConfig.apiBaseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
       sendTimeout: const Duration(seconds: 15),

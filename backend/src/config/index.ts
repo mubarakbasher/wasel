@@ -1,6 +1,10 @@
 import dotenv from 'dotenv';
+import path from 'path';
 import { z } from 'zod';
 
+// Load .env.local first so its values take precedence over .env. Production
+// ships only .env (no .env.local), so behaviour there is unchanged.
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config();
 
 const envSchema = z.object({

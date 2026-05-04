@@ -8,6 +8,8 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.sample
+!.env.local.example
+!.env.*.example
 *.pem
 *.key
 wg0.conf

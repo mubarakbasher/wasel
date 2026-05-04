@@ -1,0 +1,139 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+# Local development compose stack.
+#
+# What this is: postgres, redis, FreeRADIUS, MailHog, and an optional
+# WireGuard sidecar — the four pieces of infra that the backend talks to.
+# Backend and admin run NATIVELY on the WSL2 host via `npm run dev` for
+# fast hot-reload; they are intentionally not in this file.
+#
+# Daily loop (in WSL2 Ubuntu, repo at ~/wasel):
+#
+#   cp .env.example .env                                          # one-time, edit with devpass values
+#   cp backend/.env.local.example backend/.env.local              # one-time, fill placeholders
+#   docker compose -f docker-compose.dev.yml up -d                # postgres + redis + freeradius + mailhog
+#   (cd backend && npm run dev)                                   # nodemon hot reload
+#   (cd admin   && npm run dev)                                   # Vite HMR at :5173
+#   (cd mobile  && flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api/v1)
+#
+# Bring up WireGuard only when iterating on router-provisioning code:
+#
+#   docker compose -f docker-compose.dev.yml --profile router-test up -d wireguard
+#
+# See docs/LOCAL_DEV.md for full setup, smoke tests, and common breakage.
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:93d55776e04376e19adb2733e3ccebb4392ee7dd86d8ff238503b30fe719c84f
+    environment:
+      POSTGRES_DB: wasel
+      POSTGRES_USER: wasel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    ports:
+      # Non-default host port so Wasel dev doesn't conflict with other
+      # postgres containers (madar, infra, etc). Inside the container the
+      # process still listens on 5432 — only the host mapping is shifted.
+      - '127.0.0.1:5436:5432'
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./backend/init-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U wasel']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine@sha256:efc27681bf81e6ed55cb581718b7818c6c04c39b1f9aa40854edd3ea2241b6ed
+    command: ['sh', '-c', 'exec redis-server --requirepass "$$REDIS_PASSWORD"']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+    ports:
+      # Non-default host port so Wasel dev doesn't conflict with other
+      # redis containers (lam3a, infra, etc).
+      - '127.0.0.1:6380:6379'
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    restart: unless-stopped
+
+  freeradius:
+    build: ./freeradius
+    image: wasel-freeradius:3.2.4-dev
+    # Bridge network + published UDP ports rather than network_mode: host.
+    # On Docker Desktop (Windows / macOS), "host" means the Docker Linux VM,
+    # not the WSL2 distro the backend is running in — so 127.0.0.1:1812 from
+    # the host wouldn't reach freeradius. Publishing UDP ports lets Docker
+    # Desktop's vmnetd forward localhost:1812/1813 to the container.
+    # Inside the compose network, postgres is reachable by service name.
+    environment:
+      RADIUS_DB_HOST: postgres
+      RADIUS_DB_PORT: 5432
+      RADIUS_DB_NAME: wasel
+      RADIUS_DB_USER: wasel
+      RADIUS_DB_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    ports:
+      - '127.0.0.1:1812:1812/udp'   # Auth
+      - '127.0.0.1:1813:1813/udp'   # Accounting
+    volumes:
+      - freeradius_dev_control:/var/run/freeradius
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'pgrep freeradius || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - '127.0.0.1:1025:1025'   # SMTP — backend sends mail here
+      - '127.0.0.1:8025:8025'   # Web UI — open http://localhost:8025
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Optional: only comes up with `--profile router-test`.
+  # Brings up wg0 on the WSL2 host kernel so the backend's `wg` CLI calls
+  # succeed and a real Mikrotik on the same LAN can pair with the laptop.
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest@sha256:8e505886ba5da6788f1b9dfc62a25e2f2c3a96e64e6528ef7278d7e1d6649bd2
+    profiles: ['router-test']
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - /etc/wireguard:/config/wg_confs
+      - /lib/modules:/lib/modules:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'wg show wg0 2>/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    logging: *default-logging
+    restart: unless-stopped
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+  freeradius_dev_control:
