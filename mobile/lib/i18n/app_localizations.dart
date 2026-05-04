@@ -413,24 +413,6 @@ class AppLocalizations {
     'routers.leaveAnyway': 'Leave anyway',
     'routers.copyAllCommands': 'Copy all commands',
     'routers.copyAllSnackbar': 'Copied — paste into RouterOS terminal',
-    'routers.verifyConnection': 'Verify connection',
-    'routers.verifyChipIdle': 'Not checked',
-    'routers.verifyChipChecking': 'Checking...',
-    'routers.verifyChipOnline': 'Online',
-    'routers.verifyChipTunnelOnly': 'Tunnel up, RADIUS not verified',
-    'routers.verifyChipNoHandshake': 'No handshake',
-    'routers.verifyChipError': 'Error',
-    'routers.verifyIdleHint':
-        'Paste the script into your RouterOS terminal, then tap Verify.',
-    'routers.verifyOnlineMessage':
-        'Router is online. WireGuard handshake present and RADIUS auth verified.',
-    'routers.verifyTunnelOnlyMessage':
-        'Tunnel is up but RADIUS auth could not be verified yet. Tap Try again in a few seconds.',
-    'routers.verifyNoHandshakeMessage':
-        'No WireGuard handshake. Paste the script into your RouterOS terminal, then tap Verify.',
-    'routers.verifyErrorMessage': 'Could not reach the server.',
-    'routers.verifyButton': 'Verify connection',
-    'routers.verifyRetry': 'Try again',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} selected',
@@ -1061,24 +1043,6 @@ class AppLocalizations {
     'routers.leaveAnyway': 'غادر على أي حال',
     'routers.copyAllCommands': 'نسخ جميع الأوامر',
     'routers.copyAllSnackbar': 'تم النسخ — الصق في طرفية RouterOS',
-    'routers.verifyConnection': 'التحقق من الاتصال',
-    'routers.verifyChipIdle': 'لم يُتحقق بعد',
-    'routers.verifyChipChecking': 'جارٍ التحقق...',
-    'routers.verifyChipOnline': 'متصل',
-    'routers.verifyChipTunnelOnly': 'النفق متصل، RADIUS لم يُتحقق',
-    'routers.verifyChipNoHandshake': 'لا يوجد handshake',
-    'routers.verifyChipError': 'خطأ',
-    'routers.verifyIdleHint':
-        'الصق السكريبت في طرفية RouterOS ثم اضغط تحقق.',
-    'routers.verifyOnlineMessage':
-        'الراوتر متصل. WireGuard handshake موجود وتم التحقق من RADIUS.',
-    'routers.verifyTunnelOnlyMessage':
-        'النفق متصل لكن لم يتم التحقق من RADIUS بعد. اضغط حاول مجدداً بعد ثوانٍ.',
-    'routers.verifyNoHandshakeMessage':
-        'لا يوجد WireGuard handshake. الصق السكريبت في طرفية RouterOS ثم اضغط تحقق.',
-    'routers.verifyErrorMessage': 'تعذّر الوصول إلى الخادم.',
-    'routers.verifyButton': 'تحقق من الاتصال',
-    'routers.verifyRetry': 'حاول مجدداً',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} محدد',

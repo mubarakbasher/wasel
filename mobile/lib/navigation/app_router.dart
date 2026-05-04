@@ -13,7 +13,6 @@ import '../screens/routers/add_router_screen.dart';
 import '../screens/routers/router_detail_screen.dart';
 import '../screens/routers/edit_router_screen.dart';
 import '../screens/routers/setup_guide_screen.dart';
-import '../screens/routers/router_health_screen.dart';
 import '../screens/vouchers/voucher_list_screen.dart';
 import '../screens/vouchers/create_voucher_wizard.dart';
 import '../screens/vouchers/voucher_detail_screen.dart';
@@ -171,17 +170,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             );
           }
           return SetupGuideScreen(routerId: extra as String? ?? '');
-        },
-      ),
-      GoRoute(
-        path: '/routers/health',
-        parentNavigatorKey: appNavigatorKey,
-        builder: (context, state) {
-          final extra = state.extra;
-          final routerId = extra is Map<String, dynamic>
-              ? extra['routerId'] as String? ?? ''
-              : extra as String? ?? '';
-          return RouterHealthScreen(routerId: routerId);
         },
       ),
       // Voucher routes

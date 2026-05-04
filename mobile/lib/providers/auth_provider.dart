@@ -113,6 +113,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Kick off loads for user-scoped providers that screens read but don't
+  /// load themselves (Dashboard, Routers, Vouchers all read subscription
+  /// state without calling loadSubscription). Fire-and-forget so auth latency
+  /// is unaffected.
+  void _loadUserScopedProviders() {
+    final ref = _ref;
+    if (ref == null) return;
+    try {
+      ref.read(subscriptionProvider.notifier).loadSubscription();
+    } catch (_) {
+      // Provider may not be initialised yet — safe to ignore.
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Session restore (call on app start)
   // -------------------------------------------------------------------------
@@ -151,6 +165,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         user: user,
         isLoading: false,
       );
+      _loadUserScopedProviders();
     } catch (e) {
       // Tokens are invalid or network error — clear everything.
       await _storage.clearAll();
@@ -184,6 +199,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         isLoading: false,
         clearPendingVerificationEmail: true,
       );
+      _loadUserScopedProviders();
     } catch (e) {
       final code = _extractErrorCode(e);
       state = state.copyWith(

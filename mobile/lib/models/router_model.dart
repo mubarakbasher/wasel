@@ -1,5 +1,3 @@
-import 'router_health.dart';
-
 class RouterModel {
   final String id;
   final String userId;
@@ -14,8 +12,6 @@ class RouterModel {
   final DateTime? lastSeen;
   final DateTime createdAt;
   final DateTime updatedAt;
-  final RouterHealthReport? lastHealthReport;
-  final DateTime? lastHealthCheckAt;
 
   const RouterModel({
     required this.id,
@@ -31,8 +27,6 @@ class RouterModel {
     this.lastSeen,
     required this.createdAt,
     required this.updatedAt,
-    this.lastHealthReport,
-    this.lastHealthCheckAt,
   });
 
   bool get isOnline => status == 'online';
@@ -56,13 +50,6 @@ class RouterModel {
           : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
-      lastHealthReport: json['lastHealthReport'] != null
-          ? RouterHealthReport.fromJson(
-              json['lastHealthReport'] as Map<String, dynamic>)
-          : null,
-      lastHealthCheckAt: json['lastHealthCheckAt'] != null
-          ? DateTime.parse(json['lastHealthCheckAt'] as String)
-          : null,
     );
   }
 
@@ -81,8 +68,6 @@ class RouterModel {
       'lastSeen': lastSeen?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
-      'lastHealthReport': lastHealthReport?.toJson(),
-      'lastHealthCheckAt': lastHealthCheckAt?.toIso8601String(),
     };
   }
 }
