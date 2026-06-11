@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../i18n/app_localizations.dart';
 import '../../theme/theme.dart';
+import '../../widgets/widgets.dart';
 
 class ReportExportScreen extends StatelessWidget {
   final String reportType;
@@ -17,13 +18,7 @@ class ReportExportScreen extends StatelessWidget {
 
   void _copyToClipboard(BuildContext context) {
     Clipboard.setData(ClipboardData(text: exportData));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(context.tr('reports.copiedToClipboard')),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    AppSnackbar.success(context, context.tr('reports.copiedToClipboard'));
   }
 
   void _share() {
@@ -86,9 +81,7 @@ class ReportExportScreen extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 child: SelectableText(
                   exportData,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
+                  style: AppTypography.monoSmall.copyWith(
                     height: 1.6,
                     color: AppColors.textPrimary,
                   ),

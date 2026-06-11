@@ -5,6 +5,7 @@ import '../providers/notification_prefs_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
+import '../widgets/widgets.dart';
 
 class NotificationPreferencesScreen extends ConsumerStatefulWidget {
   const NotificationPreferencesScreen({super.key});
@@ -55,31 +56,19 @@ class _NotificationPreferencesScreenState
     );
   }
 
-  Widget _buildBody(NotificationPrefsState state, NotificationPrefsNotifier notifier) {
+  Widget _buildBody(
+    NotificationPrefsState state,
+    NotificationPrefsNotifier notifier,
+  ) {
     if (state.isLoading && state.preferences.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
     if (state.error != null && state.preferences.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                state.error!,
-                style: AppTypography.body.copyWith(color: AppColors.error),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              ElevatedButton(
-                onPressed: () => notifier.loadPreferences(),
-                child: Text(context.tr('common.retry')),
-              ),
-            ],
-          ),
-        ),
+      return ErrorState(
+        message: state.error!,
+        onRetry: () => notifier.loadPreferences(),
+        retryLabel: context.tr('common.retry'),
       );
     }
 
@@ -105,7 +94,7 @@ class _NotificationPreferencesScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(
+              padding: const EdgeInsetsDirectional.fromSTEB(
                   AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xs),
               child: Text(
                 section.toUpperCase(),
@@ -122,9 +111,8 @@ class _NotificationPreferencesScreenState
                   ),
                   title: Text(pref.displayName, style: AppTypography.body),
                   value: pref.enabled,
-                  activeThumbColor: AppColors.primary,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                  contentPadding: const EdgeInsetsDirectional.symmetric(
+                      horizontal: AppSpacing.lg),
                   onChanged: (value) =>
                       notifier.togglePreference(pref.category, value),
                 )),

@@ -14,6 +14,7 @@ import '../../providers/vouchers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class VoucherDetailScreen extends ConsumerStatefulWidget {
   final String routerId;
@@ -114,25 +115,17 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     final titleKey = isCurrentlyEnabled ? 'vouchers.disableVoucherTitle' : 'vouchers.enableVoucherTitle';
     final bodyKey = isCurrentlyEnabled ? 'vouchers.disableVoucherBody' : 'vouchers.enableVoucherBody';
     final actionKey = isCurrentlyEnabled ? 'vouchers.disable' : 'vouchers.enable';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.tr(titleKey)),
-        content: Text(context.tr(bodyKey)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(context.tr('common.cancel')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(context.tr(actionKey)),
-          ),
-        ],
-      ),
+
+    final confirmed = await showConfirmDialog(
+      context,
+      title: context.tr(titleKey),
+      message: context.tr(bodyKey),
+      confirmLabel: context.tr(actionKey),
+      cancelLabel: context.tr('common.cancel'),
+      destructive: isCurrentlyEnabled,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     await ref
         .read(vouchersProvider.notifier)
@@ -149,34 +142,22 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     final voucher = ref.read(vouchersProvider).selectedVoucher;
     if (voucher == null) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.tr('vouchers.deleteVoucherTitle')),
-        content: Text(context.tr('vouchers.deleteVoucherBody')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(context.tr('common.cancel')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: Text(context.tr('common.delete')),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: context.tr('vouchers.deleteVoucherTitle'),
+      message: context.tr('vouchers.deleteVoucherBody'),
+      confirmLabel: context.tr('common.delete'),
+      cancelLabel: context.tr('common.cancel'),
+      destructive: true,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final success = await ref
         .read(vouchersProvider.notifier)
         .deleteVoucher(widget.routerId, voucher.id);
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('vouchers.deletedSuccessfully'))),
-      );
+      AppSnackbar.success(context, context.tr('vouchers.deletedSuccessfully'));
       context.pop();
     }
   }
@@ -207,9 +188,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
 
     await _copyWithAutoClear(voucher.username);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('vouchers.credentialsCopied'))),
-      );
+      AppSnackbar.info(context, context.tr('vouchers.credentialsCopied'));
     }
   }
 
@@ -249,28 +228,27 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
                           .read(vouchersProvider.notifier)
                           .loadVoucher(widget.routerId, widget.voucherId),
                       child: ListView(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    children: [
-                      _buildCredentialsCard(voucher),
-                      const SizedBox(height: AppSpacing.lg),
-                      if (voucher.usagePercent != null)
-                        ...[
-                          _buildUsageCard(voucher),
+                        padding: const EdgeInsets.all(AppSpacing.lg),
+                        children: [
+                          _buildCredentialsCard(voucher),
                           const SizedBox(height: AppSpacing.lg),
+                          if (voucher.usagePercent != null) ...[
+                            _buildUsageCard(voucher),
+                            const SizedBox(height: AppSpacing.lg),
+                          ],
+                          _buildInfoCard(voucher),
+                          const SizedBox(height: AppSpacing.lg),
+                          _buildActionsCard(voucher),
                         ],
-                      _buildInfoCard(voucher),
-                      const SizedBox(height: AppSpacing.lg),
-                      _buildActionsCard(voucher),
-                    ],
-                  ),
-                ),
+                      ),
+                    ),
         ),
         // iOS: blur screen content in the app-switcher / inactive state.
         if (_obscured)
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(color: Colors.black.withValues(alpha: 0.4)),
+              child: Container(color: AppColors.scrim),
             ),
           ),
       ],
@@ -278,13 +256,8 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   }
 
   Widget _buildCredentialsCard(dynamic voucher) {
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -292,7 +265,10 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
             children: [
               Text(context.tr('vouchers.credentials'), style: AppTypography.title3),
               const Spacer(),
-              _StatusBadge(status: voucher.status),
+              StatusBadge(
+                label: _capitalizeStatus(voucher.status as String),
+                color: AppColors.voucherStatus(voucher.status as String),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -305,9 +281,9 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
             children: [
               Expanded(
                 child: Text(
-                  voucher.username,
-                  style: AppTypography.title2.copyWith(
-                    fontFamily: 'monospace',
+                  voucher.username as String,
+                  style: AppTypography.mono.copyWith(
+                    fontSize: 18,
                     letterSpacing: 1.2,
                   ),
                 ),
@@ -315,11 +291,11 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
               IconButton(
                 icon: const Icon(Icons.copy, size: 20),
                 onPressed: () async {
-                  await _copyWithAutoClear(voucher.username);
+                  await _copyWithAutoClear(voucher.username as String);
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(context.tr('vouchers.codeCopied'))),
+                    AppSnackbar.info(
+                      context,
+                      context.tr('vouchers.codeCopied'),
                     );
                   }
                 },
@@ -350,13 +326,8 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
             ? AppColors.warning
             : AppColors.primary;
 
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -400,13 +371,8 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   }
 
   Widget _buildInfoCard(dynamic voucher) {
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -414,29 +380,29 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           const SizedBox(height: AppSpacing.lg),
           _InfoRow(
             label: context.tr('vouchers.limit'),
-            value: voucher.limitDisplayText,
+            value: voucher.limitDisplayText as String,
             icon: Icons.layers,
           ),
           if (voucher.price != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
               label: context.tr('vouchers.price'),
-              value: voucher.price!.toStringAsFixed(2),
+              value: (voucher.price as double).toStringAsFixed(2),
               icon: Icons.attach_money,
             ),
           ],
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             label: context.tr('vouchers.status'),
-            value: _capitalizeStatus(voucher.status),
+            value: _capitalizeStatus(voucher.status as String),
             icon: Icons.circle,
-            valueColor: _statusColor(voucher.status),
+            valueColor: AppColors.voucherStatus(voucher.status as String),
           ),
           if (voucher.expiration != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
               label: context.tr('vouchers.expires'),
-              value: voucher.expiration!,
+              value: voucher.expiration! as String,
               icon: Icons.timer,
             ),
           ],
@@ -448,18 +414,18 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
               icon: Icons.devices,
             ),
           ],
-          if (voucher.comment != null && voucher.comment!.isNotEmpty) ...[
+          if (voucher.comment != null && (voucher.comment as String).isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
               label: context.tr('vouchers.comment'),
-              value: voucher.comment!,
+              value: voucher.comment! as String,
               icon: Icons.comment,
             ),
           ],
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             label: context.tr('vouchers.created'),
-            value: _formatDateTime(voucher.createdAt),
+            value: _formatDateTime(voucher.createdAt as DateTime),
             icon: Icons.calendar_today,
           ),
         ],
@@ -478,16 +444,16 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
             child: ElevatedButton.icon(
               onPressed: _toggleStatus,
               icon: Icon(
-                voucher.isDisabled ? Icons.check_circle : Icons.block,
+                (voucher.isDisabled as bool) ? Icons.check_circle : Icons.block,
                 size: 20,
               ),
-              label: Text(voucher.isDisabled
+              label: Text((voucher.isDisabled as bool)
                   ? context.tr('vouchers.enableVoucher')
                   : context.tr('vouchers.disableVoucher')),
-              style: !voucher.isDisabled
+              style: !(voucher.isDisabled as bool)
                   ? ElevatedButton.styleFrom(
                       backgroundColor: AppColors.warning,
-                      foregroundColor: Colors.white,
+                      foregroundColor: AppColors.textInverse,
                     )
                   : null,
             ),
@@ -507,23 +473,6 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     );
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'unused':
-        return AppColors.primary;
-      case 'active':
-        return AppColors.voucherActive;
-      case 'disabled':
-        return AppColors.voucherDisabled;
-      case 'expired':
-        return AppColors.voucherExpired;
-      case 'used':
-        return AppColors.voucherUsed;
-      default:
-        return AppColors.textSecondary;
-    }
-  }
-
   String _capitalizeStatus(String status) {
     if (status.isEmpty) return status;
     return status[0].toUpperCase() + status.substring(1);
@@ -532,55 +481,6 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   String _formatDateTime(DateTime date) {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
         '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: _statusColor(status).withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-      ),
-      child: Text(
-        _capitalizeStatus(status),
-        style: AppTypography.caption1.copyWith(
-          color: _statusColor(status),
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'unused':
-        return AppColors.primary;
-      case 'active':
-        return AppColors.voucherActive;
-      case 'disabled':
-        return AppColors.voucherDisabled;
-      case 'expired':
-        return AppColors.voucherExpired;
-      case 'used':
-        return AppColors.voucherUsed;
-      default:
-        return AppColors.textSecondary;
-    }
-  }
-
-  String _capitalizeStatus(String status) {
-    if (status.isEmpty) return status;
-    return status[0].toUpperCase() + status.substring(1);
   }
 }
 

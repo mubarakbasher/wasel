@@ -9,6 +9,7 @@ import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class AddRouterScreen extends ConsumerStatefulWidget {
   const AddRouterScreen({super.key});
@@ -91,25 +92,14 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
 
   Future<bool> _confirmLeave() async {
     if (!_scriptGenerated) return true;
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.tr('routers.leaveWarningTitle')),
-        content: Text(context.tr('routers.leaveWarningBody')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.tr('common.cancel')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: Text(context.tr('routers.leaveAnyway')),
-          ),
-        ],
-      ),
+    final result = await showConfirmDialog(
+      context,
+      title: context.tr('routers.leaveWarningTitle'),
+      message: context.tr('routers.leaveWarningBody'),
+      confirmLabel: context.tr('routers.leaveAnyway'),
+      cancelLabel: context.tr('common.cancel'),
     );
-    return result ?? false;
+    return result;
   }
 
   @override
@@ -185,9 +175,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
     final commands = (_steps ?? []).map((s) => s.command).join('\n\n');
     if (commands.isEmpty) return;
     Clipboard.setData(ClipboardData(text: commands));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr('routers.copyAllSnackbar'))),
-    );
+    AppSnackbar.success(context, context.tr('routers.copyAllSnackbar'));
   }
 
   Widget _buildNoStepsFallback(RoutersState state) {
@@ -196,28 +184,19 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: AppColors.surfaceMuted,
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
         border: Border.all(color: AppColors.border),
       ),
       child: SelectableText(
         guide.setupGuide,
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 13,
-          height: 1.5,
-          color: AppColors.textPrimary,
-        ),
+        style: AppTypography.monoSmall.copyWith(height: 1.5),
       ),
     );
   }
 
-  // Step 13 is the last firewall rule — the script is now self-contained; no
-  // special "final step" semantics, but we give step 13 a green tint to signal
-  // the operator that pasting is complete after this command.
   Widget _buildStepCard(SetupStep step) {
     final isFinal = step.step == 13;
-    // Step 5 creates the wasel_auto API user — give it a subtle tint.
     final isApiUser = step.step == 5;
 
     final borderColor = isFinal
@@ -229,35 +208,38 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(color: borderColor),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _StepCardHeader(
-              step: step,
-              badgeColor: badgeColor,
-              isFinal: isFinal,
-            ),
-            _StepDescription(step: step),
-            _StepCommand(
-              step: step,
-              onCopy: () {
-                Clipboard.setData(ClipboardData(text: step.command));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        context.tr('routers.stepCopied', [step.step.toString()])),
-                    duration: const Duration(seconds: 1),
-                  ),
-                );
-              },
-            ),
-          ],
+      child: AppCard(
+        padding: EdgeInsets.zero,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        shadows: const [],
+        color: AppColors.surface,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _StepCardHeader(
+                step: step,
+                badgeColor: badgeColor,
+                isFinal: isFinal,
+              ),
+              _StepDescription(step: step),
+              _StepCommand(
+                step: step,
+                onCopy: () {
+                  Clipboard.setData(ClipboardData(text: step.command));
+                  AppSnackbar.success(
+                    context,
+                    context.tr(
+                        'routers.stepCopied', [step.step.toString()]),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -301,10 +283,7 @@ class _NameSection extends StatelessWidget {
                 AppTypography.subhead.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppSpacing.xxl),
-          if (error != null) ...[
-            _ErrorBox(error: error!),
-            const SizedBox(height: AppSpacing.lg),
-          ],
+          if (error != null) InlineErrorBanner(message: error!),
           TextFormField(
             controller: nameController,
             enabled: !scriptGenerated,
@@ -348,26 +327,6 @@ class _NameSection extends StatelessWidget {
   }
 }
 
-class _ErrorBox extends StatelessWidget {
-  final String error;
-  const _ErrorBox({required this.error});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-      ),
-      child: Text(
-        error,
-        style: AppTypography.subhead.copyWith(color: AppColors.error),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // VPN IP banner
 // ---------------------------------------------------------------------------
@@ -380,7 +339,7 @@ class _VpnBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     if (vpnIp == null) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding: const EdgeInsetsDirectional.symmetric(
           horizontal: AppSpacing.lg, vertical: AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.success.withValues(alpha: 0.12),
@@ -394,8 +353,8 @@ class _VpnBanner extends StatelessWidget {
           Expanded(
             child: Text(
               context.tr('routers.vpnAssigned', [vpnIp!]),
-              style: AppTypography.subhead
-                  .copyWith(color: AppColors.success, fontWeight: FontWeight.w600),
+              style: AppTypography.subhead.copyWith(
+                  color: AppColors.success, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -429,17 +388,17 @@ class _StepCardHeader extends StatelessWidget {
           Container(
             width: 28,
             height: 28,
-            decoration: BoxDecoration(
-                shape: BoxShape.circle, color: badgeColor),
+            decoration:
+                BoxDecoration(shape: BoxShape.circle, color: badgeColor),
             alignment: Alignment.center,
             child: isFinal
-                ? const Icon(Icons.check, size: 16, color: Colors.white)
+                ? const Icon(Icons.check, size: 16, color: AppColors.textInverse)
                 : Text(
                     '${step.step}',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: AppColors.textInverse,
                     ),
                   ),
           ),
@@ -467,8 +426,7 @@ class _StepDescription extends StatelessWidget {
           AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
       child: Text(
         step.description,
-        style:
-            AppTypography.caption1.copyWith(color: AppColors.textSecondary),
+        style: AppTypography.caption1.copyWith(color: AppColors.textSecondary),
       ),
     );
   }
@@ -487,7 +445,7 @@ class _StepCommand extends StatelessWidget {
           AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.sm),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: AppColors.surfaceMuted,
         borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
       ),
       child: Row(
@@ -496,21 +454,16 @@ class _StepCommand extends StatelessWidget {
           Expanded(
             child: SelectableText(
               step.command,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-                height: 1.5,
-                color: Color(0xFFD4D4D4),
-              ),
+              style: AppTypography.monoSmall.copyWith(height: 1.5),
             ),
           ),
           const SizedBox(width: AppSpacing.xs),
           InkWell(
             onTap: onCopy,
-            child: const Icon(
+            child: Icon(
               Icons.copy,
               size: 18,
-              color: Color(0xFF9E9E9E),
+              color: AppColors.textTertiary,
             ),
           ),
         ],

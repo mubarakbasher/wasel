@@ -5,6 +5,7 @@ import '../../i18n/app_localizations.dart';
 import '../../models/session.dart';
 import '../../providers/sessions_provider.dart';
 import '../../theme/theme.dart';
+import '../../widgets/widgets.dart';
 
 class SessionHistoryScreen extends ConsumerStatefulWidget {
   final String routerId;
@@ -75,96 +76,22 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: context.tr('sessions.searchUsername'),
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                _onSearchSubmitted('');
-                              },
-                            )
-                          : null,
-                    ),
-                    onSubmitted: _onSearchSubmitted,
-                    textInputAction: TextInputAction.search,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                PopupMenuButton<String?>(
-                  icon: Icon(
-                    Icons.filter_list,
-                    color: state.filterTerminateCause != null
-                        ? AppColors.primary
-                        : null,
-                  ),
-                  tooltip: context.tr('sessions.filterByTerminateCause'),
-                  onSelected: _selectTerminateCause,
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: null,
-                      child: Text(context.tr('sessions.allCauses')),
-                    ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem(
-                      value: 'User-Request',
-                      child: Text(context.tr('sessions.userRequest')),
-                    ),
-                    PopupMenuItem(
-                      value: 'Session-Timeout',
-                      child: Text(context.tr('sessions.sessionTimeout')),
-                    ),
-                    PopupMenuItem(
-                      value: 'Idle-Timeout',
-                      child: Text(context.tr('sessions.idleTimeout')),
-                    ),
-                    PopupMenuItem(
-                      value: 'Admin-Reset',
-                      child: Text(context.tr('sessions.adminReset')),
-                    ),
-                    PopupMenuItem(
-                      value: 'NAS-Reboot',
-                      child: Text(context.tr('sessions.nasReboot')),
-                    ),
-                    PopupMenuItem(
-                      value: 'Port-Error',
-                      child: Text(context.tr('sessions.portError')),
-                    ),
-                    PopupMenuItem(
-                      value: 'Lost-Carrier',
-                      child: Text(context.tr('sessions.lostCarrier')),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          _SearchFilterBar(
+            searchController: _searchController,
+            filterActive: state.filterTerminateCause != null,
+            onSearchSubmitted: _onSearchSubmitted,
+            onFilterSelected: _selectTerminateCause,
           ),
           if (state.filterTerminateCause != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: AppSpacing.md),
               child: Row(
                 children: [
                   Chip(
                     label: Text(
                       state.filterTerminateCause!,
-                      style: const TextStyle(fontSize: 12),
+                      style: AppTypography.caption1,
                     ),
                     deleteIcon: const Icon(Icons.close, size: 16),
                     onDeleted: () => _selectTerminateCause(null),
@@ -181,11 +108,12 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
             child: Row(
               children: [
                 Text(
-                  context.tr('sessions.recordsCount', [state.historyTotal.toString()]),
+                  context.tr('sessions.recordsCount',
+                      [state.historyTotal.toString()]),
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: Colors.grey[600]),
+                      ?.copyWith(color: AppColors.textSecondary),
                 ),
                 const Spacer(),
                 if (state.isLoading)
@@ -209,46 +137,17 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
     }
 
     if (state.error != null && state.historySessions.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                state.error!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.red[700]),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              ElevatedButton(
-                onPressed: _onRefresh,
-                child: Text(context.tr('common.retry')),
-              ),
-            ],
-          ),
-        ),
+      return ErrorState(
+        message: state.error!,
+        onRetry: _onRefresh,
+        retryLabel: context.tr('common.retry'),
       );
     }
 
     if (state.historySessions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.history, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              context.tr('sessions.noSessionHistory'),
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(color: Colors.grey[600]),
-            ),
-          ],
-        ),
+      return EmptyState(
+        icon: Icons.history,
+        title: context.tr('sessions.noSessionHistory'),
       );
     }
 
@@ -273,6 +172,103 @@ class _SessionHistoryScreenState extends ConsumerState<SessionHistoryScreen> {
   }
 }
 
+class _SearchFilterBar extends StatelessWidget {
+  final TextEditingController searchController;
+  final bool filterActive;
+  final ValueChanged<String> onSearchSubmitted;
+  final ValueChanged<String?> onFilterSelected;
+
+  const _SearchFilterBar({
+    required this.searchController,
+    required this.filterActive,
+    required this.onSearchSubmitted,
+    required this.onFilterSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: searchController,
+              decoration: InputDecoration(
+                hintText: context.tr('sessions.searchUsername'),
+                prefixIcon: const Icon(Icons.search, size: 20),
+                isDense: true,
+                contentPadding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                suffixIcon: searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          searchController.clear();
+                          onSearchSubmitted('');
+                        },
+                      )
+                    : null,
+              ),
+              onSubmitted: onSearchSubmitted,
+              textInputAction: TextInputAction.search,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          PopupMenuButton<String?>(
+            icon: Icon(
+              Icons.filter_list,
+              color: filterActive ? AppColors.primary : null,
+            ),
+            tooltip: context.tr('sessions.filterByTerminateCause'),
+            onSelected: onFilterSelected,
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: null,
+                child: Text(context.tr('sessions.allCauses')),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'User-Request',
+                child: Text(context.tr('sessions.userRequest')),
+              ),
+              PopupMenuItem(
+                value: 'Session-Timeout',
+                child: Text(context.tr('sessions.sessionTimeout')),
+              ),
+              PopupMenuItem(
+                value: 'Idle-Timeout',
+                child: Text(context.tr('sessions.idleTimeout')),
+              ),
+              PopupMenuItem(
+                value: 'Admin-Reset',
+                child: Text(context.tr('sessions.adminReset')),
+              ),
+              PopupMenuItem(
+                value: 'NAS-Reboot',
+                child: Text(context.tr('sessions.nasReboot')),
+              ),
+              PopupMenuItem(
+                value: 'Port-Error',
+                child: Text(context.tr('sessions.portError')),
+              ),
+              PopupMenuItem(
+                value: 'Lost-Carrier',
+                child: Text(context.tr('sessions.lostCarrier')),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _HistoryCard extends StatelessWidget {
   final SessionHistory session;
 
@@ -280,114 +276,97 @@ class _HistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return AppCard(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.person, size: 18, color: AppColors.primary),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    session.username,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                ),
-                _TerminateCauseBadge(cause: session.terminateCause),
-              ],
-            ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _HistoryCardHeader(session: session),
+          const SizedBox(height: AppSpacing.sm),
+          _HistoryCardTimestamps(session: session),
+          const SizedBox(height: AppSpacing.sm),
+          _HistoryCardStats(session: session),
+          if (session.framedIpAddress.isNotEmpty ||
+              session.callingStationId.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Icon(Icons.play_arrow, size: 14, color: Colors.grey[500]),
-                const SizedBox(width: 4),
-                Text(
-                  session.startTime != null
-                      ? _formatDateTime(session.startTime!)
-                      : context.tr('sessions.nA'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.grey[600]),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Icon(Icons.stop, size: 14, color: Colors.grey[500]),
-                const SizedBox(width: 4),
-                Text(
-                  session.stopTime != null
-                      ? _formatDateTime(session.stopTime!)
-                      : context.tr('sessions.stillActive'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: session.stopTime != null
-                            ? Colors.grey[600]
-                            : Colors.green[700],
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                _StatChip(
-                  icon: Icons.timer,
-                  label: session.sessionTimeDisplay,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                _StatChip(
-                  icon: Icons.arrow_downward,
-                  label: session.inputDisplay,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                _StatChip(
-                  icon: Icons.arrow_upward,
-                  label: session.outputDisplay,
-                ),
-              ],
-            ),
-            if (session.framedIpAddress.isNotEmpty ||
-                session.callingStationId.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Row(
-                children: [
-                  if (session.framedIpAddress.isNotEmpty) ...[
-                    Icon(Icons.lan, size: 14, color: Colors.grey[500]),
-                    const SizedBox(width: 4),
-                    Text(
-                      session.framedIpAddress,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: Colors.grey[600]),
-                    ),
-                    const SizedBox(width: AppSpacing.md),
-                  ],
-                  if (session.callingStationId.isNotEmpty) ...[
-                    Icon(Icons.devices, size: 14, color: Colors.grey[500]),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        session.callingStationId,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
-                              fontFamily: 'monospace',
-                            ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
+            _HistoryCardMeta(session: session),
           ],
-        ),
+        ],
       ),
+    );
+  }
+}
+
+class _HistoryCardHeader extends StatelessWidget {
+  final SessionHistory session;
+
+  const _HistoryCardHeader({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.person, size: 18, color: AppColors.primary),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Text(
+            session.username,
+            style: AppTypography.mono.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        if (session.terminateCause.isNotEmpty)
+          StatusBadge(
+            label: session.terminateCause,
+            color: _causeColor(session.terminateCause),
+          ),
+      ],
+    );
+  }
+
+  static Color _causeColor(String cause) {
+    return switch (cause) {
+      'User-Request' => AppColors.info,
+      'Session-Timeout' => AppColors.warning,
+      'Idle-Timeout' => AppColors.warning,
+      'Admin-Reset' => AppColors.error,
+      'NAS-Reboot' => AppColors.info,
+      _ => AppColors.textSecondary,
+    };
+  }
+}
+
+class _HistoryCardTimestamps extends StatelessWidget {
+  final SessionHistory session;
+
+  const _HistoryCardTimestamps({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.play_arrow, size: 14, color: AppColors.textTertiary),
+        const SizedBox(width: 4),
+        Text(
+          session.startTime != null
+              ? _formatDateTime(session.startTime!)
+              : context.tr('sessions.nA'),
+          style: AppTypography.caption1.copyWith(color: AppColors.textSecondary),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Icon(Icons.stop, size: 14, color: AppColors.textTertiary),
+        const SizedBox(width: 4),
+        Text(
+          session.stopTime != null
+              ? _formatDateTime(session.stopTime!)
+              : context.tr('sessions.stillActive'),
+          style: AppTypography.caption1.copyWith(
+            color: session.stopTime != null
+                ? AppColors.textSecondary
+                : AppColors.success,
+          ),
+        ),
+      ],
     );
   }
 
@@ -400,44 +379,60 @@ class _HistoryCard extends StatelessWidget {
   }
 }
 
-class _TerminateCauseBadge extends StatelessWidget {
-  final String cause;
+class _HistoryCardStats extends StatelessWidget {
+  final SessionHistory session;
 
-  const _TerminateCauseBadge({required this.cause});
+  const _HistoryCardStats({required this.session});
 
   @override
   Widget build(BuildContext context) {
-    if (cause.isEmpty) return const SizedBox.shrink();
-
-    final (color, bgColor) = _causeColors(cause);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Text(
-        cause,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+    return Row(
+      children: [
+        _StatChip(icon: Icons.timer, label: session.sessionTimeDisplay),
+        const SizedBox(width: AppSpacing.sm),
+        _StatChip(icon: Icons.arrow_downward, label: session.inputDisplay),
+        const SizedBox(width: AppSpacing.sm),
+        _StatChip(icon: Icons.arrow_upward, label: session.outputDisplay),
+      ],
     );
   }
+}
 
-  (Color, Color) _causeColors(String cause) {
-    return switch (cause) {
-      'User-Request' => (Colors.blue[700]!, Colors.blue[50]!),
-      'Session-Timeout' => (Colors.orange[700]!, Colors.orange[50]!),
-      'Idle-Timeout' => (Colors.amber[700]!, Colors.amber[50]!),
-      'Admin-Reset' => (Colors.red[700]!, Colors.red[50]!),
-      'NAS-Reboot' => (Colors.purple[700]!, Colors.purple[50]!),
-      'Lost-Carrier' => (Colors.grey[700]!, Colors.grey[100]!),
-      _ => (Colors.grey[700]!, Colors.grey[100]!),
-    };
+class _HistoryCardMeta extends StatelessWidget {
+  final SessionHistory session;
+
+  const _HistoryCardMeta({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        if (session.framedIpAddress.isNotEmpty) ...[
+          Icon(Icons.lan, size: 14, color: AppColors.textTertiary),
+          const SizedBox(width: 4),
+          Text(
+            session.framedIpAddress,
+            style: AppTypography.monoSmall.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+        ],
+        if (session.callingStationId.isNotEmpty) ...[
+          Icon(Icons.devices, size: 14, color: AppColors.textTertiary),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              session.callingStationId,
+              style: AppTypography.monoSmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 }
 
@@ -450,21 +445,20 @@ class _StatChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsetsDirectional.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: AppColors.surfaceMuted,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.grey[600]),
+          Icon(icon, size: 14, color: AppColors.textSecondary),
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
+            style: AppTypography.caption1.copyWith(
+              color: AppColors.textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),

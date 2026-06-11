@@ -6,8 +6,8 @@ import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
-import '../../theme/app_typography.dart';
 import '../../utils/validators.dart';
+import '../../widgets/widgets.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -31,7 +31,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       _phoneController.text = user.phone ?? '';
       _businessNameController.text = user.businessName ?? '';
     }
-    for (final c in [_nameController, _phoneController, _businessNameController]) {
+    for (final c in [
+      _nameController,
+      _phoneController,
+      _businessNameController,
+    ]) {
       c.addListener(_clearError);
     }
   }
@@ -55,12 +59,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 : _businessNameController.text.trim(),
           );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.tr('settings.profileUpdated')),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        AppSnackbar.success(context, context.tr('settings.profileUpdated'));
         context.pop();
       }
     } catch (_) {
@@ -93,30 +92,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 const SizedBox(height: AppSpacing.xxl),
 
                 // Error display
-                if (authState.error != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.errorLight,
-                      borderRadius: BorderRadius.circular(AppSpacing.sm),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline, color: AppColors.error, size: 20),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(child: Text(authState.error!, style: AppTypography.footnote.copyWith(color: AppColors.error))),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
+                if (authState.error != null)
+                  InlineErrorBanner(message: authState.error!),
 
                 // Full Name
                 TextFormField(
                   controller: _nameController,
                   textInputAction: TextInputAction.next,
                   textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration(labelText: context.tr('auth.fullName'), prefixIcon: const Icon(Icons.person_outlined)),
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.fullName'),
+                    prefixIcon: const Icon(Icons.person_outlined),
+                  ),
                   validator: Validators.validateName,
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -138,8 +125,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(labelText: context.tr('auth.phone'), prefixIcon: const Icon(Icons.phone_outlined), hintText: context.tr('auth.phoneHint')),
-                  validator: (v) => v == null || v.trim().isEmpty ? null : Validators.validatePhone(v),
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.phone'),
+                    prefixIcon: const Icon(Icons.phone_outlined),
+                    hintText: context.tr('auth.phoneHint'),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty
+                          ? null
+                          : Validators.validatePhone(v),
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -148,7 +142,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   controller: _businessNameController,
                   textInputAction: TextInputAction.done,
                   textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration(labelText: context.tr('auth.businessNameOptional'), prefixIcon: const Icon(Icons.business_outlined)),
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.businessNameOptional'),
+                    prefixIcon: const Icon(Icons.business_outlined),
+                  ),
                   onFieldSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -159,7 +156,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   child: ElevatedButton(
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.textInverse,
+                            ),
+                          )
                         : Text(context.tr('settings.saveChanges')),
                   ),
                 ),

@@ -5,6 +5,7 @@ import '../../i18n/app_localizations.dart';
 import '../../providers/reports_provider.dart';
 import '../../providers/routers_provider.dart';
 import '../../theme/theme.dart';
+import '../../widgets/widgets.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
@@ -208,10 +209,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               const SizedBox(height: AppSpacing.xxl),
 
               // Error
-              if (state.error != null) ...[
-                _buildErrorBanner(state.error!),
-                const SizedBox(height: AppSpacing.lg),
-              ],
+              if (state.error != null)
+                InlineErrorBanner(message: state.error!),
 
               // Report results
               if (state.reportData != null) _buildReportResults(state),
@@ -226,8 +225,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               onPressed: state.isLoading ? null : _exportReport,
               icon: const Icon(Icons.share),
               label: Text(context.tr('reports.exportAndShare')),
-              backgroundColor: AppColors.primary,
-              foregroundColor: AppColors.textInverse,
             )
           : null,
     );
@@ -269,7 +266,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               onSelected: (_) {
                 ref.read(reportsProvider.notifier).setReportType(type);
               },
-              selectedColor: color,
               labelStyle: TextStyle(
                 color: selected ? AppColors.textInverse : AppColors.textPrimary,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
@@ -367,17 +363,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     value: router.id,
                     child: Row(
                       children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: router.isOnline
-                                ? AppColors.online
-                                : router.isDegraded
-                                    ? AppColors.degraded
-                                    : AppColors.offline,
-                          ),
+                        StatusDot(
+                          router.isOnline
+                              ? AppColors.online
+                              : router.isDegraded
+                                  ? AppColors.degraded
+                                  : AppColors.offline,
+                          size: 8,
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         Text(router.name),
@@ -393,34 +385,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Error Banner
-  // ---------------------------------------------------------------------------
-
-  Widget _buildErrorBanner(String message) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.errorLight,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, size: 20, color: AppColors.error),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTypography.subhead.copyWith(color: AppColors.error),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -464,14 +428,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         Row(
           children: [
             Expanded(
-                child: _SummaryCard(
+                child: StatCard(
                     label: context.tr('reports.created'),
                     value: '$created',
                     color: AppColors.primary,
                     icon: Icons.add_circle_outline)),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
-                child: _SummaryCard(
+                child: StatCard(
                     label: context.tr('reports.used'),
                     value: '$used',
                     color: AppColors.secondary,
@@ -482,14 +446,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         Row(
           children: [
             Expanded(
-                child: _SummaryCard(
+                child: StatCard(
                     label: context.tr('reports.expired'),
                     value: '$expired',
                     color: AppColors.error,
                     icon: Icons.cancel_outlined)),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
-                child: _SummaryCard(
+                child: StatCard(
                     label: context.tr('reports.active'),
                     value: '$active',
                     color: AppColors.success,
@@ -531,14 +495,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         Row(
           children: [
             Expanded(
-                child: _SummaryCard(
+                child: StatCard(
                     label: context.tr('reports.totalSessions'),
                     value: '$totalSessions',
                     color: AppColors.primary,
                     icon: Icons.wifi)),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
-                child: _SummaryCard(
+                child: StatCard(
                     label: context.tr('reports.avgDuration'),
                     value: _formatDuration(avgDuration),
                     color: AppColors.secondary,
@@ -549,14 +513,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         Row(
           children: [
             Expanded(
-                child: _SummaryCard(
+                child: StatCard(
                     label: context.tr('reports.dataIn'),
                     value: _formatBytes(totalDataIn),
                     color: AppColors.success,
                     icon: Icons.arrow_downward)),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
-                child: _SummaryCard(
+                child: StatCard(
                     label: context.tr('reports.dataOut'),
                     value: _formatBytes(totalDataOut),
                     color: const Color(0xFF5856D6),
@@ -594,7 +558,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       children: [
         Text(context.tr('reports.summary'), style: AppTypography.title3),
         const SizedBox(height: AppSpacing.md),
-        _SummaryCard(
+        StatCard(
           label: context.tr('reports.totalVouchers'),
           value: '$totalVouchers',
           color: AppColors.primary,
@@ -611,62 +575,45 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             final percentage =
                 (profile['percentage'] as num?)?.toDouble() ?? 0.0;
 
-            return Card(
+            return AppCard(
               margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            profileName,
-                            style: AppTypography.headline.copyWith(fontSize: 15),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          profileName,
+                          style: AppTypography.headline,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.sm,
-                            vertical: AppSpacing.xs,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryLight,
-                            borderRadius:
-                                BorderRadius.circular(AppSpacing.radiusSm),
-                          ),
-                          child: Text(
-                            '$count ${context.tr('reports.vouchers')}',
-                            style: AppTypography.caption1.copyWith(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    ClipRRect(
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusSm),
-                      child: LinearProgressIndicator(
-                        value: (percentage / 100).clamp(0.0, 1.0),
-                        minHeight: 6,
-                        backgroundColor: AppColors.border,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                            AppColors.primary),
                       ),
+                      StatusBadge(
+                        label: '$count ${context.tr('reports.vouchers')}',
+                        color: AppColors.primary,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  ClipRRect(
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.radiusSm),
+                    child: LinearProgressIndicator(
+                      value: (percentage / 100).clamp(0.0, 1.0),
+                      minHeight: 6,
+                      backgroundColor: AppColors.border,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                          AppColors.primary),
                     ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      context.tr('reports.ofTotal', [percentage.toStringAsFixed(1)]),
-                      style: AppTypography.caption1,
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    context.tr('reports.ofTotal', [percentage.toStringAsFixed(1)]),
+                    style: AppTypography.caption1,
+                  ),
+                ],
               ),
             );
           }),
@@ -684,21 +631,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         (data['routers'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
 
     if (routers.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxxl),
-          child: Column(
-            children: [
-              Icon(Icons.router, size: 48, color: Colors.grey[400]),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                context.tr('reports.noUptimeData'),
-                style: AppTypography.subhead
-                    .copyWith(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
+      return EmptyState(
+        icon: Icons.router,
+        title: context.tr('reports.noUptimeData'),
       );
     }
 
@@ -715,18 +650,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           final totalOnline = router['totalOnlineSeconds'] as int? ?? 0;
           final totalOffline = router['totalOfflineSeconds'] as int? ?? 0;
 
-          Color statusColor;
-          switch (status.toLowerCase()) {
-            case 'online':
-              statusColor = AppColors.online;
-              break;
-            case 'degraded':
-              statusColor = AppColors.degraded;
-              break;
-            default:
-              statusColor = AppColors.offline;
-          }
-
           Color uptimeBarColor;
           if (uptimePercent >= 99) {
             uptimeBarColor = AppColors.success;
@@ -736,70 +659,57 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             uptimeBarColor = AppColors.error;
           }
 
-          return Card(
+          return AppCard(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          shape: BoxShape.circle,
-                        ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    StatusDot(AppColors.routerStatus(status)),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: AppTypography.headline,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          name,
-                          style:
-                              AppTypography.headline.copyWith(fontSize: 15),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Text(
-                        '${uptimePercent.toStringAsFixed(1)}%',
-                        style: AppTypography.title3.copyWith(
-                          color: uptimeBarColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(AppSpacing.radiusSm),
-                    child: LinearProgressIndicator(
-                      value: (uptimePercent / 100).clamp(0.0, 1.0),
-                      minHeight: 8,
-                      backgroundColor: AppColors.border,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(uptimeBarColor),
                     ),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Row(
-                    children: [
-                      _UptimeChip(
-                        icon: Icons.arrow_upward,
-                        label: context.tr('reports.online', [_formatDuration(totalOnline.toDouble())]),
-                        color: AppColors.success,
+                    Text(
+                      '${uptimePercent.toStringAsFixed(1)}%',
+                      style: AppTypography.title3.copyWith(
+                        color: uptimeBarColor,
                       ),
-                      const SizedBox(width: AppSpacing.md),
-                      _UptimeChip(
-                        icon: Icons.arrow_downward,
-                        label: context.tr('reports.offline', [_formatDuration(totalOffline.toDouble())]),
-                        color: AppColors.error,
-                      ),
-                    ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                ClipRRect(
+                  borderRadius:
+                      BorderRadius.circular(AppSpacing.radiusSm),
+                  child: LinearProgressIndicator(
+                    value: (uptimePercent / 100).clamp(0.0, 1.0),
+                    minHeight: 8,
+                    backgroundColor: AppColors.border,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(uptimeBarColor),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    StatusBadge(
+                      label: context.tr('reports.online', [_formatDuration(totalOnline.toDouble())]),
+                      color: AppColors.success,
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    StatusBadge(
+                      label: context.tr('reports.offline', [_formatDuration(totalOffline.toDouble())]),
+                      color: AppColors.error,
+                    ),
+                  ],
+                ),
+              ],
             ),
           );
         }),
@@ -811,52 +721,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 // =============================================================================
 // Reusable private widgets
 // =============================================================================
-
-class _SummaryCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final IconData icon;
-
-  const _SummaryCard({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 18, color: color),
-                const Spacer(),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              value,
-              style: AppTypography.title1.copyWith(
-                color: color,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              label,
-              style: AppTypography.caption1,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _DailyBreakdownTile extends StatelessWidget {
   final String date;
@@ -902,35 +766,6 @@ class _DailyBreakdownTile extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _UptimeChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _UptimeChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 12, color: color),
-        const SizedBox(width: AppSpacing.xs),
-        Text(
-          label,
-          style: AppTypography.caption1.copyWith(
-            color: AppColors.textSecondary,
-          ),
-        ),
-      ],
     );
   }
 }

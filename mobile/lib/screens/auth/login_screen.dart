@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
 import '../../utils/validators.dart';
+import '../../widgets/widgets.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -52,7 +53,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         } catch (_) {/* ignore resend errors */}
         if (!mounted) return;
         final email = Uri.encodeQueryComponent(_emailController.text.trim());
-        context.go('/verify-email?email=$email');
+        context.push('/verify-email?email=$email');
         return;
       }
       // Error is displayed via state for all other failures
@@ -86,7 +87,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
                 const SizedBox(height: AppSpacing.xxxxl),
                 // Logo area
-                Icon(Icons.wifi_tethering, size: 64, color: AppColors.primary),
+                Image.asset('assets/logo/01-wifi-monogram-256.png', height: 80, width: 80),
                 const SizedBox(height: AppSpacing.lg),
                 Text(context.tr('common.appName'), style: AppTypography.largeTitle, textAlign: TextAlign.center),
                 const SizedBox(height: AppSpacing.xs),
@@ -98,28 +99,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: AppSpacing.xxxxl),
 
                 // Error display
-                if (authState.error != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.errorLight,
-                      borderRadius: BorderRadius.circular(AppSpacing.sm),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline, color: AppColors.error, size: 20),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            authState.error!,
-                            style: AppTypography.footnote.copyWith(color: AppColors.error),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
+                if (authState.error != null)
+                  InlineErrorBanner(message: authState.error!),
 
                 // Email
                 TextFormField(
@@ -169,7 +150,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textInverse))
                         : Text(context.tr('auth.login')),
                   ),
                 ),

@@ -7,6 +7,7 @@ import '../../providers/notifications_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -67,11 +68,18 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
 
     if (state.error != null && state.items.isEmpty) {
-      return _buildError(state.error!);
+      return ErrorState(
+        message: state.error!,
+        onRetry: () => ref.read(notificationsProvider.notifier).refresh(),
+        retryLabel: context.tr('common.retry'),
+      );
     }
 
     if (state.items.isEmpty) {
-      return _buildEmpty();
+      return EmptyState(
+        icon: Icons.notifications_none,
+        title: context.tr('notifications.empty'),
+      );
     }
 
     return RefreshIndicator(
@@ -80,7 +88,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         itemCount: state.items.length + (state.hasMore ? 1 : 0),
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, index) {
           if (index >= state.items.length) {
             return const Padding(
@@ -94,9 +102,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             direction: DismissDirection.endToStart,
             background: Container(
               color: AppColors.error,
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: const Icon(Icons.delete, color: Colors.white),
+              alignment: AlignmentDirectional.centerEnd,
+              padding: const EdgeInsetsDirectional.only(end: AppSpacing.lg),
+              child: const Icon(Icons.delete, color: AppColors.textInverse),
             ),
             onDismissed: (_) =>
                 ref.read(notificationsProvider.notifier).delete(item.id),
@@ -104,53 +112,14 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               item: item,
               onTap: () {
                 if (item.isUnread) {
-                  ref.read(notificationsProvider.notifier).markRead(item.id);
+                  ref
+                      .read(notificationsProvider.notifier)
+                      .markRead(item.id);
                 }
               },
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildEmpty() {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        const SizedBox(height: 120),
-        Icon(Icons.notifications_none,
-            size: 64, color: AppColors.textTertiary),
-        const SizedBox(height: AppSpacing.lg),
-        Center(
-          child: Text(
-            context.tr('notifications.empty'),
-            style: AppTypography.subhead
-                .copyWith(color: AppColors.textSecondary),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildError(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 48, color: AppColors.error),
-            const SizedBox(height: AppSpacing.md),
-            Text(error, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.md),
-            ElevatedButton(
-              onPressed: () =>
-                  ref.read(notificationsProvider.notifier).refresh(),
-              child: Text(context.tr('common.retry')),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -217,7 +186,7 @@ class _NotificationTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         color: item.isUnread ? color.withValues(alpha: 0.05) : null,
-        padding: const EdgeInsets.symmetric(
+        padding: const EdgeInsetsDirectional.symmetric(
             horizontal: AppSpacing.lg, vertical: AppSpacing.md),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,14 +218,7 @@ class _NotificationTile extends StatelessWidget {
                         ),
                       ),
                       if (item.isUnread)
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
+                        StatusDot(AppColors.primary, size: 8),
                     ],
                   ),
                   const SizedBox(height: 2),

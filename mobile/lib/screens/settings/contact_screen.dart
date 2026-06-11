@@ -7,6 +7,7 @@ import '../../providers/support_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class ContactScreen extends ConsumerStatefulWidget {
   const ContactScreen({super.key});
@@ -55,9 +56,7 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
       _composerController.text = text;
       final error = ref.read(supportProvider).error;
       if (error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        AppSnackbar.error(context, error);
       }
     }
   }
@@ -93,7 +92,7 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
         reverse: true,
         padding: const EdgeInsets.all(AppSpacing.lg),
         itemCount: state.messages.length + (state.hasMore ? 1 : 0),
-        separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
         itemBuilder: (context, index) {
           if (index >= state.messages.length) {
             return const Padding(
@@ -112,18 +111,16 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         const SizedBox(height: 120),
-        Icon(Icons.support_agent,
-            size: 64, color: AppColors.textTertiary),
+        Icon(Icons.support_agent, size: 64, color: AppColors.textTertiary),
         const SizedBox(height: AppSpacing.lg),
         Center(
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: Text(
               context.tr('contact.empty'),
               textAlign: TextAlign.center,
-              style: AppTypography.subhead
-                  .copyWith(color: AppColors.textSecondary),
+              style:
+                  AppTypography.subhead.copyWith(color: AppColors.textSecondary),
             ),
           ),
         ),
@@ -170,7 +167,9 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
+                          strokeWidth: 2,
+                          color: AppColors.textInverse,
+                        ),
                       )
                     : const Icon(Icons.send),
               ),
@@ -203,7 +202,7 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.isUser;
     final bg = isUser ? AppColors.primary : AppColors.surface;
-    final fg = isUser ? Colors.white : AppColors.textPrimary;
+    final fg = isUser ? AppColors.textInverse : AppColors.textPrimary;
     final align = isUser ? Alignment.centerRight : Alignment.centerLeft;
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(16),
@@ -238,7 +237,7 @@ class _MessageBubble extends StatelessWidget {
                 _relativeTime(context, message.createdAt),
                 style: AppTypography.caption1.copyWith(
                   color: isUser
-                      ? Colors.white.withValues(alpha: 0.75)
+                      ? AppColors.textInverse.withValues(alpha: 0.75)
                       : AppColors.textTertiary,
                 ),
               ),

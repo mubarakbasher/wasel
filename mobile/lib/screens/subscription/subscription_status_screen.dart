@@ -9,6 +9,7 @@ import '../../providers/subscription_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 import 'widgets/plan_card.dart';
 
 class SubscriptionStatusScreen extends ConsumerStatefulWidget {
@@ -57,42 +58,37 @@ class _SubscriptionStatusScreenState
       },
       child: Scaffold(
         appBar: AppBar(title: Text(context.tr('subscription.title'))),
-      body: state.isLoading && sub == null && state.plans.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _refresh,
-              child: ListView(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                children: [
-                  if (sub == null)
-                    _buildNoSubscriptionHeader()
-                  else
-                    ..._buildSubscriptionSections(sub, pendingChange),
-                  const SizedBox(height: AppSpacing.xxl),
-                  Text(
-                    context.tr('subscription.choosePlan'),
-                    style: AppTypography.title2,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  ..._buildPlans(state),
-                ],
+        body: state.isLoading && sub == null && state.plans.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  children: [
+                    if (sub == null)
+                      _buildNoSubscriptionHeader()
+                    else
+                      ..._buildSubscriptionSections(sub, pendingChange),
+                    const SizedBox(height: AppSpacing.xxl),
+                    Text(
+                      context.tr('subscription.choosePlan'),
+                      style: AppTypography.title2,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    ..._buildPlans(state),
+                  ],
+                ),
               ),
-            ),
       ),
     );
   }
 
   Widget _buildNoSubscriptionHeader() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-      ),
+    return AppCard(
+      color: AppColors.primaryLight,
       child: Row(
         children: [
-          const Icon(Icons.card_membership,
-              size: 32, color: AppColors.primary),
+          const Icon(Icons.card_membership, size: 32, color: AppColors.primary),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
@@ -100,15 +96,14 @@ class _SubscriptionStatusScreenState
               children: [
                 Text(
                   context.tr('subscription.noActiveSubscription'),
-                  style: AppTypography.subhead
-                      .copyWith(fontWeight: FontWeight.w600),
+                  style:
+                      AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
                   context.tr('subscription.noActiveSubscriptionDesc'),
-                  style: AppTypography.footnote.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTypography.footnote
+                      .copyWith(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -122,18 +117,12 @@ class _SubscriptionStatusScreenState
       Subscription sub, Subscription? pendingChange) {
     final statusColor = _statusColor(sub.status);
     final vouchersRemaining = sub.vouchersRemaining;
-    final quotaPercent = sub.voucherQuota == -1
-        ? 0.0
-        : sub.vouchersUsed / sub.voucherQuota;
+    final quotaPercent =
+        sub.voucherQuota == -1 ? 0.0 : sub.vouchersUsed / sub.voucherQuota;
 
     return [
-      Container(
+      AppCard(
         padding: const EdgeInsets.all(AppSpacing.xl),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-          border: Border.all(color: AppColors.border),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -141,22 +130,9 @@ class _SubscriptionStatusScreenState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(sub.planName, style: AppTypography.title1),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
-                    vertical: AppSpacing.xs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                  ),
-                  child: Text(
-                    sub.status.toString().toUpperCase(),
-                    style: AppTypography.caption1.copyWith(
-                      color: statusColor,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                StatusBadge(
+                  label: sub.status.toString().toUpperCase(),
+                  color: statusColor,
                 ),
               ],
             ),
@@ -164,8 +140,8 @@ class _SubscriptionStatusScreenState
             if (sub.isActive) ...[
               _InfoRow(
                 label: context.tr('subscription.daysRemainingLabel'),
-                value: context.tr('subscription.daysValue',
-                    [sub.daysRemaining.toString()]),
+                value: context.tr(
+                    'subscription.daysValue', [sub.daysRemaining.toString()]),
                 icon: Icons.calendar_today,
               ),
               const SizedBox(height: AppSpacing.md),
@@ -192,14 +168,8 @@ class _SubscriptionStatusScreenState
       ),
       if (pendingChange != null) ...[
         const SizedBox(height: AppSpacing.lg),
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: AppColors.warning.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border:
-                Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-          ),
+        AppCard(
+          color: AppColors.warningLight,
           child: Row(
             children: [
               const Icon(Icons.pending_actions,
@@ -229,13 +199,8 @@ class _SubscriptionStatusScreenState
         ),
       ],
       const SizedBox(height: AppSpacing.lg),
-      Container(
+      AppCard(
         padding: const EdgeInsets.all(AppSpacing.xl),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-          border: Border.all(color: AppColors.border),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -261,8 +226,8 @@ class _SubscriptionStatusScreenState
                 children: [
                   Text(
                     '${sub.vouchersUsed} / ${sub.voucherQuota}',
-                    style: AppTypography.title2
-                        .copyWith(color: AppColors.primary),
+                    style:
+                        AppTypography.title2.copyWith(color: AppColors.primary),
                   ),
                   Text(
                     vouchersRemaining == 0
@@ -300,8 +265,7 @@ class _SubscriptionStatusScreenState
           child: OutlinedButton.icon(
             onPressed: () => context.push('/subscription/payment'),
             icon: const Icon(Icons.payment),
-            label:
-                Text(context.tr('subscription.viewPaymentInstructions')),
+            label: Text(context.tr('subscription.viewPaymentInstructions')),
           ),
         ),
       ],
@@ -384,28 +348,16 @@ class _SubscriptionStatusScreenState
       action = context.tr('subscription.subscribeTo', [plan.name]);
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(action),
-        content: Text(
-          context.tr(
-              'subscription.confirmBody', [plan.name, durationLabel, totalPrice]),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => ctx.pop(false),
-            child: Text(context.tr('common.cancel')),
-          ),
-          ElevatedButton(
-            onPressed: () => ctx.pop(true),
-            child: Text(context.tr('common.continue_')),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: action,
+      message: context.tr('subscription.confirmBody',
+          [plan.name, durationLabel, totalPrice]),
+      confirmLabel: context.tr('common.continue_'),
+      cancelLabel: context.tr('common.cancel'),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final notifier = ref.read(subscriptionProvider.notifier);
     final bool success;
@@ -465,14 +417,13 @@ class _InfoRow extends StatelessWidget {
         const SizedBox(width: AppSpacing.sm),
         Text(
           label,
-          style: AppTypography.subhead
-              .copyWith(color: AppColors.textSecondary),
+          style:
+              AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         ),
         const Spacer(),
         Text(
           value,
-          style:
-              AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+          style: AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
         ),
       ],
     );

@@ -8,6 +8,7 @@ import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class RouterDetailScreen extends ConsumerStatefulWidget {
   final String routerId;
@@ -33,35 +34,21 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
     final router = ref.read(routersProvider).selectedRouter;
     if (router == null) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.tr('routers.deleteRouter')),
-        content: Text(
-          context.tr('routers.deleteConfirmNamed', [router.name]),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(context.tr('common.cancel')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: Text(context.tr('common.delete')),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: context.tr('routers.deleteRouter'),
+      message: context.tr('routers.deleteConfirmNamed', [router.name]),
+      confirmLabel: context.tr('common.delete'),
+      cancelLabel: context.tr('common.cancel'),
+      destructive: true,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final success =
         await ref.read(routersProvider.notifier).deleteRouter(router.id);
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('routers.deleted'))),
-      );
+      AppSnackbar.success(context, context.tr('routers.deleted'));
       context.pop();
     }
   }
@@ -125,13 +112,8 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
   }
 
   Widget _buildStatusCard(dynamic router, RouterStatusInfo? status) {
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -142,20 +124,18 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
                 height: 24,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _statusColor(router.status),
+                  color: AppColors.routerStatus(router.status),
                 ),
                 child: Icon(
                   router.isOnline ? Icons.check : Icons.close,
-                  color: Colors.white,
+                  color: AppColors.textInverse,
                   size: 14,
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              Text(
-                _capitalizeStatus(router.status),
-                style: AppTypography.title2.copyWith(
-                  color: _statusColor(router.status),
-                ),
+              StatusBadge(
+                label: _capitalizeStatus(router.status),
+                color: AppColors.routerStatus(router.status),
               ),
             ],
           ),
@@ -190,24 +170,24 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
     final memoryPercent =
         info.totalMemory > 0 ? memoryUsed / info.totalMemory : 0.0;
 
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(context.tr('routers.systemInformation'), style: AppTypography.title3),
+          Text(context.tr('routers.systemInformation'),
+              style: AppTypography.title3),
           const SizedBox(height: AppSpacing.lg),
-          _InfoRow(label: context.tr('routers.identity'), value: info.identity, icon: Icons.badge),
+          _InfoRow(
+              label: context.tr('routers.identity'),
+              value: info.identity,
+              icon: Icons.badge),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-              label: context.tr('routers.uptimeLabel'), value: info.uptime, icon: Icons.timer),
+              label: context.tr('routers.uptimeLabel'),
+              value: info.uptime,
+              icon: Icons.timer),
           const SizedBox(height: AppSpacing.md),
-          // CPU Load with progress bar
           Row(
             children: [
               Icon(Icons.memory, size: 18, color: AppColors.textSecondary),
@@ -238,7 +218,6 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          // Memory with progress bar
           Row(
             children: [
               Icon(Icons.storage, size: 18, color: AppColors.textSecondary),
@@ -272,21 +251,32 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-              label: context.tr('routers.board'), value: info.boardName, icon: Icons.developer_board),
+              label: context.tr('routers.board'),
+              value: info.boardName,
+              icon: Icons.developer_board),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-              label: context.tr('routers.architecture'), value: info.architecture, icon: Icons.architecture),
+              label: context.tr('routers.architecture'),
+              value: info.architecture,
+              icon: Icons.architecture),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
-              label: context.tr('routers.routerOS'), value: info.version, icon: Icons.info_outline),
+              label: context.tr('routers.routerOS'),
+              value: info.version,
+              icon: Icons.info_outline),
           if (info.model != null) ...[
             const SizedBox(height: AppSpacing.md),
-            _InfoRow(label: context.tr('routers.model'), value: info.model!, icon: Icons.devices),
+            _InfoRow(
+                label: context.tr('routers.model'),
+                value: info.model!,
+                icon: Icons.devices),
           ],
           if (info.serialNumber != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
-                label: context.tr('routers.serial'), value: info.serialNumber!, icon: Icons.tag),
+                label: context.tr('routers.serial'),
+                value: info.serialNumber!,
+                icon: Icons.tag),
           ],
           if (info.firmware != null) ...[
             const SizedBox(height: AppSpacing.md),
@@ -301,29 +291,27 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
   }
 
   Widget _buildDetailsCard(dynamic router) {
-    return Container(
+    return AppCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(context.tr('routers.routerDetails'), style: AppTypography.title3),
           const SizedBox(height: AppSpacing.lg),
-          _InfoRow(label: context.tr('routers.name'), value: router.name, icon: Icons.label),
+          _InfoRow(
+              label: context.tr('routers.name'),
+              value: router.name,
+              icon: Icons.label),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             label: context.tr('routers.model'),
-            value: router.model ?? '\u2014',
+            value: router.model ?? '—',
             icon: Icons.devices,
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             label: context.tr('routers.routerOS'),
-            value: router.rosVersion ?? '\u2014',
+            value: router.rosVersion ?? '—',
             icon: Icons.info_outline,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -389,18 +377,6 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
     );
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'online':
-        return AppColors.success;
-      case 'degraded':
-        return AppColors.warning;
-      case 'offline':
-      default:
-        return AppColors.error;
-    }
-  }
-
   String _capitalizeStatus(String status) {
     if (status.isEmpty) return status;
     return status[0].toUpperCase() + status.substring(1);
@@ -410,10 +386,17 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
     if (lastSeen == null) return context.tr('routers.never');
     final diff = DateTime.now().difference(lastSeen);
     if (diff.inSeconds < 60) return context.tr('routers.justNow');
-    if (diff.inMinutes < 60) return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
-    if (diff.inHours < 24) return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
-    if (diff.inDays < 30) return context.tr('routers.daysAgo', [diff.inDays.toString()]);
-    return context.tr('routers.monthsAgo', [(diff.inDays / 30).floor().toString()]);
+    if (diff.inMinutes < 60) {
+      return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
+    }
+    if (diff.inHours < 24) {
+      return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
+    }
+    if (diff.inDays < 30) {
+      return context.tr('routers.daysAgo', [diff.inDays.toString()]);
+    }
+    return context.tr(
+        'routers.monthsAgo', [(diff.inDays / 30).floor().toString()]);
   }
 
   String _formatDate(DateTime date) {

@@ -4,9 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
-import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
-import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class EditRouterScreen extends ConsumerStatefulWidget {
   final String routerId;
@@ -79,20 +78,19 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
     final apiPass = _apiPassController.text;
 
     // Only send changed fields
-    String? nameParam = name != _origName ? name : null;
-    String? modelParam = model != _origModel ? model : null;
-    String? rosVersionParam = rosVersion != _origRosVersion ? rosVersion : null;
-    String? apiUserParam = apiUser != _origApiUser ? apiUser : null;
-    String? apiPassParam = apiPass.isNotEmpty ? apiPass : null;
+    final String? nameParam = name != _origName ? name : null;
+    final String? modelParam = model != _origModel ? model : null;
+    final String? rosVersionParam =
+        rosVersion != _origRosVersion ? rosVersion : null;
+    final String? apiUserParam = apiUser != _origApiUser ? apiUser : null;
+    final String? apiPassParam = apiPass.isNotEmpty ? apiPass : null;
 
     if (nameParam == null &&
         modelParam == null &&
         rosVersionParam == null &&
         apiUserParam == null &&
         apiPassParam == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('routers.noChanges'))),
-      );
+      AppSnackbar.info(context, context.tr('routers.noChanges'));
       return;
     }
 
@@ -108,9 +106,7 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
         );
 
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('routers.routerUpdated'))),
-      );
+      AppSnackbar.success(context, context.tr('routers.routerUpdated'));
       context.pop();
     }
   }
@@ -134,22 +130,8 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 children: [
-                  if (state.error != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.error.withValues(alpha: 0.1),
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusMd),
-                      ),
-                      child: Text(
-                        state.error!,
-                        style: AppTypography.subhead
-                            .copyWith(color: AppColors.error),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                  ],
+                  if (state.error != null)
+                    InlineErrorBanner(message: state.error!),
                   TextFormField(
                     controller: _nameController,
                     decoration: InputDecoration(

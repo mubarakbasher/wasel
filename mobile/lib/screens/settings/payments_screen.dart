@@ -10,6 +10,7 @@ import '../../providers/subscription_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class PaymentsScreen extends ConsumerStatefulWidget {
   const PaymentsScreen({super.key});
@@ -44,15 +45,11 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
 
     if (!mounted) return;
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('payments.resubmitSuccess'))),
-      );
+      AppSnackbar.success(context, context.tr('payments.resubmitSuccess'));
     } else {
       final error = ref.read(subscriptionProvider).error;
       if (error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        AppSnackbar.error(context, error);
       }
     }
   }
@@ -60,9 +57,6 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   Future<ImageSource?> _showSourcePicker() {
     return showModalBottomSheet<ImageSource>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -86,26 +80,16 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   }
 
   Future<void> _cancelPayment(PaymentRecord payment) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.tr('payments.cancelConfirmTitle')),
-        content: Text(context.tr('payments.cancelConfirmBody')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(context.tr('payments.keepPayment')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: Text(context.tr('payments.cancelConfirmAction')),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: context.tr('payments.cancelConfirmTitle'),
+      message: context.tr('payments.cancelConfirmBody'),
+      confirmLabel: context.tr('payments.cancelConfirmAction'),
+      cancelLabel: context.tr('common.cancel'),
+      destructive: true,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final success = await ref
         .read(subscriptionProvider.notifier)
@@ -115,9 +99,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
     if (!success) {
       final error = ref.read(subscriptionProvider).error;
       if (error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        AppSnackbar.error(context, error);
       }
     }
   }
@@ -139,7 +121,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                   : ListView.separated(
                       padding: const EdgeInsets.all(AppSpacing.lg),
                       itemCount: state.payments.length,
-                      separatorBuilder: (_, __) =>
+                      separatorBuilder: (_, _) =>
                           const SizedBox(height: AppSpacing.md),
                       itemBuilder: (context, index) {
                         final payment = state.payments[index];
@@ -165,8 +147,8 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
         Center(
           child: Text(
             context.tr('payments.empty'),
-            style: AppTypography.subhead
-                .copyWith(color: AppColors.textSecondary),
+            style:
+                AppTypography.subhead.copyWith(color: AppColors.textSecondary),
           ),
         ),
       ],
@@ -205,13 +187,7 @@ class _PaymentTile extends StatelessWidget {
       _ => (AppColors.warning, context.tr('payments.statusPending')),
     };
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.border),
-      ),
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -221,23 +197,7 @@ class _PaymentTile extends StatelessWidget {
               Expanded(
                 child: Text(payment.planName, style: AppTypography.headline),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm,
-                  vertical: AppSpacing.xs,
-                ),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: AppTypography.caption1.copyWith(
-                    color: statusColor,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
+              StatusBadge(label: statusLabel, color: statusColor),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -248,8 +208,8 @@ class _PaymentTile extends StatelessWidget {
               const SizedBox(width: AppSpacing.xs),
               Text(
                 '${payment.currency} ${payment.amount.toStringAsFixed(2)}',
-                style: AppTypography.subhead
-                    .copyWith(fontWeight: FontWeight.w600),
+                style:
+                    AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -288,7 +248,8 @@ class _PaymentTile extends StatelessWidget {
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
                 color: AppColors.error.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                borderRadius:
+                    BorderRadius.circular(AppSpacing.radiusMd),
                 border: Border.all(
                     color: AppColors.error.withValues(alpha: 0.25)),
               ),
@@ -326,7 +287,7 @@ class _PaymentTile extends StatelessWidget {
                     onPressed: busy ? null : onCancel,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.error,
-                      side: BorderSide(color: AppColors.error),
+                      side: const BorderSide(color: AppColors.error),
                     ),
                     icon: const Icon(Icons.close, size: 18),
                     label: Text(context.tr('payments.cancelAndSwitchPlan')),

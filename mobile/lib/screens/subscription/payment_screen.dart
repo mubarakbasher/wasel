@@ -16,6 +16,7 @@ import '../../services/subscription_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
   const PaymentScreen({super.key});
@@ -87,12 +88,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         _stopPoller();
         if (!_snackBarShown) {
           _snackBarShown = true;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(context.tr('payment.subscriptionActivated')),
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          AppSnackbar.success(
+              context, context.tr('payment.subscriptionActivated'));
         }
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) context.go('/dashboard');
@@ -137,9 +134,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   Future<void> _showSourcePicker() async {
     await showModalBottomSheet<void>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -153,7 +147,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library, color: AppColors.primary),
+              leading:
+                  const Icon(Icons.photo_library, color: AppColors.primary),
               title: Text(context.tr('payment.pickFromGallery')),
               onTap: () {
                 Navigator.pop(ctx);
@@ -170,14 +165,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   Future<void> _handleUpload() async {
     final request = ref.read(subscriptionProvider).lastRequest;
     if (request == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('payment.noPendingPayment'))),
-      );
+      AppSnackbar.info(context, context.tr('payment.noPendingPayment'));
       return;
     }
     if (_receiptFile == null) return;
 
-    final success = await ref.read(subscriptionProvider.notifier).uploadReceipt(
+    final success = await ref
+        .read(subscriptionProvider.notifier)
+        .uploadReceipt(
           paymentId: request.paymentId,
           file: _receiptFile!,
         );
@@ -211,7 +206,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(color: Colors.black.withValues(alpha: 0.4)),
+              child: Container(color: AppColors.scrim),
             ),
           ),
       ],
@@ -224,92 +219,94 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     dynamic sub,
   ) {
     return Stepper(
-        currentStep: _currentStep,
-        type: StepperType.vertical,
-        onStepContinue: () {
-          if (_currentStep == 0) {
-            setState(() => _currentStep = 1);
-          } else if (_currentStep == 1) {
-            _handleUpload();
-          }
-        },
-        onStepCancel: () {
-          if (_currentStep > 0 && _currentStep < 2) {
-            setState(() => _currentStep -= 1);
-          }
-        },
-        controlsBuilder: (context, details) {
-          if (_currentStep == 2) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.lg),
-            child: Row(
-              children: [
+      currentStep: _currentStep,
+      type: StepperType.vertical,
+      onStepContinue: () {
+        if (_currentStep == 0) {
+          setState(() => _currentStep = 1);
+        } else if (_currentStep == 1) {
+          _handleUpload();
+        }
+      },
+      onStepCancel: () {
+        if (_currentStep > 0 && _currentStep < 2) {
+          setState(() => _currentStep -= 1);
+        }
+      },
+      controlsBuilder: (context, details) {
+        if (_currentStep == 2) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: AppSpacing.lg),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _currentStep == 1 &&
+                            (state.isLoading || _receiptFile == null)
+                        ? null
+                        : details.onStepContinue,
+                    child: state.isLoading && _currentStep == 1
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.textInverse,
+                            ),
+                          )
+                        : Text(
+                            _currentStep == 0
+                                ? context.tr('common.continue_')
+                                : context.tr('payment.submitReceipt'),
+                          ),
+                  ),
+                ),
+              ),
+              if (_currentStep == 1) ...[
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: SizedBox(
                     height: 48,
-                    child: ElevatedButton(
-                      onPressed: _currentStep == 1 &&
-                              (state.isLoading || _receiptFile == null)
-                          ? null
-                          : details.onStepContinue,
-                      child: state.isLoading && _currentStep == 1
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(
-                              _currentStep == 0
-                                  ? context.tr('common.continue_')
-                                  : context.tr('payment.submitReceipt'),
-                            ),
+                    child: OutlinedButton(
+                      onPressed: details.onStepCancel,
+                      child: Text(context.tr('common.back')),
                     ),
                   ),
                 ),
-                if (_currentStep == 1) ...[
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: SizedBox(
-                      height: 48,
-                      child: OutlinedButton(
-                        onPressed: details.onStepCancel,
-                        child: Text(context.tr('common.back')),
-                      ),
-                    ),
-                  ),
-                ],
               ],
-            ),
-          );
-        },
-        steps: [
-          Step(
-            title: Text(context.tr('payment.stepBankDetails')),
-            isActive: _currentStep >= 0,
-            state: _currentStep > 0 ? StepState.complete : StepState.indexed,
-            content: _buildBankDetails(sub?.planName, request, state.bankInfo),
+            ],
           ),
-          Step(
-            title: Text(context.tr('payment.stepUploadReceipt')),
-            isActive: _currentStep >= 1,
-            state: _currentStep > 1
-                ? StepState.complete
-                : _currentStep == 1
-                    ? StepState.indexed
-                    : StepState.disabled,
-            content: _buildUploadStep(state),
-          ),
-          Step(
-            title: Text(context.tr('payment.stepSuccess')),
-            isActive: _currentStep >= 2,
-            state: _currentStep >= 2 ? StepState.complete : StepState.disabled,
-            content: _buildSuccessStep(),
-          ),
-        ],
-      );
+        );
+      },
+      steps: [
+        Step(
+          title: Text(context.tr('payment.stepBankDetails')),
+          isActive: _currentStep >= 0,
+          state: _currentStep > 0 ? StepState.complete : StepState.indexed,
+          content:
+              _buildBankDetails(sub?.planName, request, state.bankInfo),
+        ),
+        Step(
+          title: Text(context.tr('payment.stepUploadReceipt')),
+          isActive: _currentStep >= 1,
+          state: _currentStep > 1
+              ? StepState.complete
+              : _currentStep == 1
+                  ? StepState.indexed
+                  : StepState.disabled,
+          content: _buildUploadStep(state),
+        ),
+        Step(
+          title: Text(context.tr('payment.stepSuccess')),
+          isActive: _currentStep >= 2,
+          state:
+              _currentStep >= 2 ? StepState.complete : StepState.disabled,
+          content: _buildSuccessStep(),
+        ),
+      ],
+    );
   }
 
   Widget _buildBankDetails(
@@ -348,8 +345,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
             style: AppTypography.headline),
         const SizedBox(height: AppSpacing.md),
         if (planName != null)
-          _DetailRow(
-              label: context.tr('payment.plan'), value: planName),
+          _DetailRow(label: context.tr('payment.plan'), value: planName),
         if (request != null) ...[
           const SizedBox(height: AppSpacing.md),
           _DetailRow(
@@ -366,8 +362,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         const SizedBox(height: AppSpacing.lg),
         const Divider(height: 1),
         const SizedBox(height: AppSpacing.lg),
-        Text(context.tr('payment.bankDetails'),
-            style: AppTypography.headline),
+        Text(context.tr('payment.bankDetails'), style: AppTypography.headline),
         const SizedBox(height: AppSpacing.sm),
         if (!hasBankInfo)
           _DetailRow(
@@ -463,10 +458,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
               icon: const Icon(Icons.add_a_photo, size: 32),
               label: Text(context.tr('payment.selectReceiptPhoto')),
               style: OutlinedButton.styleFrom(
-                side: BorderSide(
+                side: const BorderSide(
                     color: AppColors.border, style: BorderStyle.solid),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  borderRadius:
+                      BorderRadius.circular(AppSpacing.radiusMd),
                 ),
               ),
             ),
@@ -474,28 +470,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         ],
         if (state.error != null) ...[
           const SizedBox(height: AppSpacing.md),
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(
-              color: AppColors.errorLight,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.error_outline,
-                    color: AppColors.error, size: 20),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    state.error!,
-                    style: AppTypography.footnote.copyWith(
-                      color: AppColors.error,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          InlineErrorBanner(message: state.error!),
         ],
       ],
     );
@@ -508,7 +483,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         Center(
           child: Column(
             children: [
-              const Icon(Icons.check_circle, size: 72, color: AppColors.success),
+              const Icon(Icons.check_circle,
+                  size: 72, color: AppColors.success),
               const SizedBox(height: AppSpacing.md),
               Text(
                 context.tr('payment.receiptSubmitted'),
@@ -518,7 +494,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
               const SizedBox(height: AppSpacing.sm),
               Text(
                 context.tr('payment.receiptSubmittedDesc'),
-                style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.subhead
+                    .copyWith(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -526,9 +503,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         ),
         const SizedBox(height: AppSpacing.xxl),
         // Approval-wait card
-        _pollTimedOut
-            ? _buildPollTimedOut()
-            : _buildPollWaiting(),
+        _pollTimedOut ? _buildPollTimedOut() : _buildPollWaiting(),
         const SizedBox(height: AppSpacing.lg),
         SizedBox(
           height: 48,
@@ -545,13 +520,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   }
 
   Widget _buildPollWaiting() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
+    return AppCard(
+      color: AppColors.primaryLight,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -566,7 +536,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
               Expanded(
                 child: Text(
                   context.tr('payment.waitingApproval'),
-                  style: AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+                  style:
+                      AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -574,7 +545,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
           const SizedBox(height: AppSpacing.sm),
           Text(
             context.tr('payment.waitingApprovalDesc'),
-            style: AppTypography.footnote.copyWith(color: AppColors.textSecondary),
+            style: AppTypography.footnote
+                .copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppSpacing.md),
           SizedBox(
@@ -582,19 +554,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
             height: 40,
             child: OutlinedButton(
               onPressed: () async {
-                await ref.read(subscriptionProvider.notifier).loadSubscription();
+                await ref
+                    .read(subscriptionProvider.notifier)
+                    .loadSubscription();
                 if (!mounted) return;
                 final sub = ref.read(subscriptionProvider).subscription;
                 if (sub?.isActive ?? false) {
                   _stopPoller();
                   if (!_snackBarShown) {
                     _snackBarShown = true;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(context.tr('payment.subscriptionActivated')),
-                        duration: const Duration(seconds: 3),
-                      ),
-                    );
+                    AppSnackbar.success(context,
+                        context.tr('payment.subscriptionActivated'));
                   }
                   await Future.delayed(const Duration(seconds: 1));
                   if (mounted) context.go('/dashboard');
@@ -609,24 +579,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   }
 
   Widget _buildPollTimedOut() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             context.tr('payment.stillPending'),
-            style: AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+            style:
+                AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
             context.tr('payment.stillPendingDesc'),
-            style: AppTypography.footnote.copyWith(color: AppColors.textSecondary),
+            style: AppTypography.footnote
+                .copyWith(color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -647,13 +613,12 @@ class _DetailRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: AppTypography.subhead
-              .copyWith(color: AppColors.textSecondary),
+          style:
+              AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         ),
         Text(
           value,
-          style:
-              AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
+          style: AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -684,12 +649,7 @@ class _CopyableRowState extends State<_CopyableRow> {
   Future<void> _copyWithAutoClear() async {
     await Clipboard.setData(ClipboardData(text: widget.value));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(context.tr('payment.referenceCopied')),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    AppSnackbar.info(context, context.tr('payment.referenceCopied'));
     _clearTimer?.cancel();
     _clearTimer = Timer(const Duration(seconds: 30), () async {
       final current = await Clipboard.getData('text/plain');
@@ -706,8 +666,8 @@ class _CopyableRowState extends State<_CopyableRow> {
       children: [
         Text(
           widget.label,
-          style: AppTypography.subhead
-              .copyWith(color: AppColors.textSecondary),
+          style:
+              AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         ),
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -722,8 +682,7 @@ class _CopyableRowState extends State<_CopyableRow> {
             const SizedBox(width: AppSpacing.xs),
             GestureDetector(
               onTap: _copyWithAutoClear,
-              child: const Icon(Icons.copy,
-                  size: 18, color: AppColors.primary),
+              child: const Icon(Icons.copy, size: 18, color: AppColors.primary),
             ),
           ],
         ),

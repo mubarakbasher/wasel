@@ -6,14 +6,15 @@ import '../../i18n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
-import '../../theme/app_typography.dart';
 import '../../utils/validators.dart';
+import '../../widgets/widgets.dart';
 
 class ChangePasswordScreen extends ConsumerStatefulWidget {
   const ChangePasswordScreen({super.key});
 
   @override
-  ConsumerState<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+  ConsumerState<ChangePasswordScreen> createState() =>
+      _ChangePasswordScreenState();
 }
 
 class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
@@ -28,7 +29,11 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   @override
   void initState() {
     super.initState();
-    for (final c in [_currentPasswordController, _newPasswordController, _confirmPasswordController]) {
+    for (final c in [
+      _currentPasswordController,
+      _newPasswordController,
+      _confirmPasswordController,
+    ]) {
       c.addListener(_clearError);
     }
   }
@@ -47,12 +52,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
             newPassword: _newPasswordController.text,
           );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.tr('settings.passwordChanged')),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        AppSnackbar.success(context, context.tr('settings.passwordChanged'));
         context.pop();
       }
     } catch (_) {
@@ -85,23 +85,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                 const SizedBox(height: AppSpacing.xxl),
 
                 // Error display
-                if (authState.error != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.errorLight,
-                      borderRadius: BorderRadius.circular(AppSpacing.sm),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline, color: AppColors.error, size: 20),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(child: Text(authState.error!, style: AppTypography.footnote.copyWith(color: AppColors.error))),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
+                if (authState.error != null)
+                  InlineErrorBanner(message: authState.error!),
 
                 // Current Password
                 TextFormField(
@@ -112,11 +97,18 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                     labelText: context.tr('auth.currentPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                      onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent),
+                      icon: Icon(
+                        _obscureCurrent
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureCurrent = !_obscureCurrent),
                     ),
                   ),
-                  validator: (v) => v == null || v.isEmpty ? context.tr('auth.currentPasswordRequired') : null,
+                  validator: (v) => v == null || v.isEmpty
+                      ? context.tr('auth.currentPasswordRequired')
+                      : null,
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -129,8 +121,13 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                     labelText: context.tr('auth.newPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                      onPressed: () => setState(() => _obscureNew = !_obscureNew),
+                      icon: Icon(
+                        _obscureNew
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureNew = !_obscureNew),
                     ),
                   ),
                   validator: Validators.validatePassword,
@@ -146,11 +143,17 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                     labelText: context.tr('auth.confirmNewPassword'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                      onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                   ),
-                  validator: (v) => Validators.validateConfirmPassword(v, _newPasswordController.text),
+                  validator: (v) => Validators.validateConfirmPassword(
+                      v, _newPasswordController.text),
                   onFieldSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: AppSpacing.xxl),
@@ -161,7 +164,14 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                   child: ElevatedButton(
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.textInverse,
+                            ),
+                          )
                         : Text(context.tr('settings.changePassword')),
                   ),
                 ),

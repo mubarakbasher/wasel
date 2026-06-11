@@ -7,6 +7,7 @@ import '../providers/dashboard_provider.dart';
 import '../providers/notifications_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../theme/theme.dart';
+import '../widgets/widgets.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -32,19 +33,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'online':
-        return AppColors.online;
-      case 'offline':
-        return AppColors.offline;
-      case 'degraded':
-        return AppColors.degraded;
-      default:
-        return AppColors.textTertiary;
-    }
   }
 
   String _relativeTime(BuildContext context, String? isoDate) {
@@ -87,8 +75,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         onPressed: () => _onQuickCreate(state),
         icon: const Icon(Icons.add),
         label: Text(context.tr('dashboard.quickCreateVoucher')),
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.textInverse,
       ),
     );
   }
@@ -102,9 +88,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
     final routers = state.routers;
     if (routers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('dashboard.addRouterFirst'))),
-      );
+      AppSnackbar.info(context, context.tr('dashboard.addRouterFirst'));
       return;
     }
     final firstRouterId = routers[0]['id'] as String;
@@ -140,7 +124,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     if (state.error != null && state.data == null) {
-      return _buildErrorState(state.error!);
+      return ErrorState(
+        message: state.error!,
+        onRetry: () => ref.read(dashboardProvider.notifier).loadDashboard(),
+        retryLabel: context.tr('common.retry'),
+      );
     }
 
     return RefreshIndicator(
@@ -175,24 +163,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _buildSubscriptionCard(DashboardState state) {
     final sub = state.subscription;
     if (sub == null) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            children: [
-              const Icon(Icons.credit_card_off,
-                  size: 40, color: AppColors.textTertiary),
-              const SizedBox(height: AppSpacing.sm),
-              Text(context.tr('dashboard.noActiveSubscription'),
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600)),
-              const SizedBox(height: AppSpacing.sm),
-              FilledButton(
-                onPressed: () => context.push('/subscription'),
-                child: Text(context.tr('dashboard.viewPlans')),
-              ),
-            ],
-          ),
+      return AppCard(
+        child: Column(
+          children: [
+            const Icon(Icons.credit_card_off,
+                size: 40, color: AppColors.textTertiary),
+            const SizedBox(height: AppSpacing.sm),
+            Text(context.tr('dashboard.noActiveSubscription'),
+                style: AppTypography.headline),
+            const SizedBox(height: AppSpacing.sm),
+            FilledButton(
+              onPressed: () => context.push('/subscription'),
+              child: Text(context.tr('dashboard.viewPlans')),
+            ),
+          ],
         ),
       );
     }
@@ -217,77 +201,58 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         statusBadgeColor = AppColors.error;
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(planName,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
-                  decoration: BoxDecoration(
-                    color: statusBadgeColor.withValues(alpha: 0.15),
-                    borderRadius:
-                        BorderRadius.circular(AppSpacing.radiusSm),
-                  ),
-                  child: Text(
-                    status[0].toUpperCase() + status.substring(1),
-                    style: TextStyle(
-                        color: statusBadgeColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            // Voucher usage
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(context.tr('dashboard.vouchersUsed'),
-                    style: const TextStyle(color: AppColors.textSecondary)),
-                Text(
-                  isUnlimited
-                      ? '$vouchersUsed / ${context.tr('dashboard.unlimited')}'
-                      : '$vouchersUsed / $voucherQuota',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            if (!isUnlimited)
-              ClipRRect(
-                borderRadius:
-                    BorderRadius.circular(AppSpacing.radiusSm),
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  minHeight: 8,
-                  backgroundColor: AppColors.border,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    progress >= 0.9
-                        ? AppColors.error
-                        : progress >= 0.7
-                            ? AppColors.warning
-                            : AppColors.success,
-                  ),
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(planName, style: AppTypography.title2),
+              StatusBadge(
+                label: status[0].toUpperCase() + status.substring(1),
+                color: statusBadgeColor,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(context.tr('dashboard.vouchersUsed'),
+                  style: const TextStyle(color: AppColors.textSecondary)),
+              Text(
+                isUnlimited
+                    ? '$vouchersUsed / ${context.tr('dashboard.unlimited')}'
+                    : '$vouchersUsed / $voucherQuota',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          if (!isUnlimited)
+            ClipRRect(
+              borderRadius:
+                  BorderRadius.circular(AppSpacing.radiusSm),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                minHeight: 8,
+                backgroundColor: AppColors.border,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  progress >= 0.9
+                      ? AppColors.error
+                      : progress >= 0.7
+                          ? AppColors.warning
+                          : AppColors.success,
                 ),
               ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              context.tr('dashboard.daysRemaining', [daysRemaining.toString()]),
-              style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 13),
             ),
-          ],
-        ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            context.tr('dashboard.daysRemaining', [daysRemaining.toString()]),
+            style: AppTypography.footnote,
+          ),
+        ],
       ),
     );
   }
@@ -299,7 +264,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Row(
       children: [
         Expanded(
-          child: _buildStatCard(
+          child: StatCard(
             icon: Icons.wifi,
             label: context.tr('dashboard.activeSessions'),
             value: isActive ? '${state.totalActiveSessions}' : '--',
@@ -308,7 +273,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
-          child: _buildStatCard(
+          child: StatCard(
             icon: Icons.confirmation_number,
             label: context.tr('dashboard.vouchersToday'),
             value: isActive ? '${state.vouchersUsedToday}' : '--',
@@ -328,7 +293,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Row(
       children: [
         Expanded(
-          child: _buildStatCard(
+          child: StatCard(
             icon: Icons.payments,
             label: context.tr('dashboard.dailyRevenue'),
             value: isActive ? revenueText : '--',
@@ -337,7 +302,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
-          child: _buildStatCard(
+          child: StatCard(
             icon: Icons.router,
             label: context.tr('dashboard.onlineRouters'),
             value: '${state.onlineRouters}',
@@ -345,32 +310,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildStatCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            Icon(icon, size: 28, color: color),
-            const SizedBox(height: AppSpacing.sm),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: AppSpacing.xs),
-            Text(label,
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 13)),
-          ],
-        ),
-      ),
     );
   }
 
@@ -384,66 +323,52 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final downloadText = isActive ? _formatBytes(totalInput) : '--';
     final uploadText = isActive ? _formatBytes(totalOutput) : '--';
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(context.tr('dashboard.dataUsage24h'),
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      const Icon(Icons.arrow_downward,
-                          size: 20, color: AppColors.success),
-                      const SizedBox(width: AppSpacing.sm),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(context.tr('dashboard.download'),
-                              style: const TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 12)),
-                          Text(downloadText,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15)),
-                        ],
-                      ),
-                    ],
-                  ),
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title: context.tr('dashboard.dataUsage24h')),
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.arrow_downward,
+                        size: 20, color: AppColors.success),
+                    const SizedBox(width: AppSpacing.sm),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(context.tr('dashboard.download'),
+                            style: AppTypography.caption1),
+                        Text(downloadText,
+                            style: AppTypography.headline),
+                      ],
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: Row(
-                    children: [
-                      const Icon(Icons.arrow_upward,
-                          size: 20, color: AppColors.primary),
-                      const SizedBox(width: AppSpacing.sm),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(context.tr('dashboard.upload'),
-                              style: const TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 12)),
-                          Text(uploadText,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15)),
-                        ],
-                      ),
-                    ],
-                  ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.arrow_upward,
+                        size: 20, color: AppColors.primary),
+                    const SizedBox(width: AppSpacing.sm),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(context.tr('dashboard.upload'),
+                            style: AppTypography.caption1),
+                        Text(uploadText,
+                            style: AppTypography.headline),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -454,70 +379,55 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _buildRoutersCard(DashboardState state) {
     final routers = state.routers;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(context.tr('dashboard.routers'),
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: AppSpacing.md),
-            if (routers.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
-                child: Center(
-                  child: Text(context.tr('dashboard.noRoutersAdded'),
-                      style: const TextStyle(color: AppColors.textSecondary)),
-                ),
-              )
-            else
-              ...routers.map((r) {
-                final name = r['name'] as String? ?? 'Unknown';
-                final status = r['status'] as String? ?? 'offline';
-                final lastSeen = r['lastSeen'] as String?;
-                final routerId = r['id'] as String;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title: context.tr('dashboard.routers')),
+          if (routers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              child: Center(
+                child: Text(context.tr('dashboard.noRoutersAdded'),
+                    style: AppTypography.footnote),
+              ),
+            )
+          else
+            ...routers.map((r) {
+              final name = r['name'] as String? ?? 'Unknown';
+              final status = r['status'] as String? ?? 'offline';
+              final lastSeen = r['lastSeen'] as String?;
+              final routerId = r['id'] as String;
 
-                return InkWell(
-                  onTap: () =>
-                      context.push('/routers/detail', extra: routerId),
-                  borderRadius:
-                      BorderRadius.circular(AppSpacing.radiusMd),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: AppSpacing.sm),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: _statusColor(status),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Text(name,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w500)),
-                        ),
-                        Text(_relativeTime(context, lastSeen),
+              return InkWell(
+                onTap: () =>
+                    context.push('/routers/detail', extra: routerId),
+                borderRadius:
+                    BorderRadius.circular(AppSpacing.radiusMd),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.sm),
+                  child: Row(
+                    children: [
+                      StatusDot(AppColors.routerStatus(status)),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Text(name,
                             style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 13)),
-                        const SizedBox(width: AppSpacing.xs),
-                        const Icon(Icons.chevron_right,
-                            size: 18,
-                            color: AppColors.textTertiary),
-                      ],
-                    ),
+                                fontWeight: FontWeight.w500)),
+                      ),
+                      Text(_relativeTime(context, lastSeen),
+                          style: AppTypography.footnote),
+                      const SizedBox(width: AppSpacing.xs),
+                      const Icon(Icons.chevron_right,
+                          size: 18,
+                          color: AppColors.textTertiary),
+                    ],
                   ),
-                );
-              }),
-          ],
-        ),
+                ),
+              );
+            }),
+        ],
       ),
     );
   }
@@ -528,66 +438,47 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _buildSessionsByRouterCard(DashboardState state, bool isActive) {
     final sessions = state.activeSessionsByRouter;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(context.tr('dashboard.sessionsByRouter'),
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: AppSpacing.md),
-            if (sessions.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
-                child: Center(
-                  child: Text(context.tr('dashboard.noActiveSessions'),
-                      style: const TextStyle(color: AppColors.textSecondary)),
-                ),
-              )
-            else
-              ...sessions.map((s) {
-                final routerName =
-                    s['routerName'] as String? ?? 'Unknown';
-                final count = s['activeSessions'] as int? ?? 0;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title: context.tr('dashboard.sessionsByRouter')),
+          if (sessions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              child: Center(
+                child: Text(context.tr('dashboard.noActiveSessions'),
+                    style: AppTypography.footnote),
+              ),
+            )
+          else
+            ...sessions.map((s) {
+              final routerName =
+                  s['routerName'] as String? ?? 'Unknown';
+              final count = s['activeSessions'] as int? ?? 0;
 
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                      vertical: AppSpacing.sm),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.router,
-                          size: 20, color: AppColors.textSecondary),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Text(routerName,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w500)),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.sm,
-                            vertical: AppSpacing.xs),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryLight,
-                          borderRadius: BorderRadius.circular(
-                              AppSpacing.radiusSm),
-                        ),
-                        child: Text(
-                          isActive ? '$count' : '--',
+              return Padding(
+                padding: const EdgeInsets.symmetric(
+                    vertical: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    const Icon(Icons.router,
+                        size: 20, color: AppColors.textSecondary),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(routerName,
                           style: const TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-          ],
-        ),
+                              fontWeight: FontWeight.w500)),
+                    ),
+                    StatusBadge(
+                      label: isActive ? '$count' : '--',
+                      color: AppColors.primary,
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
       ),
     );
   }
@@ -600,62 +491,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         children: [
-          _skeletonCard(height: 140),
+          const SkeletonCard(height: 140),
           const SizedBox(height: AppSpacing.lg),
           Row(
-            children: [
-              Expanded(child: _skeletonCard(height: 100)),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(child: _skeletonCard(height: 100)),
+            children: const [
+              Expanded(child: SkeletonCard(height: 100)),
+              SizedBox(width: AppSpacing.md),
+              Expanded(child: SkeletonCard(height: 100)),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          _skeletonCard(height: 80),
+          const SkeletonCard(height: 80),
           const SizedBox(height: AppSpacing.lg),
-          _skeletonCard(height: 120),
+          const SkeletonCard(height: 120),
           const SizedBox(height: AppSpacing.lg),
-          _skeletonCard(height: 100),
+          const SkeletonCard(height: 100),
         ],
-      ),
-    );
-  }
-
-  Widget _skeletonCard({required double height}) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Error State
-  // ---------------------------------------------------------------------------
-  Widget _buildErrorState(String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline,
-                size: 48, color: AppColors.error),
-            const SizedBox(height: AppSpacing.lg),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 15)),
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton.icon(
-              onPressed: () =>
-                  ref.read(dashboardProvider.notifier).loadDashboard(),
-              icon: const Icon(Icons.refresh),
-              label: Text(context.tr('common.retry')),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -690,7 +541,7 @@ class _NotificationBell extends StatelessWidget {
                 child: Text(
                   unreadCount > 99 ? '99+' : '$unreadCount',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textInverse,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                   ),

@@ -10,6 +10,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
 import '../../utils/validators.dart';
+import '../../widgets/widgets.dart';
 
 class VerifyEmailScreen extends ConsumerStatefulWidget {
   final String email;
@@ -65,9 +66,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
             otp: _otpController.text.trim(),
           );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('auth.emailVerifiedSuccess')), backgroundColor: AppColors.success),
-        );
+        AppSnackbar.success(context, context.tr('auth.emailVerifiedSuccess'));
         context.go('/login');
       }
     } catch (_) {}
@@ -78,9 +77,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       await ref.read(authProvider.notifier).resendVerification(email: _effectiveEmail);
       if (!mounted) return;
       _startCooldown();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('auth.verificationResent')), backgroundColor: AppColors.success),
-      );
+      AppSnackbar.success(context, context.tr('auth.verificationResent'));
     } catch (_) {}
   }
 
@@ -119,20 +116,8 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                 const SizedBox(height: AppSpacing.xxxl),
 
                 // Error
-                if (authState.error != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(color: AppColors.errorLight, borderRadius: BorderRadius.circular(AppSpacing.sm)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline, color: AppColors.error, size: 20),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(child: Text(authState.error!, style: AppTypography.footnote.copyWith(color: AppColors.error))),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
+                if (authState.error != null)
+                  InlineErrorBanner(message: authState.error!),
 
                 // OTP field
                 TextFormField(
@@ -156,7 +141,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                   child: ElevatedButton(
                     onPressed: authState.isLoading ? null : _verify,
                     child: authState.isLoading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textInverse))
                         : Text(context.tr('auth.verify')),
                   ),
                 ),

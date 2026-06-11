@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
 import '../../utils/validators.dart';
+import '../../widgets/widgets.dart';
 
 class ResetPasswordScreen extends ConsumerStatefulWidget {
   final String email;
@@ -48,9 +49,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
             newPassword: _passwordController.text,
           );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('auth.resetPasswordSuccess')), backgroundColor: AppColors.success),
-        );
+        AppSnackbar.success(context, context.tr('auth.resetPasswordSuccess'));
         context.go('/login');
       }
     } catch (_) {}
@@ -90,20 +89,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                 const SizedBox(height: AppSpacing.xxxl),
 
                 // Error
-                if (authState.error != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(color: AppColors.errorLight, borderRadius: BorderRadius.circular(AppSpacing.sm)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline, color: AppColors.error, size: 20),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(child: Text(authState.error!, style: AppTypography.footnote.copyWith(color: AppColors.error))),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
+                if (authState.error != null)
+                  InlineErrorBanner(message: authState.error!),
 
                 // OTP
                 TextFormField(
@@ -158,7 +145,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   child: ElevatedButton(
                     onPressed: authState.isLoading ? null : _submit,
                     child: authState.isLoading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textInverse))
                         : Text(context.tr('auth.resetPassword')),
                   ),
                 ),

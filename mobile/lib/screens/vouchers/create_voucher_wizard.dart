@@ -10,6 +10,7 @@ import '../../providers/vouchers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class CreateVoucherWizard extends ConsumerStatefulWidget {
   final String routerId;
@@ -127,11 +128,11 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
             Container(
               width: 64,
               height: 64,
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.12),
+              decoration: const BoxDecoration(
+                color: AppColors.successLight,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.check_circle, size: 40, color: AppColors.success),
+              child: const Icon(Icons.check_circle, size: 40, color: AppColors.success),
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
@@ -156,8 +157,8 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               child: ElevatedButton.icon(
                 onPressed: () {
                   Navigator.of(ctx).pop();
-                  this.context.pop();
-                  this.context.push('/vouchers/print', extra: {
+                  context.pop();
+                  context.push('/vouchers/print', extra: {
                     'vouchers': vouchers,
                     'routerName': routerName,
                   });
@@ -173,7 +174,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               child: OutlinedButton(
                 onPressed: () {
                   Navigator.of(ctx).pop();
-                  this.context.pop();
+                  context.pop();
                 },
                 child: Text(ctx.tr('vouchers.goToVouchers')),
               ),
@@ -204,7 +205,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                child: _buildErrorBox(state.error!),
+                child: InlineErrorBanner(message: state.error!),
               ),
             Expanded(
               child: PageView(
@@ -265,13 +266,13 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
     if (isCompleted) {
       bgColor = AppColors.success;
-      child = const Icon(Icons.check, size: 16, color: Colors.white);
+      child = const Icon(Icons.check, size: 16, color: AppColors.textInverse);
     } else if (isActive) {
       bgColor = AppColors.primary;
       child = Text(
         '${stepIndex + 1}',
         style: const TextStyle(
-            fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+            fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textInverse),
       );
     } else {
       bgColor = AppColors.border;
@@ -404,7 +405,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline,
+                const Icon(Icons.info_outline,
                     size: 18, color: AppColors.primary),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
@@ -515,7 +516,6 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                     _validitySeconds = preset.seconds;
                   });
                 },
-                selectedColor: AppColors.primary.withValues(alpha: 0.15),
                 labelStyle: AppTypography.subhead.copyWith(
                   color:
                       isSelected ? AppColors.primary : AppColors.textPrimary,
@@ -535,7 +535,6 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   _updateCustomValidity();
                 });
               },
-              selectedColor: AppColors.primary.withValues(alpha: 0.15),
               labelStyle: AppTypography.subhead.copyWith(
                 color: _isCustomValidity
                     ? AppColors.primary
@@ -727,13 +726,8 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
           const SizedBox(height: AppSpacing.xl),
 
           // Summary card
-          Container(
+          AppCard(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              border: Border.all(color: AppColors.border),
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -834,21 +828,6 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildErrorBox(String error) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-      ),
-      child: Text(
-        error,
-        style: AppTypography.subhead.copyWith(color: AppColors.error),
       ),
     );
   }

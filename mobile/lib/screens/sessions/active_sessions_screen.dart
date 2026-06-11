@@ -7,6 +7,7 @@ import '../../i18n/app_localizations.dart';
 import '../../models/session.dart';
 import '../../providers/sessions_provider.dart';
 import '../../theme/theme.dart';
+import '../../widgets/widgets.dart';
 
 class ActiveSessionsScreen extends ConsumerStatefulWidget {
   final String routerId;
@@ -44,39 +45,25 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
         .loadActiveSessions(widget.routerId);
   }
 
-  void _confirmDisconnect(ActiveSession session) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ctx.tr('sessions.disconnectTitle')),
-        content: Text(
-          ctx.tr('sessions.disconnectUser', [session.username, session.macAddress]),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(ctx.tr('common.cancel')),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              ref
-                  .read(sessionsProvider.notifier)
-                  .disconnectSession(widget.routerId, session.id)
-                  .then((ok) {
-                if (ok && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(context.tr('sessions.disconnectedSuccessfully'))),
-                  );
-                }
-              });
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text(ctx.tr('sessions.disconnect')),
-          ),
-        ],
+  Future<void> _confirmDisconnect(ActiveSession session) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: context.tr('sessions.disconnectTitle'),
+      message: context.tr(
+        'sessions.disconnectUser',
+        [session.username, session.macAddress],
       ),
+      confirmLabel: context.tr('sessions.disconnect'),
+      cancelLabel: context.tr('common.cancel'),
+      destructive: true,
     );
+    if (!confirmed || !mounted) return;
+    final ok = await ref
+        .read(sessionsProvider.notifier)
+        .disconnectSession(widget.routerId, session.id);
+    if (ok && mounted) {
+      AppSnackbar.success(context, context.tr('sessions.disconnectedSuccessfully'));
+    }
   }
 
   @override
@@ -103,54 +90,18 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     }
 
     if (state.error != null && state.activeSessions.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                state.error!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.red[700]),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              ElevatedButton(
-                onPressed: _onRefresh,
-                child: Text(context.tr('common.retry')),
-              ),
-            ],
-          ),
-        ),
+      return ErrorState(
+        message: state.error!,
+        onRetry: _onRefresh,
+        retryLabel: context.tr('common.retry'),
       );
     }
 
     if (state.activeSessions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.wifi_off, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              context.tr('sessions.noActiveSessions'),
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              context.tr('sessions.autoRefresh'),
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.grey[500]),
-            ),
-          ],
-        ),
+      return EmptyState(
+        icon: Icons.wifi_off,
+        title: context.tr('sessions.noActiveSessions'),
+        message: context.tr('sessions.autoRefresh'),
       );
     }
 
@@ -166,11 +117,12 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
             child: Row(
               children: [
                 Text(
-                  context.tr('sessions.activeSessionsCount', [state.activeSessions.length.toString()]),
+                  context.tr('sessions.activeSessionsCount',
+                      [state.activeSessions.length.toString()]),
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
-                      ?.copyWith(color: Colors.grey[600]),
+                      ?.copyWith(color: AppColors.textSecondary),
                 ),
                 const Spacer(),
                 if (state.isLoading)
@@ -212,106 +164,111 @@ class _SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return AppCard(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.person, size: 20, color: AppColors.primary),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    session.username,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green[300]!),
-                  ),
-                  child: Text(
-                    context.tr('sessions.active'),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                _InfoChip(icon: Icons.timer, label: session.uptime),
-                const SizedBox(width: AppSpacing.sm),
-                _InfoChip(
-                  icon: Icons.arrow_downward,
-                  label: session.bytesInDisplay,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                _InfoChip(
-                  icon: Icons.arrow_upward,
-                  label: session.bytesOutDisplay,
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Icon(Icons.lan, size: 14, color: Colors.grey[500]),
-                const SizedBox(width: 4),
-                Text(
-                  session.address,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.grey[600]),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Icon(Icons.devices, size: 14, color: Colors.grey[500]),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    session.macAddress,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey[600], fontFamily: 'monospace'),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: onDisconnect,
-                icon: const Icon(Icons.power_settings_new, size: 18),
-                label: Text(context.tr('sessions.disconnect')),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SessionCardHeader(session: session),
+          const SizedBox(height: AppSpacing.sm),
+          _SessionCardStats(session: session),
+          const SizedBox(height: AppSpacing.sm),
+          _SessionCardMeta(session: session),
+          const SizedBox(height: AppSpacing.sm),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              onPressed: onDisconnect,
+              icon: const Icon(Icons.power_settings_new, size: 18),
+              label: Text(context.tr('sessions.disconnect')),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+                padding: const EdgeInsetsDirectional.symmetric(horizontal: 12),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _SessionCardHeader extends StatelessWidget {
+  final ActiveSession session;
+
+  const _SessionCardHeader({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.person, size: 20, color: AppColors.primary),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Text(
+            session.username,
+            style: AppTypography.mono.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        StatusBadge(
+          label: context.tr('sessions.active'),
+          color: AppColors.success,
+        ),
+      ],
+    );
+  }
+}
+
+class _SessionCardStats extends StatelessWidget {
+  final ActiveSession session;
+
+  const _SessionCardStats({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _InfoChip(icon: Icons.timer, label: session.uptime),
+        const SizedBox(width: AppSpacing.sm),
+        _InfoChip(icon: Icons.arrow_downward, label: session.bytesInDisplay),
+        const SizedBox(width: AppSpacing.sm),
+        _InfoChip(icon: Icons.arrow_upward, label: session.bytesOutDisplay),
+      ],
+    );
+  }
+}
+
+class _SessionCardMeta extends StatelessWidget {
+  final ActiveSession session;
+
+  const _SessionCardMeta({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.lan, size: 14, color: AppColors.textTertiary),
+        const SizedBox(width: 4),
+        Text(
+          session.address,
+          style: AppTypography.monoSmall.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Icon(Icons.devices, size: 14, color: AppColors.textTertiary),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            session.macAddress,
+            style: AppTypography.monoSmall.copyWith(
+              color: AppColors.textSecondary,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -325,21 +282,20 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsetsDirectional.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: AppColors.surfaceMuted,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.grey[600]),
+          Icon(icon, size: 14, color: AppColors.textSecondary),
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
+            style: AppTypography.caption1.copyWith(
+              color: AppColors.textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),

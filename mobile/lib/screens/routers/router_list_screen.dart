@@ -9,6 +9,7 @@ import '../../providers/subscription_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../widgets/widgets.dart';
 
 class RouterListScreen extends ConsumerStatefulWidget {
   const RouterListScreen({super.key});
@@ -77,69 +78,24 @@ class _RouterListScreenState extends ConsumerState<RouterListScreen> {
       body: state.isLoading && state.routers.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : state.error != null && state.routers.isEmpty
-              ? _buildError(state.error!)
+              ? ErrorState(
+                  message: state.error!,
+                  onRetry: () =>
+                      ref.read(routersProvider.notifier).loadRouters(),
+                  retryLabel: context.tr('common.retry'),
+                )
               : state.routers.isEmpty
-                  ? _buildEmpty()
+                  ? EmptyState(
+                      icon: Icons.router,
+                      title: context.tr('routers.noRouters'),
+                      message: context.tr('routers.addFirstRouter'),
+                      action: ElevatedButton.icon(
+                        onPressed: _onAddRouter,
+                        icon: const Icon(Icons.add),
+                        label: Text(context.tr('routers.addRouter')),
+                      ),
+                    )
                   : _buildList(state),
-    );
-  }
-
-  Widget _buildError(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: AppColors.error),
-            const SizedBox(height: AppSpacing.lg),
-            Text(error, style: AppTypography.body, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.xxl),
-            SizedBox(
-              height: 48,
-              child: ElevatedButton(
-                onPressed: () =>
-                    ref.read(routersProvider.notifier).loadRouters(),
-                child: Text(context.tr('common.retry')),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmpty() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.router, size: 64, color: AppColors.textTertiary),
-            const SizedBox(height: AppSpacing.lg),
-            Text(context.tr('routers.noRouters'),
-                style: AppTypography.title2, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              context.tr('routers.addFirstRouter'),
-              style: AppTypography.subhead
-                  .copyWith(color: AppColors.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-            SizedBox(
-              height: 48,
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _onAddRouter,
-                icon: const Icon(Icons.add),
-                label: Text(context.tr('routers.addRouter')),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -169,93 +125,57 @@ class _RouterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _statusDot(router.status),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(router.name, style: AppTypography.title3),
-                ),
-                Icon(Icons.chevron_right,
-                    color: AppColors.textTertiary, size: 20),
-              ],
-            ),
-            if (router.model != null) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Padding(
-                padding: const EdgeInsets.only(left: 20),
-                child: Text(router.model!,
-                    style: AppTypography.footnote),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              StatusDot(AppColors.routerStatus(router.status)),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(router.name, style: AppTypography.title3),
               ),
+              Icon(Icons.chevron_right,
+                  color: AppColors.textTertiary, size: 20),
             ],
-            if (router.tunnelIp != null) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Padding(
-                padding: const EdgeInsets.only(left: 20),
-                child: Text(router.tunnelIp!,
-                    style: AppTypography.caption1),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.sm),
+          ),
+          if (router.model != null) ...[
+            const SizedBox(height: AppSpacing.xs),
             Padding(
-              padding: const EdgeInsets.only(left: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _capitalizeStatus(router.status),
-                    style: AppTypography.caption1.copyWith(
-                      color: _statusColor(router.status),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    _formatLastSeen(context, router.lastSeen),
-                    style: AppTypography.caption1,
-                  ),
-                ],
-              ),
+              padding: const EdgeInsetsDirectional.only(start: 18),
+              child: Text(router.model!, style: AppTypography.footnote),
             ),
           ],
-        ),
+          if (router.tunnelIp != null) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 18),
+              child: Text(router.tunnelIp!, style: AppTypography.caption1),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 18),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                StatusBadge(
+                  label: _capitalizeStatus(router.status),
+                  color: AppColors.routerStatus(router.status),
+                ),
+                Text(
+                  _formatLastSeen(context, router.lastSeen),
+                  style: AppTypography.caption1,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
-  }
-
-  Widget _statusDot(String status) {
-    return Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: _statusColor(status),
-      ),
-    );
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'online':
-        return AppColors.success;
-      case 'degraded':
-        return AppColors.warning;
-      case 'offline':
-      default:
-        return AppColors.error;
-    }
   }
 
   String _capitalizeStatus(String status) {
@@ -267,9 +187,16 @@ class _RouterCard extends StatelessWidget {
     if (lastSeen == null) return context.tr('routers.never');
     final diff = DateTime.now().difference(lastSeen);
     if (diff.inSeconds < 60) return context.tr('routers.justNow');
-    if (diff.inMinutes < 60) return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
-    if (diff.inHours < 24) return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
-    if (diff.inDays < 30) return context.tr('routers.daysAgo', [diff.inDays.toString()]);
-    return context.tr('routers.monthsAgo', [(diff.inDays / 30).floor().toString()]);
+    if (diff.inMinutes < 60) {
+      return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
+    }
+    if (diff.inHours < 24) {
+      return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
+    }
+    if (diff.inDays < 30) {
+      return context.tr('routers.daysAgo', [diff.inDays.toString()]);
+    }
+    return context.tr(
+        'routers.monthsAgo', [(diff.inDays / 30).floor().toString()]);
   }
 }
