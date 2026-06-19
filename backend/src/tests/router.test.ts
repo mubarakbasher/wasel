@@ -346,23 +346,43 @@ describe('PUT /api/v1/routers/:id', () => {
 describe('DELETE /api/v1/routers/:id', () => {
   it('should return 404 when router not found', async () => {
     mockSubscriptionQuery(mockQuery);
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    // Transaction: BEGIN → SELECT router (empty) → ROLLBACK
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)            // BEGIN
+      .mockResolvedValueOnce({ rows: [] })          // SELECT routers (not found)
+      .mockResolvedValueOnce(undefined);            // ROLLBACK
 
     const res = await request(app)
       .delete(`/api/v1/routers/${TEST_ROUTER_ID}`)
       .set(authHeader());
 
     expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('ROUTER_NOT_FOUND');
   });
 
-  it('should delete router on success', async () => {
+  it('should delete router and purge RADIUS rows when vouchers exist', async () => {
     mockSubscriptionQuery(mockQuery);
-    // SELECT router
-    mockQuery.mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] });
-    // DELETE nas
-    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
-    // DELETE router
-    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+
+    const voucher1 = 'v-user-aaa';
+    const voucher2 = 'v-user-bbb';
+
+    // Transaction sequence (all on client):
+    // BEGIN → SELECT router → SELECT voucher_meta → DELETE radcheck →
+    // DELETE radreply → DELETE radusergroup → DELETE nas → DELETE routers → COMMIT
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                                      // BEGIN
+      .mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] })                   // SELECT routers
+      .mockResolvedValueOnce({ rows: [                                       // SELECT voucher_meta
+        { radius_username: voucher1 },
+        { radius_username: voucher2 },
+      ] })
+      .mockResolvedValueOnce({ rowCount: 2 })                               // DELETE radcheck
+      .mockResolvedValueOnce({ rowCount: 2 })                               // DELETE radreply
+      .mockResolvedValueOnce({ rowCount: 2 })                               // DELETE radusergroup
+      .mockResolvedValueOnce({ rowCount: 1 })                               // DELETE nas
+      .mockResolvedValueOnce({ rowCount: 1 })                               // DELETE routers
+      .mockResolvedValueOnce(undefined);                                     // COMMIT
 
     const res = await request(app)
       .delete(`/api/v1/routers/${TEST_ROUTER_ID}`)
@@ -370,6 +390,43 @@ describe('DELETE /api/v1/routers/:id', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+
+    const calls = mockClientQuery.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((q) => q === 'BEGIN')).toBe(true);
+    expect(calls.some((q) => q.includes('radcheck'))).toBe(true);
+    expect(calls.some((q) => q.includes('radreply'))).toBe(true);
+    expect(calls.some((q) => q.includes('radusergroup'))).toBe(true);
+    expect(calls.some((q) => q === 'COMMIT')).toBe(true);
+
+    // Confirm the usernames array was passed to the RADIUS deletes
+    const radcheckCall = mockClientQuery.mock.calls.find((c) => String(c[0]).includes('radcheck'));
+    expect(radcheckCall).toBeDefined();
+    expect(radcheckCall![1]).toEqual([[voucher1, voucher2]]);
+  });
+
+  it('should delete router WITHOUT touching RADIUS tables when no vouchers exist', async () => {
+    mockSubscriptionQuery(mockQuery);
+
+    // No vouchers → skip the three RADIUS DELETEs
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)             // BEGIN
+      .mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] }) // SELECT routers
+      .mockResolvedValueOnce({ rows: [] })           // SELECT voucher_meta (none)
+      .mockResolvedValueOnce({ rowCount: 1 })        // DELETE nas
+      .mockResolvedValueOnce({ rowCount: 1 })        // DELETE routers
+      .mockResolvedValueOnce(undefined);             // COMMIT
+
+    const res = await request(app)
+      .delete(`/api/v1/routers/${TEST_ROUTER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const calls = mockClientQuery.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((q) => q.includes('radcheck'))).toBe(false);
+    expect(calls.some((q) => q.includes('radreply'))).toBe(false);
+    expect(calls.some((q) => q.includes('radusergroup'))).toBe(false);
   });
 });
 

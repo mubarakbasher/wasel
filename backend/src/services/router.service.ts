@@ -340,39 +340,73 @@ export async function updateRouter(
 }
 
 /**
- * Delete a router and clean up WireGuard peer and NAS entry.
+ * Delete a router and clean up RADIUS credentials, WireGuard peer, and NAS entry.
+ * The entire DB work runs inside a single transaction so a mid-delete failure
+ * never leaves orphaned radcheck/radreply/radusergroup rows that would still
+ * authenticate voucher users.
  */
 export async function deleteRouter(userId: string, routerId: string): Promise<void> {
-  const result = await pool.query<RouterRow>(
-    'SELECT * FROM routers WHERE id = $1 AND user_id = $2',
-    [routerId, userId],
-  );
+  const client = await pool.connect();
+  let router: RouterRow;
 
-  if (result.rows.length === 0) {
-    throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
+  try {
+    await client.query('BEGIN');
+
+    // 1. Ownership check — fetch the row we are about to delete.
+    const result = await client.query<RouterRow>(
+      'SELECT * FROM routers WHERE id = $1 AND user_id = $2',
+      [routerId, userId],
+    );
+
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
+    }
+
+    router = result.rows[0];
+
+    // 2. Snapshot all voucher RADIUS usernames before we delete voucher_meta rows
+    //    (they cascade-delete when routers row is removed).
+    const voucherResult = await client.query<{ radius_username: string }>(
+      'SELECT radius_username FROM voucher_meta WHERE router_id = $1',
+      [routerId],
+    );
+    const radiusUsernames = voucherResult.rows.map((r) => r.radius_username);
+
+    // 3. Purge RADIUS credentials so these usernames can no longer authenticate
+    //    even if FreeRADIUS caches or external tooling queries them.
+    if (radiusUsernames.length > 0) {
+      await client.query('DELETE FROM radcheck WHERE username = ANY($1)', [radiusUsernames]);
+      await client.query('DELETE FROM radreply WHERE username = ANY($1)', [radiusUsernames]);
+      await client.query('DELETE FROM radusergroup WHERE username = ANY($1)', [radiusUsernames]);
+    }
+
+    // 4. Remove NAS entry so FreeRADIUS stops accepting auth requests from this router.
+    if (router.tunnel_ip) {
+      await client.query('DELETE FROM nas WHERE nasname = $1', [router.tunnel_ip]);
+    }
+
+    // 5. Release the tunnel subnet back to the free pool before deleting the
+    //    router row. The ON DELETE SET NULL FK in tunnel_subnets handles this
+    //    automatically, but doing it inside the same transaction gives a
+    //    stronger atomicity guarantee.
+    await releaseTunnelSubnet(client, routerId);
+
+    // 6. Delete the router row — cascades to voucher_meta.
+    await client.query('DELETE FROM routers WHERE id = $1', [routerId]);
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 
-  const router = result.rows[0];
-
-  // Delete NAS entry
-  if (router.tunnel_ip) {
-    await pool.query('DELETE FROM nas WHERE nasname = $1', [router.tunnel_ip]);
-  }
-
-  // Release the tunnel subnet back to the free pool before deleting the
-  // router row. The ON DELETE SET NULL FK in tunnel_subnets would handle
-  // this automatically, but doing it explicitly inside the same statement
-  // sequence avoids any window where the router row is gone but the subnet
-  // still appears allocated.
-  await releaseTunnelSubnet(pool, routerId);
-
-  // Delete router record
-  await pool.query('DELETE FROM routers WHERE id = $1', [routerId]);
-
-  // Remove WireGuard peer (non-fatal)
-  if (router.wg_public_key) {
+  // Remove WireGuard peer (non-fatal, runs after the transaction commits).
+  if (router!.wg_public_key) {
     try {
-      await removePeer(router.wg_public_key);
+      await removePeer(router!.wg_public_key);
     } catch (error) {
       logger.warn('Failed to remove WireGuard peer (non-fatal)', {
         routerId,
@@ -384,8 +418,8 @@ export async function deleteRouter(userId: string, routerId: string): Promise<vo
   logger.info('Router deleted', {
     routerId,
     userId,
-    name: router.name,
-    tunnelIp: router.tunnel_ip,
+    name: router!.name,
+    tunnelIp: router!.tunnel_ip,
   });
 }
 

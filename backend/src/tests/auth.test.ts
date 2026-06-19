@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../app';
+import * as tokenService from '../services/token.service';
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof vi.fn>;
 
@@ -332,5 +333,31 @@ describe('Validators', () => {
       password: 'password1',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('Refresh-token rotation — atomic consume race (F4 regression)', () => {
+  it('only the first of two concurrent refreshes with the same token succeeds', async () => {
+    const { generateRefreshToken } = await import('../services/token.service');
+    const userId = '550e8400-e29b-41d4-a716-446655440000';
+    const { token: refreshToken } = generateRefreshToken(userId);
+    const consumeSpy = vi.spyOn(tokenService, 'consumeRefreshToken')
+      .mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    mockQuery.mockResolvedValue({ rows: [{ id: userId, name: 'Test User', email: 'test@example.com', role: 'user' }] });
+    const [res1, res2] = await Promise.all([
+      request(app).post('/api/v1/auth/refresh').send({ refreshToken }),
+      request(app).post('/api/v1/auth/refresh').send({ refreshToken }),
+    ]);
+    expect([res1.status, res2.status].sort()).toEqual([200, 401]);
+    const ok = [res1, res2].find((r) => r.status === 200)!;
+    const fail = [res1, res2].find((r) => r.status === 401)!;
+    expect(ok.body.data.accessToken).toBeDefined();
+    expect(fail.body.error.code).toBe('REFRESH_TOKEN_REVOKED');
+    expect(consumeSpy).toHaveBeenCalledTimes(2);
+    // Both calls targeted the same userId and the same jti — proving they raced on identical token
+    expect(consumeSpy.mock.calls[0][0]).toBe(userId);
+    expect(consumeSpy.mock.calls.every((c) => c[0] === userId)).toBe(true);
+    expect(consumeSpy.mock.calls[0][1]).toBe(consumeSpy.mock.calls[1][1]);
+    consumeSpy.mockRestore();
   });
 });

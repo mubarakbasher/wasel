@@ -198,23 +198,73 @@ export async function updateUser(
 
 /**
  * Delete a non-admin user.
+ * Runs inside a single transaction so RADIUS credentials are purged atomically
+ * with the user/router/voucher cascade — no orphaned radcheck/radreply/radusergroup
+ * rows survive a mid-delete failure.
+ *
+ * NOTE: FK-cascade belt-and-suspenders (radcheck → voucher_meta) is deferred
+ * pending an orphan-cleanup migration; this explicit DELETE is the current guard.
  */
 export async function deleteUser(userId: string): Promise<void> {
-  // First check if the user exists and their role
-  const userResult = await pool.query(
-    `SELECT id, role FROM users WHERE id = $1`,
-    [userId],
-  );
+  const client = await pool.connect();
 
-  if (userResult.rowCount === 0) {
-    throw new AppError(404, 'User not found');
+  try {
+    await client.query('BEGIN');
+
+    // 1. Existence + role check.
+    const userResult = await client.query(
+      `SELECT id, role FROM users WHERE id = $1`,
+      [userId],
+    );
+
+    if (userResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      throw new AppError(404, 'User not found');
+    }
+
+    if (userResult.rows[0].role === 'admin') {
+      await client.query('ROLLBACK');
+      throw new AppError(403, 'Cannot delete admin users');
+    }
+
+    // 2. Snapshot RADIUS usernames across ALL routers owned by this user
+    //    before the cascade removes voucher_meta rows.
+    const voucherResult = await client.query<{ radius_username: string }>(
+      `SELECT vm.radius_username
+         FROM voucher_meta vm
+         JOIN routers r ON vm.router_id = r.id
+        WHERE r.user_id = $1`,
+      [userId],
+    );
+    const radiusUsernames = voucherResult.rows.map((r) => r.radius_username);
+
+    // 3. Purge RADIUS credentials so these usernames can no longer authenticate.
+    if (radiusUsernames.length > 0) {
+      await client.query('DELETE FROM radcheck WHERE username = ANY($1)', [radiusUsernames]);
+      await client.query('DELETE FROM radreply WHERE username = ANY($1)', [radiusUsernames]);
+      await client.query('DELETE FROM radusergroup WHERE username = ANY($1)', [radiusUsernames]);
+    }
+
+    // 3b. Remove nas rows for this user's routers. There is no FK from nas to
+    //     routers, so the routers cascade does not clean these up. Mirrors the
+    //     per-router deleteRouter path for the multi-router user-delete case.
+    await client.query(
+      `DELETE FROM nas WHERE nasname IN (
+         SELECT tunnel_ip FROM routers WHERE user_id = $1 AND tunnel_ip IS NOT NULL
+       )`,
+      [userId],
+    );
+
+    // 4. Delete the user — cascades to routers → voucher_meta.
+    await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  if (userResult.rows[0].role === 'admin') {
-    throw new AppError(403, 'Cannot delete admin users');
-  }
-
-  await pool.query(`DELETE FROM users WHERE id = $1`, [userId]);
 
   logger.info('Admin deleted user', { userId });
 }

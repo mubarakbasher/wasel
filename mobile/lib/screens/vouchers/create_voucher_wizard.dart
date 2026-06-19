@@ -85,9 +85,15 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     setState(() => _isSubmitting = true);
     ref.read(vouchersProvider.notifier).clearError();
 
-    final limitValue = int.parse(_limitValueController.text.trim());
-    final count = int.parse(_countController.text.trim());
-    final price = double.parse(_priceController.text.trim());
+    final limitValue = int.tryParse(_limitValueController.text.trim());
+    final count = int.tryParse(_countController.text.trim());
+    final price = double.tryParse(_priceController.text.trim());
+    // Step validation upstream guarantees these parse; bail safely rather than
+    // submitting a coerced/wrong value if that gating is ever bypassed.
+    if (limitValue == null || count == null || price == null) {
+      setState(() => _isSubmitting = false);
+      return;
+    }
 
     final created = await ref.read(vouchersProvider.notifier).createVouchers(
           routerId: widget.routerId,
@@ -358,7 +364,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
                     labelText: context.tr('vouchers.value'),
-                    hintText: 'e.g. 2',
+                    hintText: context.tr('vouchers.exampleHint', ['2']),
                   ),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return context.tr('common.required');
@@ -383,9 +389,9 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                           DropdownMenuItem(
                               value: 'days', child: Text(context.tr('vouchers.days'))),
                         ]
-                      : const [
-                          DropdownMenuItem(value: 'MB', child: Text('MB')),
-                          DropdownMenuItem(value: 'GB', child: Text('GB')),
+                      : [
+                          DropdownMenuItem(value: 'MB', child: Text(context.tr('vouchers.unitMb'))),
+                          DropdownMenuItem(value: 'GB', child: Text(context.tr('vouchers.unitGb'))),
                         ],
                   onChanged: (v) {
                     if (v != null) setState(() => _limitUnit = v);
@@ -476,14 +482,14 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
   Widget _buildStep2Validity() {
     final presets = <_ValidityPreset>[
-      _ValidityPreset('Open', null),
-      _ValidityPreset('1h', 3600),
-      _ValidityPreset('6h', 21600),
-      _ValidityPreset('12h', 43200),
-      _ValidityPreset('1d', 86400),
-      _ValidityPreset('3d', 259200),
-      _ValidityPreset('7d', 604800),
-      _ValidityPreset('30d', 2592000),
+      _ValidityPreset(context.tr('vouchers.openVoucher'), null),
+      _ValidityPreset(_formatDuration(3600), 3600),
+      _ValidityPreset(_formatDuration(21600), 21600),
+      _ValidityPreset(_formatDuration(43200), 43200),
+      _ValidityPreset(_formatDuration(86400), 86400),
+      _ValidityPreset(_formatDuration(259200), 259200),
+      _ValidityPreset(_formatDuration(604800), 604800),
+      _ValidityPreset(_formatDuration(2592000), 2592000),
     ];
 
     return ListView(
@@ -561,7 +567,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
                     labelText: context.tr('vouchers.value'),
-                    hintText: 'e.g. 5',
+                    hintText: context.tr('vouchers.exampleHint', ['5']),
                   ),
                   onChanged: (_) => _updateCustomValidity(),
                 ),
@@ -654,13 +660,13 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
   }
 
   String _formatDuration(int seconds) {
-    if (seconds < 3600) return '${seconds ~/ 60} minutes';
-    if (seconds < 86400) {
-      final hours = seconds ~/ 3600;
-      return '$hours ${hours == 1 ? "hour" : "hours"}';
+    if (seconds < 3600) {
+      return context.tr('vouchers.durationMinutes', [(seconds ~/ 60).toString()]);
     }
-    final days = seconds ~/ 86400;
-    return '$days ${days == 1 ? "day" : "days"}';
+    if (seconds < 86400) {
+      return context.tr('vouchers.durationHours', [(seconds ~/ 3600).toString()]);
+    }
+    return context.tr('vouchers.durationDays', [(seconds ~/ 86400).toString()]);
   }
 
   // ---- Step 3: Count & Price ----
@@ -690,7 +696,10 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
           TextFormField(
             controller: _countController,
             keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(3),
+            ],
             decoration: InputDecoration(
               labelText: context.tr('vouchers.numberOfVouchers'),
               hintText: '1',
@@ -700,6 +709,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               if (v == null || v.trim().isEmpty) return context.tr('common.required');
               final n = int.tryParse(v.trim());
               if (n == null || n < 1) return context.tr('validation.positive');
+              if (n > 500) return context.tr('vouchers.countMax');
               return null;
             },
           ),

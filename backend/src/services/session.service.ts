@@ -1,10 +1,11 @@
-import { exec } from 'child_process';
 import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import { decrypt } from '../utils/encryption';
+import { isSafeAcctSessionId } from '../utils/radius';
 import { getActiveHotspotUsers, HotspotUser } from './routerOs.service';
 import { disconnectHotspotUser } from './routerOs.service';
+import { sendDisconnectRequest } from './radclient.service';
 
 // ----- Interfaces -----
 
@@ -119,57 +120,100 @@ export async function disconnectSession(
 ): Promise<void> {
   const router = await verifyRouterOwnership(routerId, userId);
 
-  // Disconnect via RouterOS API
-  await disconnectHotspotUser(routerId, userId, sessionId);
+  // Disconnect via RouterOS API and capture the username of the disconnected
+  // session. The RouterOS internal .id (e.g. "*1A") is NOT stored in
+  // radacct.acctsessionid — that column holds the RADIUS Acct-Session-Id AVP
+  // assigned by FreeRADIUS, which is an opaque hex string. We must scope the
+  // radacct lookup by username instead.
+  const username = await disconnectHotspotUser(routerId, userId, sessionId);
 
-  // Fire-and-forget: send CoA Disconnect-Request via radclient
+  // Fire-and-forget: send CoA Disconnect-Request via the safe spawn-based helper.
+  // B1 fix: scope the radacct lookup by USERNAME (Simultaneous-Use=1 guarantees
+  // at most one active session per voucher) so we find the correct radacct row
+  // and pass its real acctsessionid to the CoA packet. Scoping by the RouterOS
+  // .id (the URL :sid param) was broken — that value never appears in radacct.
   try {
     const tunnelIp = router.tunnel_ip;
     const radiusSecret = decrypt(router.radius_secret_enc);
 
-    // Look up the active RADIUS session to get Acct-Session-Id and User-Name
-    const radacctResult = await pool.query(
-      `SELECT acctsessionid, username FROM radacct
-       WHERE nasipaddress = $1 AND acctstoptime IS NULL
+    if (!username) {
+      logger.debug('CoA skipped: disconnectHotspotUser returned empty username', {
+        routerId,
+        sessionId,
+        tunnelIp,
+      });
+      logger.info('Session disconnected', { userId, routerId, sessionId });
+      return;
+    }
+
+    const radacctResult = await pool.query<{ acctsessionid: string; username: string; framedipaddress: string | null }>(
+      `SELECT acctsessionid, username, framedipaddress FROM radacct
+       WHERE nasipaddress = $1 AND username = $2 AND acctstoptime IS NULL
        ORDER BY acctstarttime DESC LIMIT 1`,
-      [tunnelIp]
+      [tunnelIp, username],
     );
 
     if (radacctResult.rows.length > 0) {
-      const { acctsessionid, username } = radacctResult.rows[0];
+      const { acctsessionid, framedipaddress } = radacctResult.rows[0];
 
-      const radclientCmd = `echo "Acct-Session-Id=${acctsessionid},User-Name=${username}" | radclient ${tunnelIp}:3799 disconnect ${radiusSecret}`;
-
-      exec(radclientCmd, (error, stdout, stderr) => {
-        if (error) {
-          logger.warn('CoA Disconnect-Request failed (non-fatal)', {
+      // Defense-in-depth: reject any acctsessionid that contains characters
+      // outside [A-Za-z0-9._-]. An attacker who can write to radacct could
+      // otherwise attempt injection even through the safe helper's stdin path.
+      if (!isSafeAcctSessionId(acctsessionid)) {
+        logger.warn('CoA skipped: acctsessionid contains unsafe characters', {
+          routerId,
+          sessionId,
+          tunnelIp,
+          acctsessionid,
+        });
+      } else {
+        // Non-blocking fire-and-forget — do not await so disconnectSession returns quickly.
+        sendDisconnectRequest({
+          secret: radiusSecret,
+          nasIp: tunnelIp,
+          username,
+          acctSessionId: acctsessionid,
+          framedIp: framedipaddress ?? undefined,
+        }).then((result) => {
+          if (result === 'ack') {
+            logger.info('CoA Disconnect-Request acknowledged', {
+              routerId,
+              sessionId,
+              tunnelIp,
+              username,
+              acctSessionId: acctsessionid,
+            });
+          } else {
+            logger.warn('CoA Disconnect-Request not acknowledged (non-fatal)', {
+              routerId,
+              sessionId,
+              tunnelIp,
+              username,
+              acctSessionId: acctsessionid,
+              result,
+            });
+          }
+        }).catch((err: unknown) => {
+          logger.warn('CoA Disconnect-Request threw unexpectedly (non-fatal)', {
             routerId,
             sessionId,
-            tunnelIp,
-            error: error.message,
-            stderr,
+            error: err instanceof Error ? err.message : String(err),
           });
-        } else {
-          logger.info('CoA Disconnect-Request sent successfully', {
-            routerId,
-            sessionId,
-            tunnelIp,
-            username,
-            stdout: stdout.trim(),
-          });
-        }
-      });
+        });
+      }
     } else {
-      logger.debug('No active radacct session found for CoA disconnect', {
+      logger.debug('No matching active radacct session found for CoA disconnect', {
         routerId,
+        sessionId,
         tunnelIp,
+        username,
       });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.warn('Failed to send CoA Disconnect-Request (non-fatal)', {
       routerId,
       sessionId,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 

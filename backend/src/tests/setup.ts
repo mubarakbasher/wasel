@@ -43,8 +43,19 @@ vi.mock('ioredis', () => {
     async expire(_key: string, _ttl: number) {
       return 1; // always succeeds in tests
     }
-    // Atomic Lua: INCR + EXPIRE — simulated inline for tests
-    async eval(_script: string, _numkeys: number, key: string, _ttl: string) {
+    // Atomic Lua dispatch: branch on script content so each script gets correct semantics.
+    // Consume script (contains 'DEL'): delete from redisStore, return 1 if existed else 0.
+    // INCR+EXPIRE script: increment redisCounters and return the new count.
+    async eval(script: string, _numkeys: number, key: string, _ttl?: string) {
+      if (script.includes('DEL')) {
+        // consume-key script: simulate atomic DEL
+        if (redisStore.has(key)) {
+          redisStore.delete(key);
+          return 1;
+        }
+        return 0;
+      }
+      // INCR+EXPIRE script
       const current = (redisCounters.get(key) ?? 0) + 1;
       redisCounters.set(key, current);
       return current;

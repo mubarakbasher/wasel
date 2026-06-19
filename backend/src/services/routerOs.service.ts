@@ -291,12 +291,15 @@ export async function getActiveHotspotUsers(
  * @param routerId - UUID of the router
  * @param userId - UUID of the authenticated user (for ownership check)
  * @param sessionId - The .id of the active hotspot session (e.g., "*1A")
+ * @returns The username of the disconnected session (used by session.service to
+ *          scope the radacct CoA lookup by username rather than by the RouterOS
+ *          internal .id, which is not stored in radacct.acctsessionid).
  */
 export async function disconnectHotspotUser(
   routerId: string,
   userId: string,
   sessionId: string
-): Promise<void> {
+): Promise<string> {
   const { client, api } = await connectToRouter(routerId, userId);
 
   try {
@@ -321,6 +324,8 @@ export async function disconnectHotspotUser(
       username: session.user,
       macAddress: session['mac-address'],
     });
+
+    return session.user || '';
   } catch (error: unknown) {
     if (error instanceof AppError) throw error;
     logger.error('Failed to disconnect hotspot user', {

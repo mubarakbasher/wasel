@@ -453,6 +453,8 @@ class AppLocalizations {
     'subscription.downgradeTo': 'Downgrade to {0}',
 
     // ── Extra Settings ───────────────────────────────────────────────────────
+    'settings.logoutTitle': 'Log Out?',
+    'settings.logoutConfirm': 'Are you sure you want to log out?',
     'settings.subscriptionSection': 'Subscription',
     'settings.noActiveSubscription': 'No active subscription',
     'settings.daysLeft': '{0}d left',
@@ -473,8 +475,23 @@ class AppLocalizations {
     'settings.saveChanges': 'Save Changes',
     'settings.aboutDescription': 'Wasel is a WiFi hotspot management platform that helps businesses create, manage, and monitor internet access vouchers for their MikroTik routers.',
 
+    // ── Security ─────────────────────────────────────────────────────────────
+    'security.warningTitle': 'Security Warning',
+    'security.warningBody': 'This device appears to be rooted or jailbroken. Using Wasel on a compromised device may put your account and voucher data at risk.',
+    'security.understandContinue': 'I understand, continue',
+
     // ── Notifications screen ─────────────────────────────────────────────────
     'notifications.title': 'Notifications',
+    'notifications.category.subscriptionExpiring': 'Subscription Expiring',
+    'notifications.category.subscriptionExpired': 'Subscription Expired',
+    'notifications.category.paymentConfirmed': 'Payment Confirmed',
+    'notifications.category.routerOffline': 'Router Offline',
+    'notifications.category.routerOnline': 'Router Online',
+    'notifications.category.voucherQuotaLow': 'Voucher Quota Low',
+    'notifications.category.bulkCreationComplete': 'Bulk Creation Complete',
+    'notifications.section.subscription': 'Subscription',
+    'notifications.section.routers': 'Routers',
+    'notifications.section.vouchers': 'Vouchers',
 
     // ── Extra Vouchers (detail / print / create wizard) ─────────────────────
     'vouchers.credentials': 'Credentials',
@@ -515,6 +532,12 @@ class AppLocalizations {
     'vouchers.minutes': 'Minutes',
     'vouchers.hours': 'Hours',
     'vouchers.days': 'Days',
+    'vouchers.exampleHint': 'e.g. {0}',
+    'vouchers.unitMb': 'MB',
+    'vouchers.unitGb': 'GB',
+    'vouchers.durationMinutes': '{0} minutes',
+    'vouchers.durationHours': '{0} hours',
+    'vouchers.durationDays': '{0} days',
     'vouchers.timeLimitHint': 'Total online time allowed for this voucher.',
     'vouchers.dataLimitHint': 'Total data usage allowed for this voucher.',
     'vouchers.voucherValidity': 'Voucher validity',
@@ -538,6 +561,7 @@ class AppLocalizations {
     'vouchers.createNVouchers': 'Create {0} Vouchers',
     'vouchers.wifiVoucher': 'WiFi Voucher',
     'vouchers.plan': 'Plan',
+    'vouchers.countMax': 'You can create at most 500 vouchers at once.',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'No active sessions',
@@ -645,6 +669,8 @@ class AppLocalizations {
     'payments.resubmitSuccess': 'New receipt uploaded. Admin will review it again.',
 
     // ── Reports ─────────────────────────────────────────────────────────────
+    'reports.rangeSeparator': 'to',
+    'reports.dataInbound': '{0} in',
     'reports.title': 'Reports',
     'reports.exportCsv': 'Export CSV',
     'reports.reportType': 'Report Type',
@@ -681,6 +707,9 @@ class AppLocalizations {
     'reports.csvDataLines': 'CSV data  ·  {0} lines',
     'reports.copiedToClipboard': 'Copied to clipboard',
     'reports.copy': 'Copy',
+
+    // ── Common extra ─────────────────────────────────────────────────────────
+    'common.notAvailable': 'N/A',
 
     // ── Subscription gate ────────────────────────────────────────────────────
     'subscription.required': 'Subscription Required',
@@ -1083,6 +1112,8 @@ class AppLocalizations {
     'subscription.downgradeTo': 'تخفيض إلى {0}',
 
     // ── Extra Settings ───────────────────────────────────────────────────────
+    'settings.logoutTitle': 'تسجيل الخروج؟',
+    'settings.logoutConfirm': 'هل أنت متأكد من تسجيل الخروج؟',
     'settings.subscriptionSection': 'الاشتراك',
     'settings.noActiveSubscription': 'لا يوجد اشتراك نشط',
     'settings.daysLeft': 'متبقي {0} يوم',
@@ -1103,8 +1134,23 @@ class AppLocalizations {
     'settings.saveChanges': 'حفظ التغييرات',
     'settings.aboutDescription': 'واصل هو منصة إدارة نقاط اتصال WiFi تساعد الشركات في إنشاء وإدارة ومراقبة قسائم الوصول للإنترنت لراوترات MikroTik.',
 
+    // ── Security ─────────────────────────────────────────────────────────────
+    'security.warningTitle': 'تحذير أمني',
+    'security.warningBody': 'يبدو أن هذا الجهاز مكسور الحماية (روت/جيلبريك). قد يؤدي استخدام واصل على جهاز مخترق إلى تعريض حسابك وبيانات قسائمك للخطر.',
+    'security.understandContinue': 'أفهم، متابعة',
+
     // ── Notifications screen ─────────────────────────────────────────────────
     'notifications.title': 'الإشعارات',
+    'notifications.category.subscriptionExpiring': 'اشتراك على وشك الانتهاء',
+    'notifications.category.subscriptionExpired': 'انتهى الاشتراك',
+    'notifications.category.paymentConfirmed': 'تم تأكيد الدفع',
+    'notifications.category.routerOffline': 'الراوتر غير متصل',
+    'notifications.category.routerOnline': 'الراوتر متصل',
+    'notifications.category.voucherQuotaLow': 'رصيد القسائم منخفض',
+    'notifications.category.bulkCreationComplete': 'اكتمل الإنشاء المجمّع',
+    'notifications.section.subscription': 'الاشتراك',
+    'notifications.section.routers': 'أجهزة الراوتر',
+    'notifications.section.vouchers': 'القسائم',
 
     // ── Extra Vouchers (detail / print / create wizard) ─────────────────────
     'vouchers.credentials': 'بيانات الاعتماد',
@@ -1145,6 +1191,12 @@ class AppLocalizations {
     'vouchers.minutes': 'دقائق',
     'vouchers.hours': 'ساعات',
     'vouchers.days': 'أيام',
+    'vouchers.exampleHint': 'مثال: {0}',
+    'vouchers.unitMb': 'MB',
+    'vouchers.unitGb': 'GB',
+    'vouchers.durationMinutes': '{0} دقيقة',
+    'vouchers.durationHours': '{0} ساعة',
+    'vouchers.durationDays': '{0} يوم',
     'vouchers.timeLimitHint': 'إجمالي وقت الاتصال المسموح لهذه القسيمة.',
     'vouchers.dataLimitHint': 'إجمالي البيانات المسموح بها لهذه القسيمة.',
     'vouchers.voucherValidity': 'صلاحية القسيمة',
@@ -1168,6 +1220,7 @@ class AppLocalizations {
     'vouchers.createNVouchers': 'إنشاء {0} قسيمة',
     'vouchers.wifiVoucher': 'قسيمة WiFi',
     'vouchers.plan': 'الباقة',
+    'vouchers.countMax': 'يمكنك إنشاء 500 قسيمة كحد أقصى في المرة الواحدة.',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'لا توجد جلسات نشطة',
@@ -1274,6 +1327,8 @@ class AppLocalizations {
     'payment.referenceCopied': 'تم نسخ الرقم المرجعي',
 
     // ── Reports ─────────────────────────────────────────────────────────────
+    'reports.rangeSeparator': 'إلى',
+    'reports.dataInbound': '{0} وارد',
     'reports.title': 'التقارير',
     'reports.exportCsv': 'تصدير CSV',
     'reports.reportType': 'نوع التقرير',
@@ -1310,6 +1365,9 @@ class AppLocalizations {
     'reports.csvDataLines': 'بيانات CSV  ·  {0} سطر',
     'reports.copiedToClipboard': 'تم النسخ إلى الحافظة',
     'reports.copy': 'نسخ',
+
+    // ── Common extra ─────────────────────────────────────────────────────────
+    'common.notAvailable': 'غير متاح',
 
     // ── Subscription gate ────────────────────────────────────────────────────
     'subscription.required': 'الاشتراك مطلوب',

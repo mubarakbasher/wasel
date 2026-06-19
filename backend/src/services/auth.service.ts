@@ -150,13 +150,12 @@ export async function refresh(refreshTokenStr: string): Promise<AuthTokens> {
     throw new AppError(401, 'Invalid or expired refresh token', 'REFRESH_TOKEN_INVALID');
   }
 
-  const valid = await tokenService.isRefreshTokenValid(payload.userId, payload.jti);
-  if (!valid) {
+  // Atomically consume the token — only the caller that deletes the Redis key
+  // proceeds. Closes the rotation race (F4).
+  const consumed = await tokenService.consumeRefreshToken(payload.userId, payload.jti);
+  if (!consumed) {
     throw new AppError(401, 'Refresh token has been revoked', 'REFRESH_TOKEN_REVOKED');
   }
-
-  // Rotate: revoke old, issue new
-  await tokenService.revokeRefreshToken(payload.userId, payload.jti);
 
   const result = await pool.query(
     'SELECT id, name, email, role FROM users WHERE id = $1 AND is_active = TRUE',

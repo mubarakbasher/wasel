@@ -383,6 +383,108 @@ describe('POST /api/v1/admin/users/:id/routers', () => {
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /api/v1/admin/users/:id
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/v1/admin/users/:id', () => {
+  const DELETE_URL = `/api/v1/admin/users/${TARGET_USER_ID}`;
+
+  it('returns 404 when user does not exist', async () => {
+    // Transaction: BEGIN → SELECT user (empty) → ROLLBACK
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)   // BEGIN
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // SELECT users (not found)
+      .mockResolvedValueOnce(undefined);  // ROLLBACK
+
+    const res = await request(app)
+      .delete(DELETE_URL)
+      .set(adminAuthHeader());
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 403 when target user role is admin', async () => {
+    // Transaction: BEGIN → SELECT user (admin role) → ROLLBACK
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)   // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: TARGET_USER_ID, role: 'admin' }], rowCount: 1 }) // SELECT users
+      .mockResolvedValueOnce(undefined);  // ROLLBACK
+
+    const res = await request(app)
+      .delete(DELETE_URL)
+      .set(adminAuthHeader());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('deletes user and purges RADIUS rows when vouchers exist', async () => {
+    const voucher1 = 'u-voucher-aaa';
+    const voucher2 = 'u-voucher-bbb';
+
+    // Transaction sequence (all on client):
+    // BEGIN → SELECT user → SELECT voucher_meta → DELETE radcheck →
+    // DELETE radreply → DELETE radusergroup → DELETE users → COMMIT
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)  // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: TARGET_USER_ID, role: 'user' }], rowCount: 1 }) // SELECT users
+      .mockResolvedValueOnce({ rows: [  // SELECT voucher_meta JOIN routers
+        { radius_username: voucher1 },
+        { radius_username: voucher2 },
+      ] })
+      .mockResolvedValueOnce({ rowCount: 2 })  // DELETE radcheck
+      .mockResolvedValueOnce({ rowCount: 2 })  // DELETE radreply
+      .mockResolvedValueOnce({ rowCount: 2 })  // DELETE radusergroup
+      .mockResolvedValueOnce({ rowCount: 1 })  // DELETE users
+      .mockResolvedValueOnce(undefined);        // COMMIT
+
+    // The audit_logs INSERT in the controller runs through pool.query after the transaction.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app)
+      .delete(DELETE_URL)
+      .set(adminAuthHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const calls = mockClientQuery.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((q) => q === 'BEGIN')).toBe(true);
+    expect(calls.some((q) => q.includes('radcheck'))).toBe(true);
+    expect(calls.some((q) => q.includes('radreply'))).toBe(true);
+    expect(calls.some((q) => q.includes('radusergroup'))).toBe(true);
+    expect(calls.some((q) => q === 'COMMIT')).toBe(true);
+
+    const radcheckCall = mockClientQuery.mock.calls.find((c) => String(c[0]).includes('radcheck'));
+    expect(radcheckCall).toBeDefined();
+    expect(radcheckCall![1]).toEqual([[voucher1, voucher2]]);
+  });
+
+  it('deletes user WITHOUT touching RADIUS tables when no vouchers exist', async () => {
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)  // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: TARGET_USER_ID, role: 'user' }], rowCount: 1 }) // SELECT users
+      .mockResolvedValueOnce({ rows: [] })  // SELECT voucher_meta (none)
+      .mockResolvedValueOnce({ rowCount: 1 })  // DELETE users
+      .mockResolvedValueOnce(undefined);        // COMMIT
+
+    // audit_logs INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app)
+      .delete(DELETE_URL)
+      .set(adminAuthHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const calls = mockClientQuery.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((q) => q.includes('radcheck'))).toBe(false);
+    expect(calls.some((q) => q.includes('radreply'))).toBe(false);
+    expect(calls.some((q) => q.includes('radusergroup'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PUT /api/v1/admin/users/:id — is_verified flip unblocks login
 // ---------------------------------------------------------------------------
 

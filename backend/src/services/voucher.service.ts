@@ -2,6 +2,9 @@ import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import crypto from 'crypto';
+import { decrypt } from '../utils/encryption';
+import { isSafeAcctSessionId } from '../utils/radius';
+import { sendDisconnectRequest } from './radclient.service';
 
 // ----- Interfaces -----
 
@@ -480,41 +483,106 @@ export async function createVouchers(
   try {
     await client.query('BEGIN');
 
-    const vouchers: VoucherMetaRow[] = [];
-
-    for (const cred of credentials) {
-      // Insert into voucher_meta with new columns
-      const result = await client.query<VoucherMetaRow>(
-        `INSERT INTO voucher_meta
-         (user_id, router_id, radius_username, group_profile, comment, status,
-          limit_type, limit_value, limit_unit, validity_seconds, price)
-         VALUES ($1, $2, $3, NULL, NULL, 'unused', $4, $5, $6, $7, $8)
-         RETURNING *`,
-        [
-          userId, routerId, cred.username,
-          data.limitType,
-          normalizedValue,
-          data.limitUnit,
-          data.validitySeconds ?? null,
-          data.price,
-        ],
-      );
-      vouchers.push(result.rows[0]);
-
-      // Insert RADIUS entries (username = password, no radusergroup).
-      await insertRadiusEntriesV2(
-        client, cred.username, cred.username,
-        data.limitType, normalizedValue,
-        data.validitySeconds,
-      );
-    }
-
-    // Increment vouchers_used in subscription
-    await client.query(
-      `UPDATE subscriptions SET vouchers_used = vouchers_used + $1
-       WHERE user_id = $2 AND status = 'active'`,
+    // ── F2 atomic quota guard ─────────────────────────────────────────────────
+    // Increment vouchers_used only when the resulting total stays within quota.
+    // voucher_quota = -1 means Enterprise (unlimited). Using a single UPDATE
+    // with an inline guard makes this race-condition-free: two concurrent
+    // creates that both passed the pre-check (checkQuota middleware) cannot
+    // both succeed here — only one will find rowCount > 0.
+    const quotaResult = await client.query<{ vouchers_used: number }>(
+      `UPDATE subscriptions
+       SET vouchers_used = vouchers_used + $1
+       WHERE user_id = $2
+         AND status = 'active'
+         AND (voucher_quota = -1 OR vouchers_used + $1 <= voucher_quota)
+       RETURNING vouchers_used`,
       [count, userId],
     );
+
+    if ((quotaResult.rowCount ?? 0) === 0) {
+      await client.query('ROLLBACK');
+      throw new AppError(403, 'Voucher quota exceeded. Upgrade your plan for more vouchers.', 'QUOTA_EXCEEDED');
+    }
+
+    // ── Batched INSERT: voucher_meta ──────────────────────────────────────────
+    // Build a single multi-row INSERT instead of N round-trips. All vouchers in
+    // a batch share the same limit_type/limit_value/limit_unit/validity/price.
+    const vmValues: unknown[] = [];
+    const vmPlaceholders: string[] = [];
+    let pIdx = 1;
+    for (const cred of credentials) {
+      vmPlaceholders.push(
+        `($${pIdx++}, $${pIdx++}, $${pIdx++}, NULL, NULL, 'unused', $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`,
+      );
+      vmValues.push(
+        userId, routerId, cred.username,
+        data.limitType, normalizedValue, data.limitUnit,
+        data.validitySeconds ?? null, data.price,
+      );
+    }
+    const vmResult = await client.query<VoucherMetaRow>(
+      `INSERT INTO voucher_meta
+         (user_id, router_id, radius_username, group_profile, comment, status,
+          limit_type, limit_value, limit_unit, validity_seconds, price)
+       VALUES ${vmPlaceholders.join(', ')}
+       RETURNING *`,
+      vmValues,
+    );
+    const vouchers = vmResult.rows;
+
+    // ── Batched INSERT: radcheck ──────────────────────────────────────────────
+    // Determine the limit attribute name and values once for the whole batch —
+    // all vouchers share the same limitType and normalizedValue.
+    const rcValues: unknown[] = [];
+    const rcPlaceholders: string[] = [];
+    let rcIdx = 1;
+
+    for (const cred of credentials) {
+      // Cleartext-Password (username == password for numeric vouchers)
+      rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
+      rcValues.push(cred.username, 'Cleartext-Password', ':=', cred.username);
+
+      // Simultaneous-Use = 1
+      rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
+      rcValues.push(cred.username, 'Simultaneous-Use', ':=', '1');
+
+      // Limit attribute
+      if (data.limitType === 'time') {
+        rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
+        rcValues.push(cred.username, 'Max-All-Session', ':=', String(normalizedValue));
+      } else if (normalizedValue <= 4294967295) {
+        rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
+        rcValues.push(cred.username, 'Max-Total-Octets', ':=', String(normalizedValue));
+      } else {
+        // > 4 GB: split into base + gigawords
+        const gigawords = Math.floor(normalizedValue / 4294967296);
+        const remainder = normalizedValue % 4294967296;
+        rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
+        rcValues.push(cred.username, 'Max-Total-Octets', ':=', String(remainder));
+        rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
+        rcValues.push(cred.username, 'Max-Total-Octets-Gigawords', ':=', String(gigawords));
+      }
+    }
+
+    await client.query(
+      `INSERT INTO radcheck (username, attribute, op, value) VALUES ${rcPlaceholders.join(', ')}`,
+      rcValues,
+    );
+
+    // ── Batched INSERT: radreply (Session-Timeout) ────────────────────────────
+    if (data.validitySeconds && data.validitySeconds > 0) {
+      const rrValues: unknown[] = [];
+      const rrPlaceholders: string[] = [];
+      let rrIdx = 1;
+      for (const cred of credentials) {
+        rrPlaceholders.push(`($${rrIdx++}, $${rrIdx++}, $${rrIdx++}, $${rrIdx++})`);
+        rrValues.push(cred.username, 'Session-Timeout', ':=', String(data.validitySeconds));
+      }
+      await client.query(
+        `INSERT INTO radreply (username, attribute, op, value) VALUES ${rrPlaceholders.join(', ')}`,
+        rrValues,
+      );
+    }
 
     await client.query('COMMIT');
 
@@ -858,8 +926,10 @@ export async function bulkDeleteVouchers(
       search: body.filter.search,
     });
     const whereClause = conditions.join(' AND ');
+    // Cap filter-mode deletes at 500 rows per request to prevent unbounded
+    // single-transaction deletes that could lock the table for seconds.
     const result = await pool.query<{ id: string; radius_username: string }>(
-      `SELECT vm.id, vm.radius_username FROM voucher_meta vm WHERE ${whereClause}`,
+      `SELECT vm.id, vm.radius_username FROM voucher_meta vm WHERE ${whereClause} LIMIT 500`,
       values,
     );
     voucherRows = result.rows;
@@ -924,11 +994,12 @@ export async function bulkDeleteVouchers(
 }
 
 /**
- * Send a CoA Disconnect-Request to terminate active sessions for a username.
- * Uses radclient via CLI. Non-fatal if unavailable.
+ * Send CoA Disconnect-Requests to terminate all active RADIUS sessions for a
+ * username. Uses the shell-free sendDisconnectRequest helper (spawn, no /bin/sh).
+ * Non-fatal: logs warnings on nak/timeout but does not throw.
  */
 async function sendCoaDisconnect(userId: string, routerId: string, username: string): Promise<void> {
-  const routerResult = await pool.query(
+  const routerResult = await pool.query<{ tunnel_ip: string | null; radius_secret_enc: string | null }>(
     'SELECT tunnel_ip, radius_secret_enc FROM routers WHERE id = $1 AND user_id = $2',
     [routerId, userId],
   );
@@ -938,34 +1009,50 @@ async function sendCoaDisconnect(userId: string, routerId: string, username: str
   const router = routerResult.rows[0];
   if (!router.tunnel_ip || !router.radius_secret_enc) return;
 
-  const sessionResult = await pool.query(
-    `SELECT acctsessionid FROM radacct
+  const sessionResult = await pool.query<{ acctsessionid: string; framedipaddress: string | null }>(
+    `SELECT acctsessionid, framedipaddress FROM radacct
      WHERE username = $1 AND nasipaddress = $2 AND acctstoptime IS NULL`,
     [username, router.tunnel_ip],
   );
 
   if (sessionResult.rows.length === 0) return;
 
-  const { decrypt } = await import('../utils/encryption');
   const radiusSecret = decrypt(router.radius_secret_enc);
 
-  const { exec } = await import('child_process');
-  const { promisify } = await import('util');
-  const execAsync = promisify(exec);
-
   for (const session of sessionResult.rows) {
-    const coaCommand = `echo "Acct-Session-Id=${session.acctsessionid},User-Name=${username}" | radclient ${router.tunnel_ip}:3799 disconnect ${radiusSecret}`;
-    try {
-      await execAsync(coaCommand, { timeout: 5000 });
-      logger.info('CoA disconnect sent', {
+    // Defense-in-depth: acctsessionid comes from FreeRADIUS accounting records
+    // written by the router — an attacker who controls router firmware or the
+    // WireGuard peer could craft a malicious value. Reject anything outside
+    // [A-Za-z0-9._-] before forwarding to any external process.
+    if (!isSafeAcctSessionId(session.acctsessionid)) {
+      logger.warn('CoA skipped: acctsessionid contains unsafe characters', {
         username,
         sessionId: session.acctsessionid,
         nasIp: router.tunnel_ip,
       });
-    } catch {
-      logger.warn('radclient disconnect failed', {
+      continue;
+    }
+
+    const result = await sendDisconnectRequest({
+      secret: radiusSecret,
+      nasIp: router.tunnel_ip,
+      username,
+      acctSessionId: session.acctsessionid,
+      framedIp: session.framedipaddress ?? undefined,
+    });
+
+    if (result === 'ack') {
+      logger.info('CoA disconnect acknowledged', {
         username,
         sessionId: session.acctsessionid,
+        nasIp: router.tunnel_ip,
+      });
+    } else {
+      logger.warn('CoA disconnect not acknowledged (non-fatal)', {
+        username,
+        sessionId: session.acctsessionid,
+        nasIp: router.tunnel_ip,
+        result,
       });
     }
   }
