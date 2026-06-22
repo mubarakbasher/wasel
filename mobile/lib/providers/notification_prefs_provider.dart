@@ -1,7 +1,7 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/notification_preference.dart';
 import '../services/notification_service.dart';
+import '../utils/error_messages.dart';
 
 class NotificationPrefsState {
   final List<NotificationPreference> preferences;
@@ -58,22 +58,7 @@ class NotificationPrefsNotifier extends StateNotifier<NotificationPrefsState> {
     }
   }
 
-  String _extractError(dynamic e) {
-    if (e is DioException) {
-      final data = e.response?.data;
-      if (data is Map<String, dynamic> && data.containsKey('error')) {
-        final error = data['error'];
-        if (error is Map<String, dynamic> && error.containsKey('message')) {
-          return error['message'] as String;
-        }
-      }
-      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
-        return 'Connection timed out. Please try again.';
-      }
-      return 'Network error. Please check your connection.';
-    }
-    return e.toString();
-  }
+  String _extractError(dynamic e) => errorToDisplay(e);
 }
 
 final notificationPrefsProvider = StateNotifierProvider<NotificationPrefsNotifier, NotificationPrefsState>(

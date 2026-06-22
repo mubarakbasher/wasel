@@ -40,10 +40,16 @@ class AppLocalizations {
     Locale('ar'),
   ];
 
-  /// Return the translated value for [key], or the key itself if not found.
+  /// Returns true when [key] exists in the English (canonical) map.
+  bool hasKey(String key) => _en.containsKey(key);
+
+  /// Return the translated value for [key], falling back first to English
+  /// then to the raw key itself if not found.
   /// Supports optional [args] for positional replacement of `{0}`, `{1}`, etc.
   String translate(String key, [List<String>? args]) {
-    String value = _localizedValues[locale.languageCode]?[key] ?? key;
+    String value = _localizedValues[locale.languageCode]?[key]
+        ?? _en[key]
+        ?? key;
     if (args != null) {
       for (var i = 0; i < args.length; i++) {
         value = value.replaceAll('{$i}', args[i]);
@@ -297,6 +303,8 @@ class AppLocalizations {
     'error.unknown': 'An unexpected error occurred.',
     'error.quotaExceeded': 'You have reached your voucher quota for this month.',
     'error.routerOffline': 'Router is currently offline.',
+    'error.security': 'Could not establish a secure connection. Please try again.',
+    'error.rateLimited': 'Too many attempts. Please wait a moment and try again.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'Wasel',
@@ -956,6 +964,8 @@ class AppLocalizations {
     'error.unknown': 'حدث خطأ غير متوقع.',
     'error.quotaExceeded': 'لقد وصلت إلى الحد الأقصى من الكروت لهذا الشهر.',
     'error.routerOffline': 'الراوتر غير متصل حالياً.',
+    'error.security': 'تعذّر إنشاء اتصال آمن. يرجى المحاولة مرة أخرى.',
+    'error.rateLimited': 'محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'واصل',
@@ -1418,4 +1428,14 @@ extension AppLocalizationsX on BuildContext {
   /// Shorthand: `context.tr('common.loading')`.
   String tr(String key, [List<String>? args]) =>
       AppLocalizations.of(this).translate(key, args);
+
+  /// Translates [value] when it is a known i18n key, otherwise returns it
+  /// unchanged.  Safe to call with either a dot-notation key (e.g.
+  /// `"error.timeout"`) or an already-localised backend message — in the
+  /// latter case the string is passed through without modification.
+  String trOrRaw(String value, [List<String>? args]) {
+    final loc = AppLocalizations.of(this);
+    if (loc.hasKey(value)) return loc.translate(value, args);
+    return value;
+  }
 }

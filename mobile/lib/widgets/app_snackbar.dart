@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../i18n/app_localizations.dart';
 import '../theme/theme.dart';
 
 /// The only sanctioned way to show snackbars — colored + iconed per variant
@@ -8,7 +9,7 @@ abstract final class AppSnackbar {
       _show(context, message, AppColors.success, Icons.check_circle_outline);
 
   static void error(BuildContext context, String message) =>
-      _show(context, message, AppColors.error, Icons.error_outline);
+      _show(context, context.trOrRaw(message), AppColors.error, Icons.error_outline);
 
   static void info(BuildContext context, String message) =>
       _show(context, message, AppColors.textPrimary, Icons.info_outline);

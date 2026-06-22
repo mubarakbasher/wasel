@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/user.dart';
@@ -8,6 +9,7 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
 import '../services/secure_storage.dart';
+import '../utils/error_messages.dart';
 import 'notifications_provider.dart';
 import 'subscription_provider.dart';
 import 'support_provider.dart';
@@ -121,7 +123,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final ref = _ref;
     if (ref == null) return;
     try {
-      ref.read(subscriptionProvider.notifier).loadSubscription();
+      ref
+          .read(subscriptionProvider.notifier)
+          .loadSubscription()
+          .catchError((Object e, StackTrace st) {
+        // loadSubscription catches internally and writes to state.error, so
+        // rejection here is unexpected. Log it for diagnostics only.
+        debugPrint('[AuthNotifier] loadSubscription unexpected error: $e\n$st');
+      });
     } catch (_) {
       // Provider may not be initialised yet — safe to ignore.
     }
@@ -166,10 +175,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
         isLoading: false,
       );
       _loadUserScopedProviders();
-    } catch (e) {
-      // Tokens are invalid or network error — clear everything.
-      await _storage.clearAll();
-      state = const AuthState();
+    } catch (_) {
+      // Network/transient failure during validation must NOT log the user out.
+      // A genuinely invalid token is already handled by the API client refresh
+      // interceptor (onSessionExpired). Keep the cached session and stop the
+      // spinner; it self-heals on the next online request.
+      state = state.copyWith(isLoading: false);
     }
   }
 
@@ -436,7 +447,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   void _handleSessionExpired() {
     _resetUserScopedProviders();
     _storage.clearAll();
-    state = const AuthState(error: 'Session expired. Please log in again.');
+    state = const AuthState(error: 'error.unauthorized');
   }
 
   /// Extracts the backend error code (e.g. 'EMAIL_NOT_VERIFIED') from a
@@ -455,31 +466,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return null;
   }
 
-  /// Extracts a human-readable error message from a [DioException] response
-  /// body, falling back to a generic message for other exception types.
-  static String _extractErrorMessage(Object error) {
-    if (error is DioException) {
-      // Try to read the structured error from the API response body.
-      final data = error.response?.data;
-      if (data is Map<String, dynamic>) {
-        // Backend shape: { "error": { "message": "..." } }
-        final errorObj = data['error'];
-        if (errorObj is Map<String, dynamic> && errorObj['message'] is String) {
-          return errorObj['message'] as String;
-        }
-        // Alternative flat shape: { "message": "..." }
-        if (data['message'] is String) {
-          return data['message'] as String;
-        }
-      }
-      // Dio-level message (e.g. timeout, connection refused)
-      if (error.message != null && error.message!.isNotEmpty) {
-        return error.message!;
-      }
-      return 'Network error. Please check your connection and try again.';
-    }
-    return error.toString();
-  }
+  /// Extracts a human-readable error message or i18n key from the exception.
+  /// Delegates to the centralised [errorToDisplay] mapper.
+  static String _extractErrorMessage(Object error) => errorToDisplay(error);
 }
 
 // ---------------------------------------------------------------------------

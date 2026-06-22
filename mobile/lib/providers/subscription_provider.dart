@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/bank_info.dart';
+import '../utils/error_messages.dart';
 import '../models/payment_record.dart';
 import '../models/plan.dart';
 import '../models/subscription.dart';
@@ -233,30 +233,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     state = const SubscriptionState();
   }
 
-  String _extractError(dynamic e) {
-    if (e is DioException) {
-      final data = e.response?.data;
-      if (data is Map<String, dynamic>) {
-        final error = data['error'];
-        if (error is Map<String, dynamic> && error['message'] is String) {
-          return error['message'] as String;
-        }
-        if (error is String && error.isNotEmpty) return error;
-        if (data['message'] is String) return data['message'] as String;
-      }
-      if (data is String && data.isNotEmpty) return data;
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout) {
-        return 'Connection timed out. Please try again.';
-      }
-      final status = e.response?.statusCode;
-      if (status != null) {
-        return 'Server error ($status). Please try again.';
-      }
-      return 'Network error. Please check your connection.';
-    }
-    return e.toString();
-  }
+  String _extractError(dynamic e) => errorToDisplay(e);
 }
 
 final subscriptionProvider =

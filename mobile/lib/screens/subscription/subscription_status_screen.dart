@@ -290,7 +290,7 @@ class _SubscriptionStatusScreenState
               const Icon(Icons.error_outline,
                   size: 48, color: AppColors.error),
               const SizedBox(height: AppSpacing.lg),
-              Text(state.error!,
+              Text(context.trOrRaw(state.error!),
                   style: AppTypography.body, textAlign: TextAlign.center),
               const SizedBox(height: AppSpacing.lg),
               ElevatedButton(

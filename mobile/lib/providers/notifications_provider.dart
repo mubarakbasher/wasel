@@ -1,8 +1,8 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/app_notification.dart';
 import '../services/notifications_service.dart';
+import '../utils/error_messages.dart';
 
 class NotificationsState {
   final List<AppNotification> items;
@@ -131,17 +131,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
     state = const NotificationsState();
   }
 
-  String _extractError(dynamic e) {
-    if (e is DioException) {
-      final data = e.response?.data;
-      if (data is Map<String, dynamic> && data['error'] is Map<String, dynamic>) {
-        final msg = (data['error'] as Map<String, dynamic>)['message'];
-        if (msg is String) return msg;
-      }
-      return 'Network error';
-    }
-    return e.toString();
-  }
+  String _extractError(dynamic e) => errorToDisplay(e);
 }
 
 final notificationsProvider =

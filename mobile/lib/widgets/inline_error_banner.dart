@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../i18n/app_localizations.dart';
 import '../theme/theme.dart';
 
 /// Inline error banner for forms and auth screens — replaces the hand-rolled
@@ -31,7 +32,7 @@ class InlineErrorBanner extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
-                message,
+                context.trOrRaw(message),
                 style: AppTypography.footnote.copyWith(
                   color: AppColors.errorDark,
                 ),

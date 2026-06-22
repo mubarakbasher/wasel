@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../i18n/app_localizations.dart';
 import '../theme/theme.dart';
 
 /// Full-page load-failure state with an optional retry action.
@@ -39,7 +40,7 @@ class ErrorState extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              message,
+              context.trOrRaw(message),
               style: AppTypography.body,
               textAlign: TextAlign.center,
             ),
@@ -48,7 +49,7 @@ class ErrorState extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
-                label: Text(retryLabel ?? 'Retry'),
+                label: Text(retryLabel ?? context.tr('common.retry')),
               ),
             ],
           ],

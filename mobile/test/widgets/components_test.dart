@@ -1,10 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wasel/i18n/app_localizations.dart';
 import 'package:wasel/theme/theme.dart';
 import 'package:wasel/widgets/widgets.dart';
 
+/// Wraps [child] in a MaterialApp that supplies AppLocalizations so that
+/// widgets using context.trOrRaw() do not throw a null-check failure.
+/// Phase 1 (error-handling centralisation) made ErrorState, InlineErrorBanner,
+/// and AppSnackbar depend on AppLocalizations — this wrapper satisfies that.
 Widget _wrap(Widget child) => MaterialApp(
       theme: AppTheme.light,
+      locale: const Locale('en'),
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: Scaffold(body: child),
     );
 
@@ -14,6 +28,7 @@ void main() {
       await tester.pumpWidget(
         _wrap(const StatusBadge(label: 'Active', color: AppColors.success)),
       );
+      await tester.pumpAndSettle();
       expect(find.text('Active'), findsOneWidget);
       final text = tester.widget<Text>(find.text('Active'));
       expect(text.style?.color, AppColors.successDark);
@@ -24,6 +39,7 @@ void main() {
       await tester.pumpWidget(
         _wrap(const StatusBadge(label: 'X', color: Color(0xFF123456))),
       );
+      await tester.pumpAndSettle();
       final text = tester.widget<Text>(find.text('X'));
       expect(text.style?.color, const Color(0xFF123456));
     });
@@ -33,6 +49,7 @@ void main() {
         _wrap(const StatusBadge(
             label: 'On', color: AppColors.success, dot: true)),
       );
+      await tester.pumpAndSettle();
       expect(find.text('On'), findsOneWidget);
     });
   });
@@ -51,6 +68,7 @@ void main() {
           ),
         )),
       );
+      await tester.pumpAndSettle();
       expect(find.byIcon(Icons.inbox), findsOneWidget);
       expect(find.text('Nothing here'), findsOneWidget);
       expect(find.text('Add something'), findsOneWidget);
@@ -69,6 +87,7 @@ void main() {
           onRetry: () => retried = true,
         )),
       );
+      await tester.pumpAndSettle();
       expect(find.text('Failed to load'), findsOneWidget);
       await tester.tap(find.text('Retry'));
       expect(retried, isTrue);
@@ -76,6 +95,7 @@ void main() {
 
     testWidgets('hides retry button without onRetry', (tester) async {
       await tester.pumpWidget(_wrap(const ErrorState(message: 'Oops')));
+      await tester.pumpAndSettle();
       expect(find.byType(FilledButton), findsNothing);
     });
   });
@@ -85,6 +105,7 @@ void main() {
       await tester.pumpWidget(
         _wrap(const InlineErrorBanner(message: 'Invalid credentials')),
       );
+      await tester.pumpAndSettle();
       expect(find.text('Invalid credentials'), findsOneWidget);
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
     });
@@ -108,6 +129,7 @@ void main() {
           child: const Text('Open'),
         ),
       )));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
@@ -136,6 +158,7 @@ void main() {
           child: const Text('Open'),
         ),
       )));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
       final button = tester.widget<FilledButton>(find.byType(FilledButton));
@@ -163,6 +186,7 @@ void main() {
           ],
         ),
       )));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('S'));
       await tester.pump();
@@ -186,6 +210,7 @@ void main() {
         onTap: () => tapped = true,
         child: const Text('Card'),
       )));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Card'));
       expect(tapped, isTrue);
     });
@@ -198,6 +223,7 @@ void main() {
         value: '128',
         icon: Icons.confirmation_number,
       )));
+      await tester.pumpAndSettle();
       expect(find.text('Active vouchers'), findsOneWidget);
       expect(find.text('128'), findsOneWidget);
     });
@@ -206,6 +232,8 @@ void main() {
   group('Skeleton', () {
     testWidgets('pulses without errors', (tester) async {
       await tester.pumpWidget(_wrap(const SkeletonList(itemCount: 3)));
+      // Skeleton uses a looping animation that never settles — pump a fixed
+      // duration instead of pumpAndSettle which would time out.
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.byType(SkeletonCard), findsNWidgets(3));
     });

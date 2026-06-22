@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 
 import '../config/app_config.dart';
 import '../navigation/app_router.dart' show appNavigatorKey;
+import '../utils/error_messages.dart';
 import 'secure_storage.dart';
 
 // ---------------------------------------------------------------------------
@@ -330,10 +331,16 @@ class ApiClient {
     try {
       final refreshToken = await _storage.getRefreshToken();
       if (refreshToken == null) {
-        throw DioException(
-          requestOptions: failedRequest,
-          message: 'No refresh token available',
-        );
+        // No refresh token — unrecoverable. Drain any waiters that queued
+        // behind this in-flight refresh so their handlers don't hang, then
+        // end the session.
+        for (final completer in _refreshQueue) {
+          completer.completeError(error);
+        }
+        _refreshQueue.clear();
+        await _storage.clearAll();
+        onSessionExpired?.call();
+        return handler.next(error);
       }
 
       // Use a fresh Dio instance so the interceptor doesn't attach the
@@ -367,15 +374,17 @@ class ApiClient {
       final retryResponse = await _dio.fetch(failedRequest);
       return handler.resolve(retryResponse);
     } catch (refreshError) {
-      // Refresh failed — reject all queued requests.
       for (final completer in _refreshQueue) {
         completer.completeError(refreshError);
       }
       _refreshQueue.clear();
-
-      await _storage.clearAll();
-      onSessionExpired?.call();
-
+      // Only end the session if the server rejected the refresh token. A
+      // network/transport failure keeps the tokens so the session recovers
+      // when connectivity returns.
+      if (isAuthRejection(refreshError)) {
+        await _storage.clearAll();
+        onSessionExpired?.call();
+      }
       return handler.next(error);
     } finally {
       _isRefreshing = false;
