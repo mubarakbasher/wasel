@@ -134,6 +134,84 @@ void main() {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // isInitializing gate tests (Phase 1 splash-gate feature)
+  // -------------------------------------------------------------------------
+
+  group('AuthNotifier — isInitializing splash gate', () {
+    test(
+        'freshly constructed AuthNotifier has isInitializing == true '
+        'before any restore call',
+        () {
+      // No stub setup needed — we just inspect the initial state.
+      expect(notifier.state.isInitializing, isTrue,
+          reason: 'the router must hold on /splash until restore completes');
+      expect(notifier.state.isAuthenticated, isFalse,
+          reason: 'no session is known yet');
+    });
+
+    test(
+        'tryRestoreSession with tokens + cached user + getProfile succeeds: '
+        'isInitializing == false AND isAuthenticated == true',
+        () async {
+      // Arrange
+      when(() => storage.hasTokens()).thenAnswer((_) async => true);
+      when(() => storage.getUserData()).thenAnswer((_) async => _userJson());
+      when(() => svc.getProfile()).thenAnswer((_) async => _kUser);
+      when(() => storage.setUserData(any())).thenAnswer((_) async {});
+
+      // Act
+      await notifier.tryRestoreSession();
+
+      // Assert
+      expect(notifier.state.isInitializing, isFalse,
+          reason: 'splash gate must release after restore completes');
+      expect(notifier.state.isAuthenticated, isTrue,
+          reason: 'online restore must authenticate the user');
+    });
+
+    test(
+        'tryRestoreSession with tokens + cached user + getProfile throws '
+        'connectionError (offline): isInitializing == false AND '
+        'isAuthenticated == true (local cache is enough)',
+        () async {
+      // Arrange: tokens present, cached user present, network unreachable.
+      when(() => storage.hasTokens()).thenAnswer((_) async => true);
+      when(() => storage.getUserData()).thenAnswer((_) async => _userJson());
+      when(() => svc.getProfile()).thenThrow(_connectionError());
+
+      // Act
+      await notifier.tryRestoreSession();
+
+      // Assert: the splash gate must lift AND the session must survive.
+      // isInitializing flips false from the local-cache path (before the
+      // getProfile network call), so it must not depend on getProfile.
+      expect(notifier.state.isInitializing, isFalse,
+          reason: 'splash gate must release even when offline');
+      expect(notifier.state.isAuthenticated, isTrue,
+          reason: 'cached user keeps the session alive offline');
+    });
+
+    test(
+        'tryRestoreSession with NO tokens stored: '
+        'isInitializing == false AND isAuthenticated == false '
+        'AND getProfile is never called',
+        () async {
+      // Arrange: storage has no tokens.
+      when(() => storage.hasTokens()).thenAnswer((_) async => false);
+
+      // Act
+      await notifier.tryRestoreSession();
+
+      // Assert
+      expect(notifier.state.isInitializing, isFalse,
+          reason: 'splash gate must release even when there is no session');
+      expect(notifier.state.isAuthenticated, isFalse,
+          reason: 'no tokens == no session');
+      verifyNever(() => svc.getProfile());
+    });
+  });
+
   group('AuthNotifier — session expiry via ApiClient.onSessionExpired', () {
     test(
         'onSessionExpired fires => isAuthenticated becomes false, '

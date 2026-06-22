@@ -32,6 +32,11 @@ class AuthState {
   /// arg is empty — makes the flow survive any URL / navigation quirk.
   final String? pendingVerificationEmail;
 
+  /// True only during the initial session-restore pass on cold start.
+  /// The router shows /splash while this is true and redirects to the correct
+  /// destination once it flips false — prevents the login-flash on warm start.
+  final bool isInitializing;
+
   const AuthState({
     this.isAuthenticated = false,
     this.accessToken,
@@ -41,6 +46,7 @@ class AuthState {
     this.error,
     this.errorCode,
     this.pendingVerificationEmail,
+    this.isInitializing = false,
   });
 
   AuthState copyWith({
@@ -52,6 +58,7 @@ class AuthState {
     String? error,
     String? errorCode,
     String? pendingVerificationEmail,
+    bool? isInitializing,
     bool clearError = false,
     bool clearUser = false,
     bool clearTokens = false,
@@ -68,6 +75,7 @@ class AuthState {
       pendingVerificationEmail: clearPendingVerificationEmail
           ? null
           : (pendingVerificationEmail ?? this.pendingVerificationEmail),
+      isInitializing: isInitializing ?? this.isInitializing,
     );
   }
 }
@@ -84,7 +92,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   })  : _ref = ref,
         _authService = authService ?? AuthService(),
         _storage = storageService ?? SecureStorageService(),
-        super(const AuthState()) {
+        super(const AuthState(isInitializing: true)) {
     // Auto-logout when the API client detects an unrecoverable 401.
     ApiClient().onSessionExpired = _handleSessionExpired;
   }
@@ -145,42 +153,43 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> tryRestoreSession() async {
     try {
       final hasTokens = await _storage.hasTokens();
-      if (!hasTokens) return;
+      if (!hasTokens) return; // finally clears isInitializing -> router shows /login
 
-      state = state.copyWith(isLoading: true, clearError: true);
-
-      // Try to load cached user data first for instant UI.
+      // Local, offline-capable auth decision from the cached user.
       final cachedJson = await _storage.getUserData();
+      var restoredFromCache = false;
       if (cachedJson != null) {
         try {
-          final user = User.fromJson(
-            json.decode(cachedJson) as Map<String, dynamic>,
-          );
-          state = state.copyWith(
-            isAuthenticated: true,
-            user: user,
-          );
+          final user = User.fromJson(json.decode(cachedJson) as Map<String, dynamic>);
+          state = state.copyWith(isAuthenticated: true, user: user);
+          restoredFromCache = true;
         } catch (_) {
-          // Cached data is corrupt — continue to fetch from server.
+          // Corrupt cache -> fall through to server validation.
         }
       }
 
-      // Validate tokens by fetching the profile from the server.
+      // With a local identity, leave the splash NOW — don't block on the
+      // network (getProfile can hang up to the 15s timeout when offline).
+      // Without one, hold the splash through getProfile so we never flash
+      // /login before the server decides (the finally still clears it).
+      state = restoredFromCache
+          ? state.copyWith(isInitializing: false, isLoading: true, clearError: true)
+          : state.copyWith(isLoading: true, clearError: true);
+
+      // Background validation / refresh of the cached session.
       final user = await _authService.getProfile();
       await _storage.setUserData(json.encode(user.toJson()));
-
-      state = state.copyWith(
-        isAuthenticated: true,
-        user: user,
-        isLoading: false,
-      );
+      state = state.copyWith(isAuthenticated: true, user: user, isLoading: false);
       _loadUserScopedProviders();
     } catch (_) {
-      // Network/transient failure during validation must NOT log the user out.
-      // A genuinely invalid token is already handled by the API client refresh
-      // interceptor (onSessionExpired). Keep the cached session and stop the
-      // spinner; it self-heals on the next online request.
+      // Network/transient failure must NOT log out — keep the cached session.
       state = state.copyWith(isLoading: false);
+    } finally {
+      // Safety net for every exit path (no tokens, corrupt cache, network
+      // error). Idempotent — skip the write if it's already cleared.
+      if (state.isInitializing) {
+        state = state.copyWith(isInitializing: false);
+      }
     }
   }
 

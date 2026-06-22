@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../screens/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
 import '../screens/auth/verify_email_screen.dart';
@@ -56,26 +57,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     navigatorKey: appNavigatorKey,
-    initialLocation: '/login',
+    initialLocation: '/splash',
     refreshListenable: listenable,
     redirect: (context, state) {
       final authState = ref.read(authProvider);
       final isAuthenticated = authState.isAuthenticated;
-      final isAuthRoute = state.matchedLocation == '/login' ||
-          state.matchedLocation == '/register' ||
-          state.matchedLocation == '/verify-email' ||
-          state.matchedLocation == '/forgot-password' ||
-          state.matchedLocation == '/reset-password';
+      final isInitializing = authState.isInitializing;
+      final loc = state.matchedLocation;
+      final isSplash = loc == '/splash';
+      final isAuthRoute = loc == '/login' ||
+          loc == '/register' ||
+          loc == '/verify-email' ||
+          loc == '/forgot-password' ||
+          loc == '/reset-password';
 
-      if (!isAuthenticated && !isAuthRoute) {
-        return '/login';
-      }
-      if (isAuthenticated && isAuthRoute) {
-        return '/dashboard';
-      }
+      if (isInitializing) return isSplash ? null : '/splash';
+      if (isSplash) return isAuthenticated ? '/dashboard' : '/login';
+      if (!isAuthenticated && !isAuthRoute) return '/login';
+      if (isAuthenticated && isAuthRoute) return '/dashboard';
       return null;
     },
     routes: [
+      // Splash (cold-start session restore)
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
       // Auth routes (no bottom nav)
       GoRoute(
         path: '/login',
