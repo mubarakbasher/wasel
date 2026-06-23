@@ -181,6 +181,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await _storage.setUserData(json.encode(user.toJson()));
       state = state.copyWith(isAuthenticated: true, user: user, isLoading: false);
       _loadUserScopedProviders();
+      _syncLocaleToBackend();
     } catch (_) {
       // Network/transient failure must NOT log out — keep the cached session.
       state = state.copyWith(isLoading: false);
@@ -220,6 +221,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         clearPendingVerificationEmail: true,
       );
       _loadUserScopedProviders();
+      _syncLocaleToBackend();
     } catch (e) {
       final code = _extractErrorCode(e);
       state = state.copyWith(
@@ -450,6 +452,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Clear the current error (e.g. when the user dismisses an error dialog).
   void clearError() {
     state = state.copyWith(clearError: true);
+  }
+
+  /// Reads the locally persisted locale and pushes it to the backend so
+  /// server-generated push notifications can be localized. Fire-and-forget —
+  /// errors (offline, unauthenticated) are swallowed inside [AuthService.updateLanguage].
+  void _syncLocaleToBackend() {
+    _storage.getLocale().then((code) {
+      if (code != null) {
+        _authService.updateLanguage(code);
+      }
+    }).catchError((_) {
+      // Swallow storage errors — sync is best-effort.
+    });
   }
 
   /// Called by [ApiClient.onSessionExpired] when token refresh fails.

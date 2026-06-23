@@ -118,7 +118,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     final router = routersState.routers
         .where((r) => r.id == widget.routerId)
         .firstOrNull;
-    final routerName = router?.name ?? 'Wi-Fi';
+    final routerName = router?.name ?? context.tr('routers.defaultRouterName');
 
     showDialog(
       context: context,

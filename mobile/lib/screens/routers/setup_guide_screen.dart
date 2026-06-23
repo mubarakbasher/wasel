@@ -27,6 +27,7 @@ class SetupGuideScreen extends ConsumerStatefulWidget {
 class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _stepKeys = {};
+  bool _didScrollToInitialStep = false;
 
   @override
   void dispose() {
@@ -103,8 +104,9 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
   }
 
   Widget _buildGuide(RouterSetupGuide guide) {
-    // Scroll to the target step after the list is laid out.
-    if (widget.initialStep != null) {
+    // Scroll to the target step after the list is first laid out.
+    if (widget.initialStep != null && !_didScrollToInitialStep) {
+      _didScrollToInitialStep = true;
       WidgetsBinding.instance.addPostFrameCallback(
           (_) => _scrollToInitialStep());
     }
@@ -221,7 +223,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        step.title,
+                        context.tr('routers.setup.step${step.step}.title'),
                         style: AppTypography.headline.copyWith(fontSize: 15),
                       ),
                     ),
@@ -232,7 +234,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
                 padding: const EdgeInsets.fromLTRB(
                     AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
                 child: Text(
-                  step.description,
+                  context.tr('routers.setup.step${step.step}.desc'),
                   style: AppTypography.caption1
                       .copyWith(color: AppColors.textSecondary),
                 ),

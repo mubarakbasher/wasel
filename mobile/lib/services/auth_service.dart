@@ -114,6 +114,20 @@ class AuthService {
     return User.fromJson(response.data['data'] as Map<String, dynamic>);
   }
 
+  /// PUT /auth/profile — partial update to sync the device UI language.
+  ///
+  /// Best-effort: all errors (401 unauthenticated, network, server) are
+  /// swallowed here so callers can fire-and-forget without try/catch.
+  /// [languageCode] must be 'en' or 'ar'.
+  Future<void> updateLanguage(String languageCode) async {
+    try {
+      await _api.put('/auth/profile', data: {'language': languageCode});
+    } catch (_) {
+      // Intentionally swallowed — sync is best-effort and must never surface
+      // to the UI (e.g. user not authenticated yet, or device is offline).
+    }
+  }
+
   /// POST /auth/change-password
   /// Body: { currentPassword, newPassword }
   Future<void> changePassword({

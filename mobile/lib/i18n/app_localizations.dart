@@ -246,6 +246,8 @@ class AppLocalizations {
     'subscription.expired': 'Expired',
     'subscription.pending': 'Pending',
     'subscription.cancelled': 'Cancelled',
+    'subscription.pending_change': 'Pending Change',
+    'subscription.expiring': 'Expiring',
     'subscription.vouchersUsed': '{0} of {1} used',
 
     // ── Settings ──────────────────────────────────────────────────────────────
@@ -421,6 +423,35 @@ class AppLocalizations {
     'routers.leaveAnyway': 'Leave anyway',
     'routers.copyAllCommands': 'Copy all commands',
     'routers.copyAllSnackbar': 'Copied — paste into RouterOS terminal',
+    'routers.defaultRouterName': 'Wi-Fi',
+
+    // ── Router setup steps ────────────────────────────────────────────────────
+    'routers.setup.step1.title': 'Create the WireGuard interface',
+    'routers.setup.step1.desc': 'Creates a new WireGuard interface named "wg-wasel" on your router.',
+    'routers.setup.step2.title': 'Add the Wasel VPS as a WireGuard peer',
+    'routers.setup.step2.desc': 'Tells your router how to reach the Wasel VPS through the encrypted tunnel. The persistent-keepalive ensures the tunnel stays up even behind NAT.',
+    'routers.setup.step3.title': 'Assign the tunnel IP address',
+    'routers.setup.step3.desc': 'Gives your router its unique address on the VPN.',
+    'routers.setup.step4.title': 'Route the Wasel subnet through the tunnel',
+    'routers.setup.step4.desc': 'Without this route only the /30 pair is reachable; ping to the VPS tunnel IP would fail even though the handshake succeeds.',
+    'routers.setup.step5.title': 'Create Wasel API user',
+    'routers.setup.step5.desc': 'Wasel uses this user to read live session data and run health probes over the tunnel. Keep it — deleting it stops Wasel from monitoring the router.',
+    'routers.setup.step6.title': 'Enable RouterOS API',
+    'routers.setup.step6.desc': 'Allows Wasel to connect over the tunnel to read sessions and run health probes.',
+    'routers.setup.step7.title': 'Add the RADIUS server',
+    'routers.setup.step7.desc': 'Points your router at the Wasel RADIUS server for voucher authentication. service=hotspot,login is required on some RouterOS versions.',
+    'routers.setup.step8.title': 'Enable CoA listener',
+    'routers.setup.step8.desc': 'Allows Wasel to disconnect voucher sessions and push policy updates from the server side.',
+    'routers.setup.step9.title': 'Enable RADIUS on the hotspot profile',
+    'routers.setup.step9.desc': 'Tells the hotspot to authenticate users via RADIUS instead of the local user database.',
+    'routers.setup.step10.title': 'Set hotspot user profile defaults + disable MAC-cookie auto-login',
+    'routers.setup.step10.desc': 'Sets idle and keepalive timeouts, and disables the MAC-cookie that would otherwise auto-resume returning clients without contacting RADIUS — required so voucher validity and disable status are enforced on every reconnect.',
+    'routers.setup.step11.title': 'Firewall — allow RADIUS authentication traffic',
+    'routers.setup.step11.desc': 'Allows UDP port 1812 from the Wasel VPS so RADIUS authentication packets are not dropped.',
+    'routers.setup.step12.title': 'Firewall — allow RADIUS CoA traffic',
+    'routers.setup.step12.desc': 'Allows UDP port 3799 from the Wasel VPS so CoA disconnect and policy-push packets are not dropped.',
+    'routers.setup.step13.title': 'Firewall — allow WireGuard',
+    'routers.setup.step13.desc': 'Allows UDP port 51820 so the WireGuard tunnel can be established even if the default firewall has a drop rule.',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} selected',
@@ -501,6 +532,25 @@ class AppLocalizations {
     'notifications.section.routers': 'Routers',
     'notifications.section.vouchers': 'Vouchers',
 
+    // ── Notification titles (per-category) ───────────────────────────────────
+    'notifications.title.router_offline': 'Router Offline',
+    'notifications.title.router_online': 'Router Back Online',
+    'notifications.title.subscription_expiring': 'Subscription Expiring Soon',
+    'notifications.title.subscription_expired': 'Subscription Expired',
+    'notifications.title.payment_confirmed': 'Payment Confirmed',
+    'notifications.title.voucher_quota_low': 'Voucher Quota Running Low',
+    'notifications.title.bulk_creation_complete': 'Bulk Vouchers Created',
+    'notifications.title.support_reply': 'Support replied',
+
+    // ── Notification bodies (per-category) ───────────────────────────────────
+    'notifications.body.router_offline': '{0} has been offline for {1} minutes',
+    'notifications.body.router_online': '{0} is back online (was offline for {1} min)',
+    'notifications.body.subscription_expiring': 'Your subscription expires in {0} day(s). Renew now to avoid service interruption.',
+    'notifications.body.subscription_expired': 'Your subscription has expired. Renew to continue managing your routers.',
+    'notifications.body.payment_confirmed': 'Your {0} subscription is now active. Enjoy!',
+    'notifications.body.voucher_quota_low': 'You have used {0}% of your monthly voucher quota.',
+    'notifications.body.bulk_creation_complete': '{0} vouchers created for {1}.',
+
     // ── Extra Vouchers (detail / print / create wizard) ─────────────────────
     'vouchers.credentials': 'Credentials',
     'vouchers.voucherCode': 'Voucher Code',
@@ -543,6 +593,12 @@ class AppLocalizations {
     'vouchers.exampleHint': 'e.g. {0}',
     'vouchers.unitMb': 'MB',
     'vouchers.unitGb': 'GB',
+    'vouchers.unitKb': 'KB',
+    'vouchers.unitMinShort': 'min',
+    'vouchers.unitHrShort': 'hrs',
+    'vouchers.unitDayShort': 'days',
+    'vouchers.usageOfUsed': '{0} of {1} used',
+    'vouchers.limitUnknown': 'Unknown',
     'vouchers.durationMinutes': '{0} minutes',
     'vouchers.durationHours': '{0} hours',
     'vouchers.durationDays': '{0} days',
@@ -908,6 +964,8 @@ class AppLocalizations {
     'subscription.expired': 'منتهي',
     'subscription.pending': 'معلّق',
     'subscription.cancelled': 'ملغى',
+    'subscription.pending_change': 'تغيير معلّق',
+    'subscription.expiring': 'على وشك الانتهاء',
     'subscription.vouchersUsed': '{0} من {1} مستخدمة',
 
     // ── Settings ──────────────────────────────────────────────────────────────
@@ -969,7 +1027,7 @@ class AppLocalizations {
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'واصل',
-    'common.appTagline': 'مدير نقاط اتصال Mikrotik',
+    'common.appTagline': 'مدير نقاط اتصال مايكروتيك',
     'common.all': 'الكل',
     'common.unused': 'غير مستخدمة',
     'common.continue_': 'متابعة',
@@ -1038,7 +1096,7 @@ class AppLocalizations {
     'routers.stepInfo': 'معلومات الراوتر',
     'routers.stepDetails': 'التفاصيل',
     'routers.setupNotAvailable': 'دليل الإعداد غير متوفر',
-    'routers.setupInstructions': 'اتبع هذه الخطوات لتوصيل راوتر Mikrotik الخاص بك بواصل.',
+    'routers.setupInstructions': 'اتبع هذه الخطوات لتوصيل راوتر مايكروتيك الخاص بك بواصل.',
     'routers.lastSeenLabel': 'آخر ظهور',
     'routers.guideCopied': 'تم نسخ دليل الإعداد',
     'routers.stepCopied': 'تم نسخ الخطوة {0}',
@@ -1073,7 +1131,7 @@ class AppLocalizations {
     'routers.generating': 'جارٍ الإنشاء...',
     'routers.vpnAssigned': 'عنوان VPN الخاص بك: {0}',
     'routers.scriptInstructions':
-        'الصق هذه الأوامر الـ 13 في طرفية Mikrotik (SSH أو Winbox أو WebFig). بمجرد اللصق يكون الراوتر مهيأً بالكامل.',
+        'الصق هذه الأوامر الـ 13 في طرفية مايكروتيك (SSH أو Winbox أو WebFig). بمجرد اللصق يكون الراوتر مهيأً بالكامل.',
     'routers.nameYourRouter':
         'أعط راوترك اسماً. سيقوم واصل بإنشاء سكريبت إعداد متكامل تلصقه في RouterOS.',
     'routers.leaveWarningTitle': 'مغادرة هذه الشاشة؟',
@@ -1082,6 +1140,35 @@ class AppLocalizations {
     'routers.leaveAnyway': 'غادر على أي حال',
     'routers.copyAllCommands': 'نسخ جميع الأوامر',
     'routers.copyAllSnackbar': 'تم النسخ — الصق في طرفية RouterOS',
+    'routers.defaultRouterName': 'واي فاي',
+
+    // ── Router setup steps ────────────────────────────────────────────────────
+    'routers.setup.step1.title': 'إنشاء واجهة WireGuard',
+    'routers.setup.step1.desc': 'ينشئ واجهة WireGuard جديدة باسم "wg-wasel" على راوترك.',
+    'routers.setup.step2.title': 'إضافة خادم Wasel VPS كنقطة اتصال WireGuard',
+    'routers.setup.step2.desc': 'يخبر راوترك بكيفية الوصول إلى خادم Wasel VPS عبر النفق المشفّر. تضمن persistent-keepalive بقاء النفق نشطاً حتى خلف NAT.',
+    'routers.setup.step3.title': 'تعيين عنوان IP للنفق',
+    'routers.setup.step3.desc': 'يمنح راوترك عنوانه الفريد على الشبكة الافتراضية الخاصة.',
+    'routers.setup.step4.title': 'توجيه شبكة Wasel عبر النفق',
+    'routers.setup.step4.desc': 'بدون هذا المسار لن يكون بالإمكان الوصول إلا لزوج /30؛ وسيفشل ping إلى عنوان IP لنفق الخادم حتى وإن نجح التحقق.',
+    'routers.setup.step5.title': 'إنشاء مستخدم Wasel API',
+    'routers.setup.step5.desc': 'يستخدم Wasel هذا المستخدم لقراءة بيانات الجلسة الحية وتشغيل فحوصات الصحة عبر النفق. احتفظ به — حذفه سيوقف Wasel عن مراقبة الراوتر.',
+    'routers.setup.step6.title': 'تفعيل RouterOS API',
+    'routers.setup.step6.desc': 'يتيح لـ Wasel الاتصال عبر النفق لقراءة الجلسات وتشغيل فحوصات الصحة.',
+    'routers.setup.step7.title': 'إضافة خادم RADIUS',
+    'routers.setup.step7.desc': 'يوجّه راوترك إلى خادم RADIUS الخاص بـ Wasel لمصادقة القسائم. service=hotspot,login مطلوب في بعض إصدارات RouterOS.',
+    'routers.setup.step8.title': 'تفعيل مستمع CoA',
+    'routers.setup.step8.desc': 'يتيح لـ Wasel قطع جلسات القسائم ودفع تحديثات السياسة من جانب الخادم.',
+    'routers.setup.step9.title': 'تفعيل RADIUS على ملف تعريف Hotspot',
+    'routers.setup.step9.desc': 'يأمر الـ Hotspot بمصادقة المستخدمين عبر RADIUS بدلاً من قاعدة بيانات المستخدمين المحلية.',
+    'routers.setup.step10.title': 'ضبط إعدادات ملف مستخدم Hotspot وتعطيل تسجيل الدخول التلقائي بـ MAC-cookie',
+    'routers.setup.step10.desc': 'يضبط مهلتَي الخمول والإبقاء على الاتصال، ويعطّل MAC-cookie الذي كان سيستأنف الاتصال تلقائياً دون مراجعة RADIUS — ضروري لضمان تطبيق صلاحية القسيمة وحالة التعطيل عند كل إعادة اتصال.',
+    'routers.setup.step11.title': 'جدار الحماية — السماح بحركة مصادقة RADIUS',
+    'routers.setup.step11.desc': 'يسمح بمنفذ UDP 1812 من خادم Wasel VPS حتى لا تُحذف حزم مصادقة RADIUS.',
+    'routers.setup.step12.title': 'جدار الحماية — السماح بحركة CoA الخاصة بـ RADIUS',
+    'routers.setup.step12.desc': 'يسمح بمنفذ UDP 3799 من خادم Wasel VPS حتى لا تُحذف حزم قطع الاتصال وتحديثات السياسة.',
+    'routers.setup.step13.title': 'جدار الحماية — السماح بـ WireGuard',
+    'routers.setup.step13.desc': 'يسمح بمنفذ UDP 51820 حتى يمكن إنشاء نفق WireGuard حتى لو كان جدار الحماية الافتراضي يحتوي على قاعدة حذف.',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} محدد',
@@ -1142,7 +1229,7 @@ class AppLocalizations {
     'settings.passwordChanged': 'تم تغيير كلمة المرور بنجاح',
     'settings.emailCannotChange': 'لا يمكن تغيير البريد الإلكتروني',
     'settings.saveChanges': 'حفظ التغييرات',
-    'settings.aboutDescription': 'واصل هو منصة إدارة نقاط اتصال WiFi تساعد الشركات في إنشاء وإدارة ومراقبة قسائم الوصول للإنترنت لراوترات MikroTik.',
+    'settings.aboutDescription': 'واصل هو منصة إدارة نقاط اتصال واي فاي تساعد الشركات في إنشاء وإدارة ومراقبة قسائم الوصول للإنترنت لراوترات مايكروتيك.',
 
     // ── Security ─────────────────────────────────────────────────────────────
     'security.warningTitle': 'تحذير أمني',
@@ -1161,6 +1248,25 @@ class AppLocalizations {
     'notifications.section.subscription': 'الاشتراك',
     'notifications.section.routers': 'أجهزة الراوتر',
     'notifications.section.vouchers': 'القسائم',
+
+    // ── Notification titles (per-category) ───────────────────────────────────
+    'notifications.title.router_offline': 'الراوتر غير متصل',
+    'notifications.title.router_online': 'عاد الراوتر للاتصال',
+    'notifications.title.subscription_expiring': 'اشتراكك على وشك الانتهاء',
+    'notifications.title.subscription_expired': 'انتهى الاشتراك',
+    'notifications.title.payment_confirmed': 'تم تأكيد الدفع',
+    'notifications.title.voucher_quota_low': 'رصيد القسائم منخفض',
+    'notifications.title.bulk_creation_complete': 'تم إنشاء القسائم',
+    'notifications.title.support_reply': 'ردّ الدعم',
+
+    // ── Notification bodies (per-category) ───────────────────────────────────
+    'notifications.body.router_offline': '{0} غير متصل منذ {1} دقيقة',
+    'notifications.body.router_online': 'عاد {0} للاتصال (كان غير متصل لمدة {1} دقيقة)',
+    'notifications.body.subscription_expiring': 'ينتهي اشتراكك خلال {0} يوم. جدّد الآن لتجنّب انقطاع الخدمة.',
+    'notifications.body.subscription_expired': 'انتهى اشتراكك. جدّد للمتابعة في إدارة راوتراتك.',
+    'notifications.body.payment_confirmed': 'اشتراك {0} الخاص بك أصبح نشطاً الآن. استمتع!',
+    'notifications.body.voucher_quota_low': 'لقد استخدمت {0}% من حصة القسائم الشهرية.',
+    'notifications.body.bulk_creation_complete': 'تم إنشاء {0} قسيمة لـ {1}.',
 
     // ── Extra Vouchers (detail / print / create wizard) ─────────────────────
     'vouchers.credentials': 'بيانات الاعتماد',
@@ -1204,6 +1310,12 @@ class AppLocalizations {
     'vouchers.exampleHint': 'مثال: {0}',
     'vouchers.unitMb': 'MB',
     'vouchers.unitGb': 'GB',
+    'vouchers.unitKb': 'KB',
+    'vouchers.unitMinShort': 'دقيقة',
+    'vouchers.unitHrShort': 'ساعة',
+    'vouchers.unitDayShort': 'يوم',
+    'vouchers.usageOfUsed': '{0} من {1} مستخدم',
+    'vouchers.limitUnknown': 'غير معروف',
     'vouchers.durationMinutes': '{0} دقيقة',
     'vouchers.durationHours': '{0} ساعة',
     'vouchers.durationDays': '{0} يوم',
@@ -1228,7 +1340,7 @@ class AppLocalizations {
     'vouchers.each': '{0} لكل قسيمة',
     'vouchers.openNoExpiry': 'مفتوحة (بدون انتهاء)',
     'vouchers.createNVouchers': 'إنشاء {0} قسيمة',
-    'vouchers.wifiVoucher': 'قسيمة WiFi',
+    'vouchers.wifiVoucher': 'قسيمة واي فاي',
     'vouchers.plan': 'الباقة',
     'vouchers.countMax': 'يمكنك إنشاء 500 قسيمة كحد أقصى في المرة الواحدة.',
 

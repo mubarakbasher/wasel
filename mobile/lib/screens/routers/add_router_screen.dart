@@ -405,7 +405,7 @@ class _StepCardHeader extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              step.title,
+              context.tr('routers.setup.step${step.step}.title'),
               style: AppTypography.headline.copyWith(fontSize: 15),
             ),
           ),
@@ -425,7 +425,7 @@ class _StepDescription extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
       child: Text(
-        step.description,
+        context.tr('routers.setup.step${step.step}.desc'),
         style: AppTypography.caption1.copyWith(color: AppColors.textSecondary),
       ),
     );

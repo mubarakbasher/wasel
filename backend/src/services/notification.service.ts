@@ -2,9 +2,11 @@ import * as admin from 'firebase-admin';
 import logger from '../config/logger';
 import { config } from '../config';
 import { redis } from '../config/redis';
+import { pool } from '../config/database';
 import * as deviceTokenService from './deviceToken.service';
 import * as notificationPrefsService from './notificationPrefs.service';
 import * as inboxService from './inbox.service';
+import { buildNotificationText } from '../i18n/notificationStrings';
 
 // Firebase initialization (graceful no-op if credentials missing)
 let fcmAvailable = false;
@@ -45,12 +47,37 @@ export function getFcmInitError(): string | null {
 // Dedup categories (prevent repeated notifications for same event within 24h)
 const DEDUP_CATEGORIES = ['subscription_expiring', 'subscription_expired', 'voucher_quota_low'];
 
+/**
+ * Look up the stored language preference for a user.
+ * Returns 'en' if the row is missing or the value is not a recognised locale.
+ */
+export async function getUserLanguage(userId: string): Promise<'en' | 'ar'> {
+  try {
+    const result = await pool.query<{ language: string }>(
+      'SELECT language FROM users WHERE id = $1',
+      [userId],
+    );
+    const lang = result.rows[0]?.language;
+    return lang === 'ar' ? 'ar' : 'en';
+  } catch (err) {
+    logger.warn('Failed to fetch user language, defaulting to en', { userId, error: err });
+    return 'en';
+  }
+}
+
+/**
+ * Core push-notification dispatcher.
+ *
+ * @param userId   - recipient
+ * @param category - notification category key (matches i18n template + dedup logic)
+ * @param params   - named placeholder values for the template; also stored verbatim in FCM data
+ * @param opts     - optional extra FCM data fields (merged last, category always wins)
+ */
 async function sendPushToUser(
   userId: string,
   category: string,
-  title: string,
-  body: string,
-  data?: Record<string, string>,
+  params: Record<string, string>,
+  opts?: { extraData?: Record<string, string> },
 ): Promise<void> {
   try {
     // 1. Check preference
@@ -71,30 +98,41 @@ async function sendPushToUser(
       await redis.set(dedupKey, '1', 'EX', 86400);
     }
 
-    // 3. Persist to in-app inbox (source of truth — independent of FCM delivery).
+    // 3. Resolve user language and build localized title/body
+    const lang = await getUserLanguage(userId);
+    const { title, body } = buildNotificationText(category, lang, params);
+
+    // 4. Persist to in-app inbox (source of truth — independent of FCM delivery).
     try {
+      const data: Record<string, string> = { ...params, ...(opts?.extraData ?? {}) };
       await inboxService.createNotification({ userId, category, title, body, data });
     } catch (err) {
       logger.error('Failed to persist inbox notification', { error: err, userId, category });
     }
 
-    // 4. Get device tokens
+    // 5. Get device tokens
     const tokens = await deviceTokenService.getTokensForUser(userId);
     if (tokens.length === 0) {
       logger.debug('No device tokens for user', { userId });
       return;
     }
 
-    // 5. Send via FCM or log
+    // 6. Send via FCM or log
     if (!fcmAvailable) {
       logger.info('Push notification (FCM unavailable)', { userId, category, title, body });
       return;
     }
 
+    const fcmData: Record<string, string> = {
+      category,
+      ...params,
+      ...(opts?.extraData ?? {}),
+    };
+
     const message: admin.messaging.MulticastMessage = {
       tokens: tokens.map(t => t.token),
       notification: { title, body },
-      data: { category, ...(data || {}) },
+      data: fcmData,
       android: { priority: 'high' as const },
       apns: { payload: { aps: { sound: 'default' } } },
     };
@@ -124,63 +162,45 @@ async function sendPushToUser(
 export async function notifyRouterOffline(params: {
   userId: string; routerId: string; routerName: string; tunnelIp: string; offlineDurationMs: number;
 }): Promise<void> {
-  const minutes = Math.round(params.offlineDurationMs / 60000);
-  await sendPushToUser(params.userId, 'router_offline',
-    'Router Offline',
-    `${params.routerName} has been offline for ${minutes} minutes`,
-    { routerId: params.routerId },
+  const minutes = String(Math.round(params.offlineDurationMs / 60000));
+  await sendPushToUser(
+    params.userId,
+    'router_offline',
+    { routerId: params.routerId, routerName: params.routerName, minutes },
   );
 }
 
 export async function notifyRouterOnline(params: {
   userId: string; routerId: string; routerName: string; tunnelIp: string; wasOfflineForMs: number;
 }): Promise<void> {
-  const minutes = Math.round(params.wasOfflineForMs / 60000);
-  await sendPushToUser(params.userId, 'router_online',
-    'Router Back Online',
-    `${params.routerName} is back online (was offline for ${minutes} min)`,
-    { routerId: params.routerId },
+  const minutes = String(Math.round(params.wasOfflineForMs / 60000));
+  await sendPushToUser(
+    params.userId,
+    'router_online',
+    { routerId: params.routerId, routerName: params.routerName, minutes },
   );
 }
 
 export async function notifySubscriptionExpiring(userId: string, daysLeft: number): Promise<void> {
-  await sendPushToUser(userId, 'subscription_expiring',
-    'Subscription Expiring Soon',
-    `Your subscription expires in ${daysLeft} day${daysLeft > 1 ? 's' : ''}. Renew now to avoid service interruption.`,
-  );
+  await sendPushToUser(userId, 'subscription_expiring', { daysLeft: String(daysLeft) });
 }
 
 export async function notifySubscriptionExpired(userId: string): Promise<void> {
-  await sendPushToUser(userId, 'subscription_expired',
-    'Subscription Expired',
-    'Your subscription has expired. Renew to continue managing your routers.',
-  );
+  await sendPushToUser(userId, 'subscription_expired', {});
 }
 
 export async function notifyPaymentConfirmed(userId: string, planName: string): Promise<void> {
-  await sendPushToUser(userId, 'payment_confirmed',
-    'Payment Confirmed',
-    `Your ${planName} subscription is now active. Enjoy!`,
-  );
+  await sendPushToUser(userId, 'payment_confirmed', { planName });
 }
 
 export async function notifyVoucherQuotaLow(userId: string, percentUsed: number): Promise<void> {
-  await sendPushToUser(userId, 'voucher_quota_low',
-    'Voucher Quota Running Low',
-    `You have used ${percentUsed}% of your monthly voucher quota.`,
-  );
+  await sendPushToUser(userId, 'voucher_quota_low', { percentUsed: String(percentUsed) });
 }
 
 export async function notifyBulkCreationComplete(userId: string, count: number, routerName: string): Promise<void> {
-  await sendPushToUser(userId, 'bulk_creation_complete',
-    'Bulk Vouchers Created',
-    `${count} vouchers created for ${routerName}.`,
-  );
+  await sendPushToUser(userId, 'bulk_creation_complete', { count: String(count), routerName });
 }
 
 export async function notifySupportReply(userId: string, preview: string): Promise<void> {
-  await sendPushToUser(userId, 'support_reply',
-    'Support replied',
-    preview,
-  );
+  await sendPushToUser(userId, 'support_reply', { preview });
 }

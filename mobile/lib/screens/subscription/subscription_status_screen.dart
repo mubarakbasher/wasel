@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/status_format.dart';
 import '../../models/plan.dart';
 import '../../models/subscription.dart';
 import '../../providers/subscription_provider.dart';
@@ -131,7 +132,7 @@ class _SubscriptionStatusScreenState
               children: [
                 Text(sub.planName, style: AppTypography.title1),
                 StatusBadge(
-                  label: sub.status.toString().toUpperCase(),
+                  label: trStatus(context, 'subscription', sub.status.toString()),
                   color: statusColor,
                 ),
               ],

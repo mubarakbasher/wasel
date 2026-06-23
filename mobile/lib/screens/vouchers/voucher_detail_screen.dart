@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart' show Share;
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/voucher_format.dart';
 import '../../providers/vouchers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -86,6 +87,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     // Existing data-refresh logic.
     if (state == AppLifecycleState.resumed) {
       ref.read(vouchersProvider.notifier).loadVoucher(widget.routerId, widget.voucherId);
+      _refreshTimer?.cancel();
       _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
         ref.read(vouchersProvider.notifier).loadVoucher(widget.routerId, widget.voucherId);
       });
@@ -100,6 +102,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     await Clipboard.setData(ClipboardData(text: text));
     _clipboardClearTimer?.cancel();
     _clipboardClearTimer = Timer(const Duration(seconds: 30), () async {
+      if (!mounted) return;
       final current = await Clipboard.getData('text/plain');
       if (current?.text == _lastCopiedValue) {
         await Clipboard.setData(const ClipboardData(text: ''));
@@ -173,7 +176,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
       ..writeln(wifiLabel)
       ..writeln('─────────────')
       ..writeln('$codeLabel: ${voucher.username}')
-      ..writeln('$planLabel: ${voucher.limitDisplayText}')
+      ..writeln('$planLabel: ${voucherLimitText(context, voucher)}')
       ..writeln('─────────────');
     if (voucher.expiration != null) {
       text.writeln('${context.tr('vouchers.expires')}: ${voucher.expiration}');
@@ -318,7 +321,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
 
   Widget _buildUsageCard(dynamic voucher) {
     final percent = voucher.usagePercent as double;
-    final usageText = voucher.usageDisplayText as String? ?? '';
+    final usageText = voucherUsageText(context, voucher) ?? '';
     final isExceeded = percent >= 1.0;
     final progressColor = isExceeded
         ? AppColors.error
@@ -380,7 +383,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           const SizedBox(height: AppSpacing.lg),
           _InfoRow(
             label: context.tr('vouchers.limit'),
-            value: voucher.limitDisplayText as String,
+            value: voucherLimitText(context, voucher),
             icon: Icons.layers,
           ),
           if (voucher.price != null) ...[

@@ -272,7 +272,7 @@ export async function logout(refreshTokenStr: string): Promise<void> {
 
 export async function getProfile(userId: string) {
   const result = await pool.query(
-    'SELECT id, name, email, phone, business_name, is_verified FROM users WHERE id = $1 AND is_active = TRUE',
+    'SELECT id, name, email, phone, business_name, is_verified, language FROM users WHERE id = $1 AND is_active = TRUE',
     [userId],
   );
 
@@ -287,14 +287,37 @@ interface UpdateProfileInput {
   name: string;
   phone?: string;
   business_name?: string;
+  language?: 'en' | 'ar';
 }
 
 export async function updateProfile(userId: string, input: UpdateProfileInput) {
+  // Build the SET clause dynamically so omitted fields are not overwritten.
+  // language is optional — only included when explicitly provided.
+  const setClauses: string[] = [
+    'name = $1',
+    'phone = $2',
+    'business_name = $3',
+    'updated_at = now()',
+  ];
+  const values: unknown[] = [
+    input.name,
+    input.phone ?? null,
+    input.business_name ?? null,
+  ];
+
+  if (input.language !== undefined) {
+    values.push(input.language);
+    setClauses.push(`language = $${values.length}`);
+  }
+
+  values.push(userId);
+  const userIdParam = `$${values.length}`;
+
   const result = await pool.query(
-    `UPDATE users SET name = $1, phone = $2, business_name = $3
-     WHERE id = $4 AND is_active = TRUE
-     RETURNING id, name, email, phone, business_name, is_verified`,
-    [input.name, input.phone || null, input.business_name || null, userId],
+    `UPDATE users SET ${setClauses.join(', ')}
+     WHERE id = ${userIdParam} AND is_active = TRUE
+     RETURNING id, name, email, phone, business_name, is_verified, language`,
+    values,
   );
 
   if (result.rows.length === 0) {

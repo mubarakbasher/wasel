@@ -134,7 +134,7 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
               ),
               const SizedBox(width: AppSpacing.sm),
               StatusBadge(
-                label: _capitalizeStatus(router.status),
+                label: context.tr('routers.${router.status}'),
                 color: AppColors.routerStatus(router.status),
               ),
             ],
@@ -377,10 +377,6 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
     );
   }
 
-  String _capitalizeStatus(String status) {
-    if (status.isEmpty) return status;
-    return status[0].toUpperCase() + status.substring(1);
-  }
 
   String _formatLastSeen(BuildContext context, DateTime? lastSeen) {
     if (lastSeen == null) return context.tr('routers.never');

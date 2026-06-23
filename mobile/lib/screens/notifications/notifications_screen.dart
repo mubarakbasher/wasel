@@ -179,9 +179,50 @@ class _NotificationTile extends StatelessWidget {
     return context.tr('routers.daysAgo', [diff.inDays.toString()]);
   }
 
+  String _localizedTitle(BuildContext context) {
+    final tkey = 'notifications.title.${item.category}';
+    final t = context.tr(tkey);
+    return (t == tkey) ? item.title : t;
+  }
+
+  String _localizedBody(BuildContext context) {
+    final d = item.data;
+    switch (item.category) {
+      case 'router_offline':
+      case 'router_online':
+        final rn = d?['routerName'] as String?;
+        final min = d?['minutes']?.toString();
+        if (rn == null || min == null) return item.body;
+        return context.tr('notifications.body.${item.category}', [rn, min]);
+      case 'subscription_expiring':
+        final days = d?['daysLeft']?.toString();
+        if (days == null) return item.body;
+        return context.tr('notifications.body.subscription_expiring', [days]);
+      case 'subscription_expired':
+        return context.tr('notifications.body.subscription_expired');
+      case 'payment_confirmed':
+        final plan = d?['planName'] as String?;
+        if (plan == null) return item.body;
+        return context.tr('notifications.body.payment_confirmed', [plan]);
+      case 'voucher_quota_low':
+        final pct = d?['percentUsed']?.toString();
+        if (pct == null) return item.body;
+        return context.tr('notifications.body.voucher_quota_low', [pct]);
+      case 'bulk_creation_complete':
+        final cnt = d?['count']?.toString();
+        final rn = d?['routerName'] as String?;
+        if (cnt == null || rn == null) return item.body;
+        return context.tr('notifications.body.bulk_creation_complete', [cnt, rn]);
+      default:
+        return item.body;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = _colorFor(item.category);
+    final localTitle = _localizedTitle(context);
+    final localBody = _localizedBody(context);
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -209,7 +250,7 @@ class _NotificationTile extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          item.title,
+                          localTitle,
                           style: AppTypography.subhead.copyWith(
                             fontWeight: item.isUnread
                                 ? FontWeight.w700
@@ -223,7 +264,7 @@ class _NotificationTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    item.body,
+                    localBody,
                     style: AppTypography.footnote
                         .copyWith(color: AppColors.textSecondary),
                   ),

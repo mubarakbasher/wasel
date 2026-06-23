@@ -62,6 +62,7 @@ export const updateProfileSchema = z.object({
     .regex(/^\+[1-9]\d{1,14}$/, 'Phone must be in E.164 format (e.g. +1234567890)')
     .optional(),
   business_name: z.string().max(200).optional(),
+  language: z.enum(['en', 'ar']).optional(),
 });
 
 export const changePasswordSchema = z.object({

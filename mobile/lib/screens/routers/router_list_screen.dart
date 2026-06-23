@@ -163,7 +163,7 @@ class _RouterCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 StatusBadge(
-                  label: _capitalizeStatus(router.status),
+                  label: context.tr('routers.${router.status}'),
                   color: AppColors.routerStatus(router.status),
                 ),
                 Text(
@@ -178,10 +178,6 @@ class _RouterCard extends StatelessWidget {
     );
   }
 
-  String _capitalizeStatus(String status) {
-    if (status.isEmpty) return status;
-    return status[0].toUpperCase() + status.substring(1);
-  }
 
   String _formatLastSeen(BuildContext context, DateTime? lastSeen) {
     if (lastSeen == null) return context.tr('routers.never');

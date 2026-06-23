@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/voucher_format.dart';
 import '../../models/voucher.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/subscription_provider.dart';
@@ -30,6 +31,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
   bool _isSelectMode = false;
   bool _isPrintLoading = false;
   final Set<String> _selectedVoucherIds = {};
+  ProviderSubscription<RoutersState>? _routersSub;
 
   @override
   void initState() {
@@ -41,7 +43,9 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     });
     // Auto-select first router when routers load
     Future.microtask(() {
-      ref.listenManual(routersProvider, (previous, next) {
+      if (!mounted) return;
+      _routersSub = ref.listenManual(routersProvider, (previous, next) {
+        if (!mounted) return;
         if (_selectedRouterId == null && next.routers.isNotEmpty) {
           _onRouterSelected(next.routers.first.id);
         }
@@ -51,6 +55,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
 
   @override
   void dispose() {
+    _routersSub?.close();
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     _searchController.dispose();
@@ -179,7 +184,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     final router = routersState.routers
         .where((r) => r.id == _selectedRouterId)
         .firstOrNull;
-    final routerName = router?.name ?? 'Wi-Fi';
+    final routerName = router?.name ?? context.tr('routers.defaultRouterName');
 
     _exitSelectMode();
     context.push('/vouchers/print', extra: {
@@ -240,7 +245,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     final router = routersState.routers
         .where((r) => r.id == _selectedRouterId)
         .firstOrNull;
-    final routerName = router?.name ?? 'Wi-Fi';
+    final routerName = router?.name ?? context.tr('routers.defaultRouterName');
     final routerId = _selectedRouterId!;
 
     // Read filter state once before async gap
@@ -692,7 +697,7 @@ class _VoucherCard extends StatelessWidget {
                     Icon(Icons.layers, size: 14, color: AppColors.textSecondary),
                     const SizedBox(width: AppSpacing.xs),
                     Text(
-                      voucher.limitDisplayText,
+                      voucherLimitText(context, voucher),
                       style: AppTypography.footnote,
                     ),
                     const Spacer(),

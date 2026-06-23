@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../i18n/app_localizations.dart';
+import '../i18n/status_format.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/notifications_provider.dart';
 import '../providers/subscription_provider.dart';
@@ -36,7 +37,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   String _relativeTime(BuildContext context, String? isoDate) {
-    if (isoDate == null || isoDate.isEmpty) return 'N/A';
+    if (isoDate == null || isoDate.isEmpty) return context.tr('common.notAvailable');
     try {
       final date = DateTime.parse(isoDate);
       final now = DateTime.now();
@@ -46,7 +47,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       if (diff.inHours < 24) return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
       return context.tr('routers.daysAgo', [diff.inDays.toString()]);
     } catch (_) {
-      return 'N/A';
+      return context.tr('common.notAvailable');
     }
   }
 
@@ -210,7 +211,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             children: [
               Text(planName, style: AppTypography.title2),
               StatusBadge(
-                label: status[0].toUpperCase() + status.substring(1),
+                label: trStatus(context, 'subscription', status),
                 color: statusBadgeColor,
               ),
             ],
@@ -286,9 +287,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Widget _buildSecondStatsRow(DashboardState state, bool isActive) {
     final revenue = state.dailyRevenue;
+    final symbol = context.tr('common.currencySymbol');
     final revenueText = revenue == revenue.roundToDouble()
-        ? '\$${revenue.toStringAsFixed(0)}'
-        : '\$${revenue.toStringAsFixed(2)}';
+        ? '$symbol ${revenue.toStringAsFixed(0)}'
+        : '$symbol ${revenue.toStringAsFixed(2)}';
 
     return Row(
       children: [
