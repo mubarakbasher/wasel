@@ -10,7 +10,7 @@ class VoucherService {
     String? limitType,
     String? search,
     int page = 1,
-    int limit = 20,
+    int limit = 100,
   }) async {
     final queryParams = <String, dynamic>{
       'page': page,

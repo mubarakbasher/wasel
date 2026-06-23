@@ -23,7 +23,7 @@ class VouchersState {
     this.error,
     this.total = 0,
     this.page = 1,
-    this.limit = 20,
+    this.limit = 100,
     this.filterStatus,
     this.filterLimitType,
     this.searchQuery,
@@ -244,22 +244,27 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     }
   }
 
+  // Backend caps filter-mode bulk-delete at 500 rows/request
+  // (voucher.service.ts bulkDeleteVouchers). Loop until a partial batch
+  // signals we've drained all matching vouchers.
+  static const int _bulkDeleteBatch = 500;
+
   Future<int?> deleteAllVouchers(String routerId) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final count = await _service.deleteAllVouchers(
-        routerId,
-        status: state.filterStatus,
-        limitType: state.filterLimitType,
-        search: state.searchQuery,
-      );
-      state = state.copyWith(
-        vouchers: [],
-        total: 0,
-        page: 1,
-        isLoading: false,
-      );
-      return count;
+      int total = 0;
+      while (true) {
+        final count = await _service.deleteAllVouchers(
+          routerId,
+          status: state.filterStatus,
+          limitType: state.filterLimitType,
+          search: state.searchQuery,
+        );
+        total += count;
+        if (count < _bulkDeleteBatch) break; // last (or empty) batch
+      }
+      await loadVouchers(routerId, refresh: true); // re-sync filtered view
+      return total;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _extractError(e));
       return null;
