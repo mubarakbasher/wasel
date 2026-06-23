@@ -2,11 +2,12 @@ name: Mobile CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths: ['mobile/**']
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths: ['mobile/**']
+  workflow_dispatch:
 
 jobs:
   analyze-and-test:

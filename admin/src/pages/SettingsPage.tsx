@@ -137,6 +137,7 @@ function BankDetailsTab() {
         accountHolder: data.accountHolder ?? '',
         instructions: data.instructions ?? '',
       };
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the editable form from fetched settings once the query resolves
       setForm(next);
       setInitial(next);
     }

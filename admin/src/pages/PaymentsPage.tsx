@@ -37,6 +37,7 @@ export default function PaymentsPage() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentionally reset the dialog inputs whenever the confirm action opens/closes
     setRejectionReason('');
     setErrorMsg('');
   }, [confirmAction]);
