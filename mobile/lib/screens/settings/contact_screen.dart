@@ -25,6 +25,7 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
     super.initState();
     Future.microtask(() async {
       await ref.read(supportProvider.notifier).refresh();
+      if (!mounted) return;
       await ref.read(supportProvider.notifier).markAllRead();
     });
     _scrollController.addListener(_onScroll);

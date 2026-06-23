@@ -72,14 +72,18 @@ class _NotificationPreferencesScreenState
       );
     }
 
-    // Group preferences by section
+    // Group preferences by section key code
     final grouped = <String, List<dynamic>>{};
     for (final pref in state.preferences) {
       grouped.putIfAbsent(pref.sectionName, () => []).add(pref);
     }
 
-    // Ordered sections
-    const sectionOrder = ['Subscription', 'Routers', 'Vouchers'];
+    // Ordered sections (now keyed by i18n key codes)
+    const sectionOrder = [
+      'notifications.section.subscription',
+      'notifications.section.routers',
+      'notifications.section.vouchers',
+    ];
     final orderedSections =
         sectionOrder.where((s) => grouped.containsKey(s)).toList();
 
@@ -87,8 +91,8 @@ class _NotificationPreferencesScreenState
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       itemCount: orderedSections.length,
       itemBuilder: (context, index) {
-        final section = orderedSections[index];
-        final prefs = grouped[section]!;
+        final sectionKey = orderedSections[index];
+        final prefs = grouped[sectionKey]!;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,7 +101,7 @@ class _NotificationPreferencesScreenState
               padding: const EdgeInsetsDirectional.fromSTEB(
                   AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xs),
               child: Text(
-                section.toUpperCase(),
+                context.tr(sectionKey).toUpperCase(),
                 style: AppTypography.caption1.copyWith(
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.5,
@@ -109,7 +113,7 @@ class _NotificationPreferencesScreenState
                     _iconForCategory(pref.category),
                     color: AppColors.primary,
                   ),
-                  title: Text(pref.displayName, style: AppTypography.body),
+                  title: Text(context.tr(pref.displayName), style: AppTypography.body),
                   value: pref.enabled,
                   contentPadding: const EdgeInsetsDirectional.symmetric(
                       horizontal: AppSpacing.lg),

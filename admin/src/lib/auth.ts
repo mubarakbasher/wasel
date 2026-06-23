@@ -12,7 +12,7 @@ export interface User {
 //   (3) receipt/asset URLs pass through resolveAssetUrl allowlist.
 // TODO(future hardening): migrate refresh token to HttpOnly+Secure+SameSite=Strict
 // cookie and keep access token in memory only. Requires backend cookie-issuance
-// changes — cross-stack, tracked for a separate follow-up. See RUNBOOKS.md.
+// changes — cross-stack, tracked for a separate follow-up. See docs/RUNBOOKS.md.
 export function getStoredUser(): User | null {
   const data = localStorage.getItem('user');
   return data ? JSON.parse(data) : null;

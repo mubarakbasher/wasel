@@ -114,7 +114,11 @@ class PlanCard extends StatelessWidget {
                       segments: plan.allowedDurations
                           .map((d) => ButtonSegment<int>(
                                 value: d,
-                                label: Text('$d mo'),
+                                label: Text(
+                                  d == 1
+                                      ? context.tr('subscription.month1')
+                                      : context.tr('subscription.monthsN', [d.toString()]),
+                                ),
                               ))
                           .toList(),
                       selected: {selectedDuration},

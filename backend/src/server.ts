@@ -105,8 +105,12 @@ async function startServer(): Promise<void> {
     startUsageLimitEnforcementJob();
     startMonitoring();
 
-    // Start HTTP server
-    const server = app.listen(config.PORT, () => {
+    // Start HTTP server. Bind explicitly to 0.0.0.0 (IPv4) rather than letting
+    // Node default to IPv6 dual-stack `::` — WSL2's wslrelay only mirrors the
+    // address family the inner process bound, so an IPv6 bind leaves Windows-
+    // side adb-reverse / netsh portproxy targets unable to reach the server.
+    // Containerised prod expects 0.0.0.0 binding too, so this is harmless there.
+    const server = app.listen(config.PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${config.PORT}`, {
         env: config.NODE_ENV,
         port: config.PORT,
@@ -115,7 +119,13 @@ async function startServer(): Promise<void> {
 
     registerShutdownHandlers(server);
   } catch (error) {
-    logger.error('Failed to start server', { error });
+    const err = error as Error;
+    logger.error('Failed to start server', {
+      message: err?.message,
+      name: err?.name,
+      stack: err?.stack,
+      raw: String(error),
+    });
     process.exit(1);
   }
 }

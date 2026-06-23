@@ -28,6 +28,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 
   void _clearError() {
+    if (!mounted) return;
     if (ref.read(authProvider).error != null) {
       ref.read(authProvider.notifier).clearError();
     }

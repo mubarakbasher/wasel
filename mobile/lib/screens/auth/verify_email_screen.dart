@@ -51,6 +51,10 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
     _resendCooldown = 60;
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       setState(() {
         _resendCooldown--;
         if (_resendCooldown <= 0) timer.cancel();

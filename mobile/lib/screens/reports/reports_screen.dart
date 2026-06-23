@@ -38,11 +38,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   String _formatDuration(double seconds) {
     if (seconds < 60) return '${seconds.toInt()}s';
-    if (seconds < 3600) return '${(seconds / 60).toInt()}m';
+    if (seconds < 3600) {
+      return context.tr('vouchers.durationMinutes', [(seconds / 60).toInt().toString()]);
+    }
     final hours = (seconds / 3600).toInt();
     final mins = ((seconds % 3600) / 60).toInt();
-    if (mins == 0) return '${hours}h';
-    return '${hours}h ${mins}m';
+    final hoursStr = context.tr('vouchers.durationHours', [hours.toString()]);
+    if (mins == 0) return hoursStr;
+    return '$hoursStr ${context.tr('vouchers.durationMinutes', [mins.toString()])}';
   }
 
   String _formatDate(DateTime date) {
@@ -316,7 +319,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Text(
-                    '${_formatDate(state.startDate)}  to  ${_formatDate(state.endDate)}',
+                    '${_formatDate(state.startDate)}  ${context.tr('reports.rangeSeparator')}  ${_formatDate(state.endDate)}',
                     style: AppTypography.subhead,
                   ),
                 ),
@@ -534,7 +537,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ...dailyBreakdown.map((day) => _DailyBreakdownTile(
                 date: day['date'] as String? ?? '',
                 value:
-                    '${day['sessions'] ?? 0} ${context.tr('reports.sessions')}, ${_formatBytes((day['dataIn'] as int?) ?? 0)} in',
+                    '${day['sessions'] ?? 0} ${context.tr('reports.sessions')}, ${context.tr('reports.dataInbound', [_formatBytes((day['dataIn'] as int?) ?? 0)])}',
                 icon: Icons.wifi,
               )),
         ],

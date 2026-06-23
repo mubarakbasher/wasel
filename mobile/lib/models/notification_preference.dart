@@ -19,20 +19,22 @@ class NotificationPreference {
 
   String get displayName {
     switch (category) {
-      case 'subscription_expiring': return 'Subscription Expiring';
-      case 'subscription_expired': return 'Subscription Expired';
-      case 'payment_confirmed': return 'Payment Confirmed';
-      case 'router_offline': return 'Router Offline';
-      case 'router_online': return 'Router Online';
-      case 'voucher_quota_low': return 'Voucher Quota Low';
-      case 'bulk_creation_complete': return 'Bulk Creation Complete';
+      case 'subscription_expiring': return 'notifications.category.subscriptionExpiring';
+      case 'subscription_expired': return 'notifications.category.subscriptionExpired';
+      case 'payment_confirmed': return 'notifications.category.paymentConfirmed';
+      case 'router_offline': return 'notifications.category.routerOffline';
+      case 'router_online': return 'notifications.category.routerOnline';
+      case 'voucher_quota_low': return 'notifications.category.voucherQuotaLow';
+      case 'bulk_creation_complete': return 'notifications.category.bulkCreationComplete';
       default: return category;
     }
   }
 
   String get sectionName {
-    if (category.startsWith('subscription') || category == 'payment_confirmed') return 'Subscription';
-    if (category.startsWith('router')) return 'Routers';
-    return 'Vouchers';
+    if (category.startsWith('subscription') || category == 'payment_confirmed') {
+      return 'notifications.section.subscription';
+    }
+    if (category.startsWith('router')) return 'notifications.section.routers';
+    return 'notifications.section.vouchers';
   }
 }

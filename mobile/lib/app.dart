@@ -10,6 +10,10 @@ import 'providers/locale_provider.dart';
 import 'services/push_notification_service.dart';
 import 'theme/app_theme.dart';
 
+// Convenience: resolve a localized string without a local BuildContext.
+String _tr(BuildContext ctx, String key) =>
+    AppLocalizations.of(ctx).translate(key);
+
 class WaselApp extends ConsumerStatefulWidget {
   const WaselApp({super.key});
 
@@ -31,6 +35,12 @@ class _WaselAppState extends ConsumerState<WaselApp> {
   }
 
   /// Warn-but-allow root/jailbreak detection (v1 policy: no hard block).
+  ///
+  /// We resolve a context from [appNavigatorKey], which is scoped below the
+  /// [Localizations] ancestor, guaranteeing that [AppLocalizations.of()] works.
+  /// The jailbreak check is async, so by the time it resolves the first frame
+  /// has rendered and that context is available — show directly. Only if it is
+  /// somehow not yet mounted do we fall back to the next post-frame callback.
   Future<void> _checkDeviceIntegrity() async {
     bool isCompromised = false;
     try {
@@ -38,26 +48,37 @@ class _WaselAppState extends ConsumerState<WaselApp> {
     } catch (_) {
       // Detection failure is non-fatal — proceed normally.
     }
-    if (isCompromised && mounted) {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogCtx) => AlertDialog(
-          title: const Text('Security Warning'),
-          content: const Text(
-            'This device appears to be rooted or jailbroken. '
-            'Using Wasel on a compromised device may put your account '
-            'and voucher data at risk.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogCtx).pop(),
-              child: const Text('I understand, continue'),
-            ),
-          ],
-        ),
-      );
+    if (!isCompromised) return;
+
+    // The navigator is normally mounted by the time the async check resolves —
+    // show immediately. If not, retry on the next frame. Context is resolved
+    // synchronously inside the helper, so there's no async-gap on a BuildContext.
+    if (!_trySecurityWarning()) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _trySecurityWarning());
     }
+  }
+
+  /// Shows the security warning if a Localizations-scoped context is available.
+  /// Returns false (without showing) when the navigator isn't mounted yet.
+  bool _trySecurityWarning() {
+    final navCtx = appNavigatorKey.currentContext;
+    if (navCtx == null) return false;
+    showDialog<void>(
+      context: navCtx,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text(_tr(navCtx, 'security.warningTitle')),
+        content: Text(_tr(navCtx, 'security.warningBody')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(_tr(navCtx, 'security.understandContinue')),
+          ),
+        ],
+      ),
+    );
+    return true;
   }
 
   @override

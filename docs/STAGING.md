@@ -157,18 +157,18 @@ DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=wasel
 DB_USER=wasel
-DB_PASSWORD=<POSTGRES_PASSWORD from 3.1>        # staging-only value
+DB_PASSWORD=8a346067fcd5b58be1aad75a122ba46c6354883049477de50a1453451bc4e498        # staging-only value
 DB_POOL_MIN=2
 DB_POOL_MAX=10
 
 # Redis — backend uses network_mode:host, connect via localhost
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
-REDIS_PASSWORD=<REDIS_PASSWORD from 3.1>         # staging-only value
+REDIS_PASSWORD=d17e43b51853ff8fd2904de559bf9aba610593f376c63b4376e6d99652afb3f4         # staging-only value
 
 # JWT — staging-only secrets
-JWT_ACCESS_SECRET=<JWT_ACCESS_SECRET from 3.1>
-JWT_REFRESH_SECRET=<JWT_REFRESH_SECRET from 3.1>
+JWT_ACCESS_SECRET=542e9bc2877f8a63c7e14c20491e2de28772a74004ec99b463bc551a24c724af
+JWT_REFRESH_SECRET=e47f884d64e2f890ceae96995d995a1ce63a80d15a18dd43d80d32e12708053b
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 
@@ -176,14 +176,14 @@ JWT_REFRESH_EXPIRES_IN=7d
 # AES-256-GCM encrypts router api_pass_enc, wg_private_key_enc, radius_secret_enc.
 # Columns encrypted with this key cannot be decrypted by prod and vice versa.
 # Never copy ENCRYPTION_KEY between environments.
-ENCRYPTION_KEY=<ENCRYPTION_KEY from 3.1>
+ENCRYPTION_KEY=3cee3f2bb4e85f183e2e16572351c891b26eaeec5c49f9570e0895cec9b9a61d
 
 # CORS — staging origins only
 CORS_ORIGIN=https://api.wa-sel.cloud
 
 # WireGuard — staging VPS public IP, staging keypair
-WG_SERVER_PRIVATE_KEY=<WG_PRIV from section 1.2>
-WG_SERVER_PUBLIC_KEY=<WG_PUB from section 1.2>
+WG_SERVER_PRIVATE_KEY=qPJsQbKdhVoPH5tH0hqq+e1cvyTwHtBYXXNq/pMoE3g=
+WG_SERVER_PUBLIC_KEY=TKEiDLLaS4Grhp/EMZ341LfEEOrk7o/9gdaAgtzrXA8=
 WG_SERVER_ENDPOINT=<STAGING_VPS_IP>             # staging VPS IP, not prod
 WG_SERVER_PORT=51820
 

@@ -17,12 +17,14 @@ class SupportMessage {
   bool get isAdmin => sender == 'admin';
 
   factory SupportMessage.fromJson(Map<String, dynamic> json) => SupportMessage(
-        id: json['id'] as String,
-        sender: json['sender'] as String,
-        body: json['body'] as String,
+        id: json['id']?.toString() ?? '',
+        sender: json['sender']?.toString() ?? '',
+        body: json['body']?.toString() ?? '',
         readAt: json['readAt'] != null
-            ? DateTime.parse(json['readAt'] as String)
+            ? DateTime.tryParse(json['readAt'].toString())
             : null,
-        createdAt: DateTime.parse(json['createdAt'] as String),
+        createdAt:
+            DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+                DateTime.now(),
       );
 }
