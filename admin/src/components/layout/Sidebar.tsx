@@ -26,7 +26,7 @@ const navItems = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: unread } = useQuery({
     queryKey: ['admin-support-unread'],
     queryFn: async () => {
@@ -38,7 +38,11 @@ export default function Sidebar() {
   });
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-64 bg-slate-900 text-white flex flex-col z-50">
+    <aside
+      className={`fixed left-0 top-0 bottom-0 w-64 bg-slate-900 text-white flex flex-col z-50 transition-transform duration-200 ${
+        open ? 'translate-x-0' : '-translate-x-full'
+      } lg:translate-x-0`}
+    >
       <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-700">
         <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-white">
           <BrandMark size={28} />
@@ -52,6 +56,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            onClick={onClose}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive

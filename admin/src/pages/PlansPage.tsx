@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MoreVertical, Plus, Loader2 } from 'lucide-react';
+import { MoreVertical, Plus } from 'lucide-react';
 import api from '../lib/api';
 import DataTable, { type Column } from '../components/DataTable';
 import ErrorPanel from '../components/ErrorPanel';
+import Button from '../components/ui/Button';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 interface Plan {
   id: string;
@@ -226,13 +229,12 @@ export default function PlansPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-slate-900">Subscription Plans</h2>
-        <button
+        <Button
           onClick={() => { setForm(emptyForm); setShowCreate(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors cursor-pointer"
+          leftIcon={<Plus className="w-4 h-4" />}
         >
-          <Plus className="w-4 h-4" />
           New Plan
-        </button>
+        </Button>
       </div>
 
       {isError ? (
@@ -255,20 +257,35 @@ export default function PlansPage() {
       )}
 
       {/* Create / Edit Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">
-              {showCreate ? 'Create Plan' : 'Edit Plan'}
-            </h2>
+      <Modal
+        open={isModalOpen}
+        onClose={() => { setShowCreate(false); setEditPlan(null); }}
+        title={showCreate ? 'Create Plan' : 'Edit Plan'}
+        size="lg"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => { setShowCreate(false); setEditPlan(null); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={showCreate ? handleCreateSave : handleEditSave}
+              loading={isModalSaving}
+            >
+              {showCreate ? 'Create' : 'Save'}
+            </Button>
+          </>
+        }
+      >
+        {modalError && (
+          <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
+            {(modalError as Error).message || 'An error occurred'}
+          </div>
+        )}
 
-            {modalError && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
-                {(modalError as Error).message || 'An error occurred'}
-              </div>
-            )}
-
-            <div className="space-y-4">
+        <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Tier (slug)</label>
@@ -399,61 +416,32 @@ export default function PlansPage() {
                 <label htmlFor="is_active" className="text-sm text-slate-700">Active</label>
               </div>
             </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => { setShowCreate(false); setEditPlan(null); }}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={showCreate ? handleCreateSave : handleEditSave}
-                disabled={isModalSaving}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors cursor-pointer"
-              >
-                {isModalSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                {showCreate ? 'Create' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Delete Confirm Dialog */}
-      {confirmDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-semibold text-slate-900 mb-2">Delete Plan</h2>
-            <p className="text-sm text-slate-600 mb-6">
-              Delete the <span className="font-medium">{confirmDelete.name}</span> plan? This will fail if there are existing subscriptions using this plan.
-            </p>
-
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete Plan"
+        message={
+          <>
+            {confirmDelete && (
+              <>
+                Delete the <span className="font-medium">{confirmDelete.name}</span> plan? This will fail if there are existing subscriptions using this plan.
+              </>
+            )}
             {deleteMutation.error && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
+              <div className="mt-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
                 {(deleteMutation.error as Error).message || 'Cannot delete this plan'}
               </div>
             )}
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => { setConfirmDelete(null); deleteMutation.reset(); }}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => deleteMutation.mutate(confirmDelete.id)}
-                disabled={deleteMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-60 transition-colors cursor-pointer"
-              >
-                {deleteMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteMutation.isPending}
+        onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
+        onClose={() => { setConfirmDelete(null); deleteMutation.reset(); }}
+      />
     </div>
   );
 }

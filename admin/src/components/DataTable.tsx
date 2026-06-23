@@ -35,13 +35,15 @@ export default function DataTable<T extends object>({
   if (isLoading) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="relative">
+          <div className="overflow-x-auto">
+            <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 {columns.map((col) => (
                   <th
                     key={col.key}
+                    scope="col"
                     className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider"
                   >
                     {col.header}
@@ -60,7 +62,9 @@ export default function DataTable<T extends object>({
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-black/5 to-transparent lg:hidden" />
         </div>
       </div>
     );
@@ -76,13 +80,15 @@ export default function DataTable<T extends object>({
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="relative">
+        <div className="overflow-x-auto">
+          <table className="w-full">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
               {columns.map((col) => (
                 <th
                   key={col.key}
+                  scope="col"
                   className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider"
                 >
                   {col.header}
@@ -107,7 +113,9 @@ export default function DataTable<T extends object>({
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-black/5 to-transparent lg:hidden" />
       </div>
 
       <div className="flex items-center justify-between px-6 py-3 border-t border-slate-200 bg-slate-50">

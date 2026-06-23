@@ -5,6 +5,7 @@ import { ArrowLeft, Send } from 'lucide-react';
 import api from '../lib/api';
 import { formatDateTime } from '../lib/datetime';
 import ErrorPanel from '../components/ErrorPanel';
+import Button from '../components/ui/Button';
 
 interface SupportMessage {
   id: string;
@@ -116,14 +117,14 @@ export default function ConversationPage() {
                   <div
                     className={`max-w-[70%] rounded-2xl px-4 py-2 ${
                       isAdmin
-                        ? 'bg-indigo-600 text-white rounded-br-sm'
+                        ? 'bg-blue-600 text-white rounded-br-sm'
                         : 'bg-slate-100 text-slate-900 rounded-bl-sm'
                     }`}
                   >
                     <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div>
                     <div
                       className={`text-[10px] mt-1 ${
-                        isAdmin ? 'text-indigo-100' : 'text-slate-500'
+                        isAdmin ? 'text-blue-100' : 'text-slate-500'
                       }`}
                     >
                       {formatDateTime(m.createdAt)}
@@ -150,16 +151,16 @@ export default function ConversationPage() {
               placeholder="Write a reply..."
               rows={2}
               maxLength={2000}
-              className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
-            <button
+            <Button
               onClick={() => canSend && replyMutation.mutate(reply.trim())}
               disabled={!canSend}
-              className="inline-flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              loading={replyMutation.isPending}
+              leftIcon={<Send className="w-4 h-4" />}
             >
-              <Send className="w-4 h-4" />
-              {replyMutation.isPending ? 'Sending...' : 'Send'}
-            </button>
+              Send
+            </Button>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Enter to send, Shift+Enter for a new line.

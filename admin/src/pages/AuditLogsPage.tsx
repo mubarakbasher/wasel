@@ -117,7 +117,7 @@ export default function AuditLogsPage() {
           <div className="max-w-xs">
             <button
               onClick={() => setExpandedRow(isExpanded ? null : row.id)}
-              className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
+              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
             >
               {isExpanded ? (
                 <>
@@ -156,7 +156,7 @@ export default function AuditLogsPage() {
               value={actionSearch}
               onChange={(e) => handleActionChange(e.target.value)}
               placeholder="Search actions..."
-              className="pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-56"
+              className="pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-56"
             />
           </div>
         </div>
@@ -169,7 +169,7 @@ export default function AuditLogsPage() {
               setTargetEntity(e.target.value);
               setPage(1);
             }}
-            className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             {ENTITY_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
@@ -188,7 +188,7 @@ export default function AuditLogsPage() {
               setFromDate(e.target.value);
               setPage(1);
             }}
-            className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
 
@@ -201,7 +201,7 @@ export default function AuditLogsPage() {
               setToDate(e.target.value);
               setPage(1);
             }}
-            className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
       </div>

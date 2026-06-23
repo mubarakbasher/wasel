@@ -14,6 +14,8 @@ import api from '../lib/api';
 import { formatDate } from '../lib/datetime';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
+import Button from '../components/ui/Button';
+import Modal from '../components/Modal';
 import { useAuth } from '../hooks/useAuth';
 
 const TABS = ['bank', 'admins', 'system'] as const;
@@ -87,7 +89,7 @@ export default function SettingsPage() {
               onClick={() => setTab(t)}
               className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
                 tab === t
-                  ? 'border-indigo-600 text-indigo-600'
+                  ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -233,7 +235,7 @@ function BankDetailsTab() {
               setForm((f) => ({ ...f, instructions: e.target.value }))
             }
             disabled={isLoading}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
             placeholder="Optional extra guidance shown to the user (e.g. include reference code in the transfer memo)."
           />
           <div className="text-xs text-gray-400 mt-1 text-right">
@@ -242,13 +244,13 @@ function BankDetailsTab() {
         </div>
 
         <div className="flex justify-end pt-2">
-          <button
+          <Button
             onClick={() => mutation.mutate(form)}
+            loading={mutation.isPending}
             disabled={disabled}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {mutation.isPending ? 'Saving...' : 'Save'}
-          </button>
+            Save
+          </Button>
         </div>
       </div>
     </div>
@@ -279,7 +281,7 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         maxLength={maxLength}
         disabled={disabled}
-        className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50"
+        className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
       />
     </div>
   );
@@ -356,13 +358,12 @@ function AdminsTab() {
       )}
 
       <div className="flex justify-end mb-4">
-        <button
+        <Button
           onClick={() => setModal({ kind: 'create' })}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+          leftIcon={<Plus className="w-4 h-4" />}
         >
-          <Plus className="w-4 h-4" />
           Add Admin
-        </button>
+        </Button>
       </div>
 
       <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
@@ -524,6 +525,7 @@ function IconButton({
     <button
       type="button"
       title={title}
+      aria-label={title}
       disabled={disabled}
       onClick={onClick}
       className={`${base} ${color}`}
@@ -560,7 +562,25 @@ function CreateAdminModal({
     password.length >= 8;
 
   return (
-    <Modal title="Add Admin" onClose={onClose}>
+    <Modal
+      open
+      onClose={onClose}
+      title="Add Admin"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            loading={mutation.isPending}
+            disabled={!canSubmit}
+          >
+            Create
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-3">
         <Field label="Name" value={name} onChange={setName} maxLength={100} />
         <Field
@@ -582,12 +602,6 @@ function CreateAdminModal({
           </div>
         )}
       </div>
-      <ModalActions
-        onClose={onClose}
-        onConfirm={() => mutation.mutate()}
-        confirmLabel={mutation.isPending ? 'Creating...' : 'Create'}
-        confirmDisabled={!canSubmit}
-      />
     </Modal>
   );
 }
@@ -615,7 +629,25 @@ function ResetPasswordModal({
   const canSubmit = !mutation.isPending && password.length >= 8;
 
   return (
-    <Modal title={`Reset password for ${admin.name}`} onClose={onClose}>
+    <Modal
+      open
+      onClose={onClose}
+      title={`Reset password for ${admin.name}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            loading={mutation.isPending}
+            disabled={!canSubmit}
+          >
+            Reset password
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-3">
         <Field
           label="New password (min 8 chars)"
@@ -629,12 +661,6 @@ function ResetPasswordModal({
           </div>
         )}
       </div>
-      <ModalActions
-        onClose={onClose}
-        onConfirm={() => mutation.mutate()}
-        confirmLabel={mutation.isPending ? 'Saving...' : 'Reset password'}
-        confirmDisabled={!canSubmit}
-      />
     </Modal>
   );
 }
@@ -659,7 +685,25 @@ function DeleteAdminModal({
   });
 
   return (
-    <Modal title={`Delete ${admin.name}?`} onClose={onClose}>
+    <Modal
+      open
+      onClose={onClose}
+      title={`Delete ${admin.name}?`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => mutation.mutate()}
+            loading={mutation.isPending}
+          >
+            Delete
+          </Button>
+        </>
+      }
+    >
       <p className="text-sm text-gray-600">
         This permanently removes the admin account for <b>{admin.email}</b>. This cannot be undone.
       </p>
@@ -668,75 +712,7 @@ function DeleteAdminModal({
           {errorMsg}
         </div>
       )}
-      <ModalActions
-        onClose={onClose}
-        onConfirm={() => mutation.mutate()}
-        confirmLabel={mutation.isPending ? 'Deleting...' : 'Delete'}
-        danger
-      />
     </Modal>
-  );
-}
-
-function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex items-start justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-          >
-            &times;
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function ModalActions({
-  onClose,
-  onConfirm,
-  confirmLabel,
-  confirmDisabled,
-  danger,
-}: {
-  onClose: () => void;
-  onConfirm: () => void;
-  confirmLabel: string;
-  confirmDisabled?: boolean;
-  danger?: boolean;
-}) {
-  const confirmColor = danger
-    ? 'bg-red-600 hover:bg-red-700'
-    : 'bg-indigo-600 hover:bg-indigo-700';
-  return (
-    <div className="flex justify-end gap-3 mt-5">
-      <button
-        onClick={onClose}
-        className="px-4 py-2 text-sm font-medium rounded-lg border text-gray-700 hover:bg-gray-50 transition-colors"
-      >
-        Cancel
-      </button>
-      <button
-        onClick={onConfirm}
-        disabled={confirmDisabled}
-        className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${confirmColor}`}
-      >
-        {confirmLabel}
-      </button>
-    </div>
   );
 }
 

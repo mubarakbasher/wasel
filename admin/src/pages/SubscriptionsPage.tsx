@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MoreVertical, Loader2 } from 'lucide-react';
+import { MoreVertical } from 'lucide-react';
 import api from '../lib/api';
 import { formatDate } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
+import Button from '../components/ui/Button';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 interface Subscription {
   id: string;
@@ -297,10 +300,23 @@ export default function SubscriptionsPage() {
       )}
 
       {/* Edit Modal */}
-      {editSub && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-semibold text-slate-900 mb-1">Edit Subscription</h2>
+      <Modal
+        open={!!editSub}
+        onClose={() => setEditSub(null)}
+        title="Edit Subscription"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditSub(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditSave} loading={updateMutation.isPending}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        {editSub && (
+          <>
             <p className="text-sm text-slate-500 mb-4">
               {editSub.user_name} &middot; {editSub.user_email}
             </p>
@@ -352,40 +368,25 @@ export default function SubscriptionsPage() {
                 <p className="text-xs text-slate-400 mt-1">Use -1 for unlimited</p>
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setEditSub(null)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleEditSave}
-                disabled={updateMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors cursor-pointer"
-              >
-                {updateMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
 
       {/* Confirm Dialog */}
-      {confirmAction && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-semibold text-slate-900 mb-2">
-              {confirmAction.type === 'activate'
-                ? 'Activate Subscription'
-                : confirmAction.type === 'extend'
-                  ? 'Extend Subscription'
-                  : confirmAction.type === 'delete'
-                    ? 'Delete Subscription'
-                    : 'Cancel Subscription'}
-            </h2>
-            <p className="text-sm text-slate-600 mb-6">
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={
+          confirmAction?.type === 'activate'
+            ? 'Activate Subscription'
+            : confirmAction?.type === 'extend'
+              ? 'Extend Subscription'
+              : confirmAction?.type === 'delete'
+                ? 'Delete Subscription'
+                : 'Cancel Subscription'
+        }
+        message={
+          confirmAction && (
+            <>
               {confirmAction.type === 'activate' && (
                 <>
                   Activate the <span className="font-medium">{confirmAction.subscription.plan_tier}</span> subscription for{' '}
@@ -418,32 +419,19 @@ export default function SubscriptionsPage() {
                   <span className="font-medium">{confirmAction.subscription.user_name}</span>? This action cannot be undone.
                 </>
               )}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setConfirmAction(null)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={updateMutation.isPending || deleteMutation.isPending}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 transition-colors cursor-pointer ${
-                  confirmAction.type === 'delete' || confirmAction.type === 'cancel'
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                {(updateMutation.isPending || deleteMutation.isPending) && (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                )}
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </>
+          )
+        }
+        confirmLabel="Confirm"
+        variant={
+          confirmAction?.type === 'delete' || confirmAction?.type === 'cancel'
+            ? 'danger'
+            : 'primary'
+        }
+        loading={updateMutation.isPending || deleteMutation.isPending}
+        onConfirm={handleConfirm}
+        onClose={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

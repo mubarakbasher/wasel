@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, MoreVertical, Check, X, Loader2 } from 'lucide-react';
+import { Search, MoreVertical, Check, X } from 'lucide-react';
 import api from '../lib/api';
 import { formatDate } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
+import Button from '../components/ui/Button';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 interface User {
   id: string;
@@ -237,91 +240,71 @@ export default function UsersPage() {
       )}
 
       {/* Edit Modal */}
-      {editUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Edit User</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setEditUser(null)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleEditSave}
-                disabled={updateMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors cursor-pointer"
-              >
-                {updateMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                Save
-              </button>
-            </div>
+      <Modal
+        open={!!editUser}
+        onClose={() => setEditUser(null)}
+        title="Edit User"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditUser(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEditSave}
+              loading={updateMutation.isPending}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* Confirm Dialog */}
-      {confirmAction && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-semibold text-slate-900 mb-2">
-              {confirmAction.type === 'delete'
-                ? 'Delete User'
-                : confirmAction.type === 'suspend'
-                  ? 'Suspend User'
-                  : 'Unsuspend User'}
-            </h2>
-            <p className="text-sm text-slate-600 mb-6">
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={
+          confirmAction?.type === 'delete'
+            ? 'Delete User'
+            : confirmAction?.type === 'suspend'
+              ? 'Suspend User'
+              : 'Unsuspend User'
+        }
+        message={
+          confirmAction && (
+            <>
               Are you sure you want to {confirmAction.type}{' '}
               <span className="font-medium">{confirmAction.user.name}</span>?
               {confirmAction.type === 'delete' && ' This action cannot be undone.'}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setConfirmAction(null)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={updateMutation.isPending || deleteMutation.isPending}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 transition-colors cursor-pointer ${
-                  confirmAction.type === 'delete'
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                {(updateMutation.isPending || deleteMutation.isPending) && (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                )}
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </>
+          )
+        }
+        confirmLabel="Confirm"
+        variant={confirmAction?.type === 'delete' ? 'danger' : 'primary'}
+        loading={updateMutation.isPending || deleteMutation.isPending}
+        onConfirm={handleConfirm}
+        onClose={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

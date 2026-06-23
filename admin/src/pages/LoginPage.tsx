@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import BrandMark from '../components/BrandMark';
+import Button from '../components/ui/Button';
 
 export default function LoginPage() {
   const { isLoggedIn, login } = useAuth();
@@ -86,14 +86,9 @@ export default function LoginPage() {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {loading ? 'Signing in...' : 'Sign in'}
-            </button>
+            <Button type="submit" loading={loading} className="w-full">
+              Sign in
+            </Button>
           </form>
         </div>
       </div>

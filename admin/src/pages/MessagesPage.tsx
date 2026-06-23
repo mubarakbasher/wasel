@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import api from '../lib/api';
 import { formatDateTime } from '../lib/datetime';
 import ErrorPanel from '../components/ErrorPanel';
+import Button from '../components/ui/Button';
 
 interface Conversation {
   userId: string;
@@ -52,7 +53,7 @@ export default function MessagesPage() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            className="pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-72"
+            className="pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-72"
           />
         </div>
       </div>
@@ -138,25 +139,27 @@ export default function MessagesPage() {
               Showing {start} to {end} of {total} results
             </p>
             <div className="flex items-center gap-2">
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setPage(page - 1)}
                 disabled={page <= 1}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                leftIcon={<ChevronLeft className="w-4 h-4" />}
               >
-                <ChevronLeft className="w-4 h-4" />
                 Previous
-              </button>
+              </Button>
               <span className="text-sm text-slate-500 px-2">
                 Page {page} of {totalPages}
               </span>
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setPage(page + 1)}
                 disabled={page >= totalPages}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 Next
                 <ChevronRight className="w-4 h-4" />
-              </button>
+              </Button>
             </div>
           </div>
         )}

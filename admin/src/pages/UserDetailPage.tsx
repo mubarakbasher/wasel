@@ -6,6 +6,9 @@ import api from '../lib/api';
 import { formatDate, formatDateTime } from '../lib/datetime';
 import ErrorPanel from '../components/ErrorPanel';
 import StatusBadge from '../components/StatusBadge';
+import Button from '../components/ui/Button';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 interface UserInfo {
   id: string;
@@ -62,6 +65,7 @@ export default function UserDetailPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [setupRouterId, setSetupRouterId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [verifyConfirm, setVerifyConfirm] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-user', id],
@@ -83,20 +87,11 @@ export default function UserDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-user', id] });
+      setVerifyConfirm(false);
       flash('User verified.');
     },
     onError: (err) => flash(extractErr(err, 'Verify failed')),
   });
-
-  const onVerify = () => {
-    if (
-      window.confirm(
-        'Mark this user as email-verified? They will be able to log in without entering an OTP.',
-      )
-    ) {
-      verifyMutation.mutate();
-    }
-  };
 
   return (
     <div className="max-w-4xl">
@@ -135,14 +130,15 @@ export default function UserDetailPage() {
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 <StatusBadge status={data.user.is_verified ? 'verified' : 'not verified'} />
                 {!data.user.is_verified && (
-                  <button
-                    onClick={onVerify}
-                    disabled={verifyMutation.isPending}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors cursor-pointer"
+                  <Button
+                    size="sm"
+                    variant="success"
+                    onClick={() => setVerifyConfirm(true)}
+                    loading={verifyMutation.isPending}
+                    leftIcon={<Check className="w-4 h-4" />}
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    {verifyMutation.isPending ? 'Verifying…' : 'Verify user'}
-                  </button>
+                    Verify user
+                  </Button>
                 )}
                 <StatusBadge status={data.user.is_active ? 'active' : 'suspended'} />
               </div>
@@ -165,7 +161,7 @@ export default function UserDetailPage() {
             {data.subscription ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20">
                     {data.subscription.planTier.charAt(0).toUpperCase() +
                       data.subscription.planTier.slice(1)}
                   </span>
@@ -199,13 +195,13 @@ export default function UserDetailPage() {
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-900">Routers</h3>
-              <button
+              <Button
+                size="sm"
                 onClick={() => setAddOpen(true)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                leftIcon={<Plus className="w-4 h-4" />}
               >
-                <Plus className="w-4 h-4" />
                 Add router
-              </button>
+              </Button>
             </div>
             {data.routers.length === 0 ? (
               <p className="text-sm text-slate-500">This user has no routers yet.</p>
@@ -241,14 +237,15 @@ export default function UserDetailPage() {
                           {formatDate(r.created_at)}
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          <button
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => setSetupRouterId(r.id)}
                             title="View setup script"
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                            leftIcon={<FileText className="w-4 h-4" />}
                           >
-                            <FileText className="w-3.5 h-3.5" />
                             View setup
-                          </button>
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -271,16 +268,27 @@ export default function UserDetailPage() {
         />
       )}
 
-      {setupRouterId && (
-        <Modal title="Setup script" onClose={() => setSetupRouterId(null)}>
-          <SetupGuideView routerId={setupRouterId} />
-          <ModalActions
-            onClose={() => setSetupRouterId(null)}
-            onConfirm={() => setSetupRouterId(null)}
-            confirmLabel="Done"
-          />
-        </Modal>
-      )}
+      <Modal
+        open={!!setupRouterId}
+        onClose={() => setSetupRouterId(null)}
+        title="Setup script"
+        footer={
+          <Button onClick={() => setSetupRouterId(null)}>Done</Button>
+        }
+      >
+        {setupRouterId && <SetupGuideView routerId={setupRouterId} />}
+      </Modal>
+
+      <ConfirmDialog
+        open={verifyConfirm}
+        title="Verify user"
+        message="Mark this user as email-verified? They will be able to log in without entering an OTP."
+        confirmLabel="Verify user"
+        variant="success"
+        loading={verifyMutation.isPending}
+        onConfirm={() => verifyMutation.mutate()}
+        onClose={() => setVerifyConfirm(false)}
+      />
     </div>
   );
 }
@@ -350,15 +358,37 @@ function AddRouterModal({
 
   if (createdRouterId) {
     return (
-      <Modal title="Router created — setup script" onClose={onDone}>
+      <Modal
+        open
+        onClose={onDone}
+        title="Router created — setup script"
+        footer={<Button onClick={onDone}>Done</Button>}
+      >
         <SetupGuideView routerId={createdRouterId} />
-        <ModalActions onClose={onDone} onConfirm={onDone} confirmLabel="Done" />
       </Modal>
     );
   }
 
   return (
-    <Modal title="Add router" onClose={onClose}>
+    <Modal
+      open
+      onClose={onClose}
+      title="Add router"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            loading={mutation.isPending}
+            disabled={!canSubmit}
+          >
+            Create router
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-3">
         <ModalField
           label="Name"
@@ -398,7 +428,7 @@ function AddRouterModal({
               type="checkbox"
               checked={overrideQuota}
               onChange={(e) => setOverrideQuota(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
             Override subscription quota
           </label>
@@ -417,12 +447,6 @@ function AddRouterModal({
           <div className="px-3 py-2 rounded bg-red-50 text-red-700 text-sm">{errorMsg}</div>
         )}
       </div>
-      <ModalActions
-        onClose={onClose}
-        onConfirm={() => mutation.mutate()}
-        confirmLabel={mutation.isPending ? 'Creating...' : 'Create router'}
-        confirmDisabled={!canSubmit}
-      />
     </Modal>
   );
 }
@@ -468,12 +492,9 @@ function SetupGuideView({ routerId }: { routerId: string }) {
         <div className="px-3 py-2 rounded bg-red-50 text-red-700 text-sm">
           {error instanceof Error ? error.message : extractErr(error)}
         </div>
-        <button
-          onClick={() => refetch()}
-          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-        >
+        <Button variant="secondary" size="sm" onClick={() => refetch()}>
           Retry
-        </button>
+        </Button>
       </div>
     );
   }
@@ -525,7 +546,7 @@ function StepCard({ step }: { step: SetupStep }) {
     <div className="border border-slate-200 rounded-lg p-3">
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
-          <div className="text-xs font-semibold text-indigo-600">Step {step.step}</div>
+          <div className="text-xs font-semibold text-blue-600">Step {step.step}</div>
           <div className="text-sm font-medium text-slate-900">{step.title}</div>
         </div>
         <CopyButton text={step.command} />
@@ -553,8 +574,12 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
   };
   return (
     <button
+      type="button"
       onClick={copy}
-      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+      aria-label={copied ? 'Copied' : label}
+      className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer ${
+        copied ? 'text-green-600' : 'text-slate-600'
+      }`}
     >
       {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
       {copied ? 'Copied' : label}
@@ -588,70 +613,8 @@ function ModalField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         maxLength={maxLength}
-        className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
       />
-    </div>
-  );
-}
-
-function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex items-start justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-          >
-            &times;
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function ModalActions({
-  onClose,
-  onConfirm,
-  confirmLabel,
-  confirmDisabled,
-  danger,
-}: {
-  onClose: () => void;
-  onConfirm: () => void;
-  confirmLabel: string;
-  confirmDisabled?: boolean;
-  danger?: boolean;
-}) {
-  const confirmColor = danger
-    ? 'bg-red-600 hover:bg-red-700'
-    : 'bg-indigo-600 hover:bg-indigo-700';
-  return (
-    <div className="flex justify-end gap-3 mt-5">
-      <button
-        onClick={onClose}
-        className="px-4 py-2 text-sm font-medium rounded-lg border text-gray-700 hover:bg-gray-50 transition-colors"
-      >
-        Cancel
-      </button>
-      <button
-        onClick={onConfirm}
-        disabled={confirmDisabled}
-        className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${confirmColor}`}
-      >
-        {confirmLabel}
-      </button>
     </div>
   );
 }

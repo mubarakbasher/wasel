@@ -6,6 +6,8 @@ import { formatDateTime } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
+import Button from '../components/ui/Button';
+import Modal from '../components/Modal';
 
 interface Payment {
   id: string;
@@ -100,7 +102,7 @@ export default function PaymentsPage() {
       key: 'plan_tier',
       header: 'Plan',
       render: (row) => (
-        <span className="inline-block px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-medium capitalize">
+        <span className="inline-block px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium capitalize">
           {row.plan_tier}
         </span>
       ),
@@ -208,7 +210,7 @@ export default function PaymentsPage() {
             }}
             className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
               statusFilter === tab
-                ? 'border-indigo-600 text-indigo-600'
+                ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -237,72 +239,62 @@ export default function PaymentsPage() {
       )}
 
       {/* Confirm dialog */}
-      {confirmAction && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {isRejecting ? 'Reject Payment' : 'Approve Payment'}
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {isRejecting
-                ? 'The user will see this reason and can upload a new receipt or cancel to pick another plan.'
-                : "Approve this payment? The user's subscription will be activated."}
-            </p>
-            {isRejecting && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reason <span className="text-red-600">*</span>
-                </label>
-                <textarea
-                  rows={3}
-                  maxLength={500}
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  placeholder="e.g. Receipt image is unreadable, or amount does not match."
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                />
-                <div className="text-xs text-gray-400 mt-1 text-right">
-                  {rejectionReason.length}/500
-                </div>
-              </div>
-            )}
-            {errorMsg && (
-              <div className="mb-4 px-3 py-2 rounded bg-red-50 text-red-700 text-sm">
-                {errorMsg}
-              </div>
-            )}
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setConfirmAction(null)}
-                className="px-4 py-2 text-sm font-medium rounded-lg border text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() =>
-                  mutation.mutate({
-                    id: confirmAction.id,
-                    decision: confirmAction.decision,
-                    reason: isRejecting ? trimmedReason : undefined,
-                  })
-                }
-                disabled={!canSubmit}
-                className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isRejecting
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-green-600 hover:bg-green-700'
-                }`}
-              >
-                {mutation.isPending
-                  ? 'Processing...'
-                  : isRejecting
-                    ? 'Reject'
-                    : 'Approve'}
-              </button>
+      <Modal
+        open={!!confirmAction}
+        onClose={() => setConfirmAction(null)}
+        title={isRejecting ? 'Reject Payment' : 'Approve Payment'}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={isRejecting ? 'danger' : 'success'}
+              loading={mutation.isPending}
+              disabled={!canSubmit}
+              onClick={() =>
+                confirmAction &&
+                mutation.mutate({
+                  id: confirmAction.id,
+                  decision: confirmAction.decision,
+                  reason: isRejecting ? trimmedReason : undefined,
+                })
+              }
+            >
+              {isRejecting ? 'Reject' : 'Approve'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          {isRejecting
+            ? 'The user will see this reason and can upload a new receipt or cancel to pick another plan.'
+            : "Approve this payment? The user's subscription will be activated."}
+        </p>
+        {isRejecting && (
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Reason <span className="text-red-600">*</span>
+            </label>
+            <textarea
+              rows={3}
+              maxLength={500}
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="e.g. Receipt image is unreadable, or amount does not match."
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+            />
+            <div className="text-xs text-gray-400 mt-1 text-right">
+              {rejectionReason.length}/500
             </div>
           </div>
-        </div>
-      )}
+        )}
+        {errorMsg && (
+          <div className="mt-4 px-3 py-2 rounded bg-red-50 text-red-700 text-sm">
+            {errorMsg}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

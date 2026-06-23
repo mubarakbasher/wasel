@@ -135,7 +135,7 @@ export default function RoutersPage() {
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search routers..."
-            className="pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-64"
+            className="pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64"
           />
         </div>
         <select
@@ -144,7 +144,7 @@ export default function RoutersPage() {
             setStatusFilter(e.target.value);
             setPage(1);
           }}
-          className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         >
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>

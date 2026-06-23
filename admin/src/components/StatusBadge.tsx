@@ -16,23 +16,43 @@ const statusStyles: Record<string, string> = {
 
 const defaultStyle = 'bg-slate-100 text-slate-600 ring-slate-500/20';
 
+const dotStyles: Record<string, string> = {
+  active: 'bg-green-500',
+  online: 'bg-green-500',
+  approved: 'bg-green-500',
+  expired: 'bg-red-500',
+  offline: 'bg-red-500',
+  pending: 'bg-yellow-500',
+  cancelled: 'bg-orange-500',
+  degraded: 'bg-orange-500',
+  suspended: 'bg-slate-400',
+};
+
+const defaultDot = 'bg-slate-400';
+
 export default function StatusBadge({ status }: StatusBadgeProps) {
   if (!status) {
     return (
       <span
+        aria-label="Status: unknown"
         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${defaultStyle}`}
       >
+        <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${defaultDot}`} />
         —
       </span>
     );
   }
 
-  const style = statusStyles[status.toLowerCase()] || defaultStyle;
+  const key = status.toLowerCase();
+  const style = statusStyles[key] || defaultStyle;
+  const dot = dotStyles[key] || defaultDot;
 
   return (
     <span
+      aria-label={`Status: ${status}`}
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${style}`}
     >
+      <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${dot}`} />
       {status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()}
     </span>
   );
