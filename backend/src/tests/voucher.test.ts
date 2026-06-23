@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import { createVouchersSchema } from '../validators/voucher.validators';
+import { allocateVoucherUsernames } from '../services/voucher.service';
+import { AppError } from '../middleware/errorHandler';
 import {
   TEST_USER,
   authHeader,
@@ -621,5 +623,63 @@ describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => 
     // 500 rows, but never a schema rejection.)
     expect(res.status).not.toBe(400);
     expect(res.status).not.toBe(422);
+  });
+});
+
+// ─── allocateVoucherUsernames unit tests ─────────────────────────────────────
+
+describe('allocateVoucherUsernames', () => {
+  it('happy path: usernameExists returns [] → single round, distinct 8-digit codes', async () => {
+    const usernameExists = vi.fn().mockResolvedValue([]);
+    const result = await allocateVoucherUsernames(5, usernameExists);
+
+    expect(result).toHaveLength(5);
+    expect(new Set(result).size).toBe(5);
+    expect(usernameExists).toHaveBeenCalledTimes(1);
+    for (const code of result) {
+      expect(code).toMatch(/^\d{8}$/);
+    }
+  });
+
+  it('format preserved: all returned codes match /^\\d{8}$/', async () => {
+    const usernameExists = vi.fn().mockResolvedValue([]);
+    const result = await allocateVoucherUsernames(10, usernameExists);
+
+    for (const code of result) {
+      expect(code).toMatch(/^\d{8}$/);
+    }
+  });
+
+  it('regenerates on collision: colliding code is replaced, callback called exactly twice', async () => {
+    let firstCode: string | null = null;
+    const usernameExists = vi.fn().mockImplementationOnce(async (candidates: string[]) => {
+      // On the first call, take the first code to force a regeneration.
+      firstCode = candidates[0];
+      return [firstCode];
+    }).mockResolvedValueOnce([]);
+
+    const count = 3;
+    const result = await allocateVoucherUsernames(count, usernameExists);
+
+    expect(result).toHaveLength(count);
+    expect(new Set(result).size).toBe(count);
+    // The originally-taken code must have been replaced.
+    expect(result).not.toContain(firstCode);
+    expect(usernameExists).toHaveBeenCalledTimes(2);
+  });
+
+  it('exhaustion throws AppError 409 USERNAME_TAKEN when namespace is saturated', async () => {
+    // usernameExists always returns all candidates as taken — forces exhaustion.
+    const usernameExists = vi.fn().mockImplementation(async (candidates: string[]) => candidates);
+
+    await expect(
+      allocateVoucherUsernames(3, usernameExists, { maxRounds: 3 }),
+    ).rejects.toSatisfy((err: unknown) => {
+      return (
+        err instanceof AppError &&
+        err.statusCode === 409 &&
+        err.code === 'USERNAME_TAKEN'
+      );
+    });
   });
 });

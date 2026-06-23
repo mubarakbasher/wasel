@@ -69,6 +69,52 @@ function generateRandomString(length: number, charset = 'ABCDEFGHJKLMNPQRSTUVWXY
 }
 
 /**
+ * Allocate `count` numeric voucher codes that are unique within the batch AND not already
+ * present in the shared RADIUS namespace. Collisions are REGENERATED, not rejected — the
+ * namespace is global across all routers/operators, so collisions are expected as it fills
+ * and must never abort the creation.
+ *
+ * @param usernameExists - returns the subset of candidates already taken (the DB check).
+ */
+export async function allocateVoucherUsernames(
+  count: number,
+  usernameExists: (candidates: string[]) => Promise<string[]>,
+  opts: { length?: number; maxRounds?: number } = {},
+): Promise<string[]> {
+  const length = opts.length ?? 8;
+  const maxRounds = opts.maxRounds ?? 5;
+  const used = new Set<string>();
+
+  const fresh = (): string => {
+    let candidate: string;
+    let attempts = 0;
+    do {
+      candidate = generateRandomString(length, '0123456789');
+      if (++attempts > 100) {
+        throw new AppError(500, 'Failed to generate unique usernames', 'USERNAME_GENERATION_FAILED');
+      }
+    } while (used.has(candidate));
+    used.add(candidate);
+    return candidate;
+  };
+
+  const codes = Array.from({ length: count }, fresh);
+
+  for (let round = 0; round < maxRounds; round++) {
+    const taken = new Set(await usernameExists(codes));
+    if (taken.size === 0) return codes; // collision-free → done
+    for (let i = 0; i < codes.length; i++) {
+      if (taken.has(codes[i])) {
+        used.delete(codes[i]);
+        codes[i] = fresh(); // regenerate ONLY the colliding ones
+      }
+    }
+  }
+  // Exhausted retries → namespace near-saturated; clean retryable 409 (effectively unreachable).
+  throw new AppError(409, 'Could not allocate unique voucher codes. Please try again.', 'USERNAME_TAKEN');
+}
+
+/**
  * Convert limit value + unit to base units (seconds or bytes).
  */
 function normalizeLimit(value: number, unit: string): number {
@@ -449,35 +495,16 @@ export async function createVouchers(
   const count = data.count;
   const normalizedValue = normalizeLimit(data.limitValue, data.limitUnit);
 
-  // Generate unique numeric-only usernames (no separate password)
-  const credentials: Array<{ username: string }> = [];
-  const usedUsernames = new Set<string>();
-
-  for (let i = 0; i < count; i++) {
-    let username: string;
-    let attempts = 0;
-    do {
-      username = generateRandomString(8, '0123456789');
-      attempts++;
-      if (attempts > 100) {
-        throw new AppError(500, 'Failed to generate unique usernames', 'USERNAME_GENERATION_FAILED');
-      }
-    } while (usedUsernames.has(username));
-
-    usedUsernames.add(username);
-    credentials.push({ username });
-  }
-
-  // Verify none of the usernames already exist in radcheck
-  const usernames = credentials.map((c) => c.username);
-  const existingCheck = await pool.query(
-    `SELECT DISTINCT username FROM radcheck WHERE username = ANY($1)`,
-    [usernames],
-  );
-  if (existingCheck.rows.length > 0) {
-    const taken = existingCheck.rows.map((r: { username: string }) => r.username);
-    throw new AppError(409, `Username(s) already taken: ${taken.join(', ')}`, 'USERNAME_TAKEN');
-  }
+  // Generate codes, regenerating any that collide with the shared global RADIUS namespace
+  // (instead of aborting the whole batch on the first collision).
+  const usernames = await allocateVoucherUsernames(count, async (candidates) => {
+    const res = await pool.query<{ username: string }>(
+      `SELECT DISTINCT username FROM radcheck WHERE username = ANY($1)`,
+      [candidates],
+    );
+    return res.rows.map((r) => r.username);
+  });
+  const credentials: Array<{ username: string }> = usernames.map((username) => ({ username }));
 
   const client = await pool.connect();
   try {
@@ -598,6 +625,10 @@ export async function createVouchers(
     return batchToVoucherInfo(vouchers);
   } catch (error) {
     await client.query('ROLLBACK');
+    if (error && typeof error === 'object' && (error as { code?: string }).code === '23505') {
+      // Concurrent batch grabbed the same code between our check and INSERT.
+      throw new AppError(409, 'A voucher code collided. Please try again.', 'USERNAME_TAKEN');
+    }
     throw error;
   } finally {
     client.release();
