@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
-    "build": "tsc",
+    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/hotspot-templates','dist/hotspot-templates',{recursive:true,filter:p=>!p.endsWith('.ts')})\"",
     "start": "node dist/server.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Error</title>
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="-1">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Plus Jakarta Sans',sans-serif; background: #eceef4; }
+  .card { width: 100%; max-width: 430px; background: #ffffff; border: 1px solid #e7e9f1; border-radius: 28px; padding: 40px; text-align: center; box-shadow: 0 30px 70px -30px rgba(40,42,80,0.35); }
+  .icon { width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+  h1 { margin: 0 0 8px; font-size: 21px; font-weight: 800; color: #1a1c2e; }
+  .err { margin: 0 0 24px; font-size: 14.5px; color: #c0362c; font-weight: 600; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; height: 50px; padding: 0 28px; font-size: 15px; font-weight: 700; color: #ffffff; text-decoration: none; background: linear-gradient(150deg,#4f46e5,#6d63f0); border-radius: 14px; box-shadow: 0 14px 26px -12px rgba(79,70,229,0.7); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#c0362c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+    </div>
+    <h1>Something went wrong</h1>
+    <p class="err">$(error)</p>
+    <a class="btn" href="$(link-login)">Back to login</a>
+  </div>
+</body>
+</html>

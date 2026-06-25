@@ -7,6 +7,7 @@ import {
   updateRouterSchema,
   routerIdParamSchema,
   healthQuerySchema,
+  setHotspotTemplateSchema,
 } from '../validators/router.validators';
 import * as routerController from '../controllers/router.controller';
 
@@ -23,6 +24,15 @@ router.post(
 );
 
 router.get('/', authenticate, requireSubscription, routerController.getRouters);
+
+// NOTE: this fixed-path route MUST be declared before /:id so Express does not
+// capture the literal string "hotspot-templates" as a router id.
+router.get(
+  '/hotspot-templates',
+  authenticate,
+  requireSubscription,
+  routerController.listHotspotTemplates,
+);
 
 router.get(
   '/:id',
@@ -70,6 +80,14 @@ router.get(
   requireSubscription,
   validate({ params: routerIdParamSchema, query: healthQuerySchema }),
   routerController.getRouterHealth,
+);
+
+router.put(
+  '/:id/hotspot-template',
+  authenticate,
+  requireSubscription,
+  validate({ params: routerIdParamSchema, body: setHotspotTemplateSchema }),
+  routerController.setHotspotTemplate,
 );
 
 export default router;

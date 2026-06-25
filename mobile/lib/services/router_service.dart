@@ -1,3 +1,4 @@
+import '../models/hotspot_template.dart';
 import '../models/router_model.dart';
 import 'api_client.dart';
 
@@ -216,6 +217,25 @@ class RouterService {
     final response = await _api.dio.get('/routers/$id/setup-guide');
     return RouterSetupGuide.fromJson(
         response.data['data'] as Map<String, dynamic>);
+  }
+
+  Future<List<HotspotTemplate>> getHotspotTemplates() async {
+    final response = await _api.dio.get('/routers/hotspot-templates');
+    final data = response.data['data'] as List;
+    return data
+        .map((e) => HotspotTemplate.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<RouterModel> setHotspotTemplate(
+    String routerId,
+    String templateId,
+  ) async {
+    final response = await _api.dio.put(
+      '/routers/$routerId/hotspot-template',
+      data: {'templateId': templateId},
+    );
+    return RouterModel.fromJson(response.data['data'] as Map<String, dynamic>);
   }
 
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../providers/hotspot_templates_provider.dart';
 import '../../providers/routers_provider.dart';
 import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
@@ -363,6 +364,8 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
           ),
         ),
         const SizedBox(height: AppSpacing.sm),
+        _HotspotTemplateRow(router: router),
+        const SizedBox(height: AppSpacing.sm),
         SizedBox(
           height: 48,
           width: double.infinity,
@@ -408,6 +411,68 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }
+
+// ---------------------------------------------------------------------------
+// Hotspot template entry row in the actions card
+// ---------------------------------------------------------------------------
+
+class _HotspotTemplateRow extends ConsumerWidget {
+  final dynamic router;
+
+  const _HotspotTemplateRow({required this.router});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final templateId = router.hotspotTemplateId as String?;
+    final templateStatus = router.hotspotTemplateStatus as String?;
+
+    String subtitle = context.tr('routers.hotspotTemplate.notSet');
+    if (templateId != null) {
+      final statusKey = templateStatus != null
+          ? 'routers.hotspotTemplate.status.$templateStatus'
+          : null;
+      final statusLabel =
+          statusKey != null ? context.tr(statusKey) : templateStatus ?? '';
+      subtitle = '$templateId — $statusLabel';
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: () {
+          ref.read(hotspotTemplateNotifierProvider.notifier).reset();
+          context.push('/routers/hotspot-template', extra: router.id as String);
+        },
+        child: Row(
+          children: [
+            const Icon(Icons.web, size: 18),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    context.tr('routers.hotspotTemplate.action'),
+                    style: AppTypography.callout,
+                  ),
+                  Text(
+                    subtitle,
+                    style: AppTypography.caption1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 class _InfoRow extends StatelessWidget {
   final String label;

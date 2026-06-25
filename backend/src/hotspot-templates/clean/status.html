@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi Status</title>
+<meta http-equiv="refresh" content="60">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  @keyframes floatGlow { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-18px); } }
+  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Plus Jakarta Sans','Cairo',sans-serif; background: #eceef4; overflow: hidden; }
+  .glow-a { position: absolute; top: -220px; left: 50%; width: 760px; height: 760px; transform: translateX(-50%); background: radial-gradient(circle at center, rgba(99,102,241,0.28), rgba(99,102,241,0) 62%); animation: floatGlow 9s ease-in-out infinite; pointer-events: none; }
+  .glow-b { position: absolute; bottom: -260px; right: -120px; width: 560px; height: 560px; background: radial-gradient(circle at center, rgba(168,148,255,0.22), rgba(168,148,255,0) 64%); pointer-events: none; }
+  .wrap { position: relative; width: 100%; max-width: 430px; }
+  .card { background: #ffffff; border: 1px solid #e7e9f1; border-radius: 28px; padding: 36px 40px 40px; box-shadow: 0 30px 70px -30px rgba(40,42,80,0.35), 0 2px 8px rgba(40,42,80,0.04); }
+  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .lang-toggle { display: inline-flex; background: #f1f2f8; border: 1px solid #e7e9f1; border-radius: 999px; padding: 3px; gap: 2px; }
+  .lang-btn { font-family: 'Plus Jakarta Sans',sans-serif; font-size: 12.5px; font-weight: 700; padding: 7px 16px; border: none; border-radius: 999px; cursor: pointer; transition: all .15s; background: transparent; color: #8b8fa3; }
+  .lang-btn.ar { font-family: 'Cairo',sans-serif; font-size: 13px; }
+  .lang-btn.active { background: #ffffff; color: #4f46e5; box-shadow: 0 1px 3px rgba(40,42,80,0.12); }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  .banner { display: flex; align-items: center; gap: 12px; background: #ecfdf3; border: 1px solid #c6f0d4; border-radius: 16px; padding: 14px 16px; }
+  .banner .tick { flex: none; width: 38px; height: 38px; border-radius: 50%; background: #22c55e; display: flex; align-items: center; justify-content: center; }
+  .banner .t1 { font-size: 15px; font-weight: 700; color: #15803d; }
+  .banner .t2 { font-size: 12.5px; font-weight: 500; color: #3f9e63; }
+  .hero { background: linear-gradient(150deg,#4f46e5,#6d63f0); border-radius: 18px; padding: 18px 20px; color: #ffffff; box-shadow: 0 16px 30px -16px rgba(79,70,229,0.7); }
+  .hero .lbl { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.85; }
+  .hero .big { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin-top: 6px; }
+  .rows { display: flex; flex-direction: column; border: 1px solid #eef0f5; border-radius: 16px; overflow: hidden; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #f1f2f8; }
+  .row:last-child { border-bottom: none; }
+  .row .k { font-size: 13px; font-weight: 500; color: #8b8fa3; }
+  .row .v { font-size: 13.5px; font-weight: 700; color: #1a1c2e; letter-spacing: 0.04em; white-space: nowrap; }
+  .logout-btn { height: 52px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; font-family: inherit; font-size: 15px; font-weight: 700; color: #c0362c; background: #fff1f1; border: 1.5px solid #fbd5d2; border-radius: 14px; cursor: pointer; transition: background .15s; }
+  .logout-btn:hover { background: #ffe4e2; }
+  form { margin: 0; }
+</style>
+</head>
+<body>
+  <div class="glow-a"></div>
+  <div class="glow-b"></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="lang-row">
+        <div class="lang-toggle">
+          <button type="button" id="btn-en" class="lang-btn active" onclick="setLang('en')">EN</button>
+          <button type="button" id="btn-ar" class="lang-btn ar" onclick="setLang('ar')">عربي</button>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="banner">
+          <span class="tick">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </span>
+          <div>
+            <div class="t1" data-i18n="connTitle">You're connected</div>
+            <div class="t2" data-i18n="connSub">Enjoy your session</div>
+          </div>
+        </div>
+
+        <div class="hero">
+          <div class="lbl">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span data-i18n="lblTimeLeft">Time remaining</span>
+          </div>
+          <div class="big">$(session-time-left)</div>
+        </div>
+
+        <div class="rows">
+          <div class="row"><span class="k" data-i18n="lblVoucher">Voucher</span><span class="v">$(username)</span></div>
+          <div class="row"><span class="k" data-i18n="lblUptime">Uptime</span><span class="v">$(uptime)</span></div>
+          <div class="row"><span class="k" data-i18n="lblDown">Downloaded</span><span class="v">$(bytes-in-nice)</span></div>
+          <div class="row"><span class="k" data-i18n="lblUp">Uploaded</span><span class="v">$(bytes-out-nice)</span></div>
+        </div>
+
+        <form action="$(link-logout)" method="post">
+          <button class="logout-btn" type="submit">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            <span data-i18n="disconnect">Disconnect</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+<script type="text/javascript">
+var I18N = {
+  en: { connTitle: "You're connected", connSub: "Enjoy your session", lblTimeLeft: "Time remaining", lblVoucher: "Voucher", lblUptime: "Uptime", lblDown: "Downloaded", lblUp: "Uploaded", disconnect: "Disconnect" },
+  ar: { connTitle: "أنت متصل الآن", connSub: "استمتع بجلستك", lblTimeLeft: "الوقت المتبقي", lblVoucher: "الرمز", lblUptime: "مدة الاتصال", lblDown: "تم التنزيل", lblUp: "تم الرفع", disconnect: "قطع الاتصال" }
+};
+function setLang(lang) {
+  var t = I18N[lang] || I18N.en;
+  document.documentElement.lang = (lang === 'ar') ? 'ar' : 'en';
+  document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+  var nodes = document.querySelectorAll('[data-i18n]');
+  for (var i = 0; i < nodes.length; i++) { var k = nodes[i].getAttribute('data-i18n'); if (t[k] != null) nodes[i].textContent = t[k]; }
+  document.getElementById('btn-en').classList.toggle('active', lang !== 'ar');
+  document.getElementById('btn-ar').classList.toggle('active', lang === 'ar');
+}
+setLang('en');
+</script>
+</body>
+</html>

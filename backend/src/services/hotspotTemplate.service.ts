@@ -1,0 +1,234 @@
+import path from 'path';
+import { pool } from '../config/database';
+import { config } from '../config';
+import logger from '../config/logger';
+import { AppError } from '../middleware/errorHandler';
+import { connectToRouter } from './routerOs.service';
+import { HOTSPOT_TEMPLATE_DIR, getTemplate } from '../hotspot-templates/manifest';
+import { RouterRow, RouterInfo } from './router.service';
+
+// VPS wg0 address — the router reaches the backend over the WireGuard tunnel at
+// this IP (the same constant used in router.service.ts for the RADIUS server).
+// Template files are pulled over the tunnel rather than the public WAN: the tunnel
+// is already encrypted + peer-authenticated, so no TLS/CA trust is needed on the
+// router and there is no MITM surface for the login page that gets pushed.
+const WG_SERVER_TUNNEL_IP = '10.10.0.1';
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+function toRouterInfo(row: RouterRow): RouterInfo {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    model: row.model,
+    rosVersion: row.ros_version,
+    apiUser: row.api_user,
+    wgPublicKey: row.wg_public_key,
+    tunnelIp: row.tunnel_ip,
+    nasIdentifier: row.nas_identifier,
+    status: row.status,
+    lastSeen: row.last_seen ? new Date(row.last_seen).toISOString() : null,
+    lastHealthCheckAt: row.last_health_check_at
+      ? new Date(row.last_health_check_at).toISOString()
+      : null,
+    lastHealthReport: row.last_health_report ?? null,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+    hotspotTemplateId: row.hotspot_template_id ?? null,
+    hotspotTemplateStatus: row.hotspot_template_status ?? null,
+    hotspotTemplateAppliedAt: row.hotspot_template_applied_at
+      ? new Date(row.hotspot_template_applied_at).toISOString()
+      : null,
+    hotspotTemplateError: row.hotspot_template_error ?? null,
+  };
+}
+
+async function persistStatus(
+  routerId: string,
+  patch: {
+    status: 'pending' | 'applied' | 'failed';
+    templateId?: string;
+    error?: string | null;
+    setAppliedAt?: boolean;
+  },
+): Promise<RouterRow> {
+  const setClauses: string[] = [
+    'hotspot_template_status = $1',
+    'hotspot_template_error = $2',
+    'updated_at = NOW()',
+  ];
+  const values: unknown[] = [patch.status, patch.error ?? null];
+  let paramIndex = 3;
+
+  if (patch.templateId !== undefined) {
+    setClauses.push(`hotspot_template_id = $${paramIndex++}`);
+    values.push(patch.templateId);
+  }
+  if (patch.setAppliedAt) {
+    setClauses.push(`hotspot_template_applied_at = NOW()`);
+  }
+
+  values.push(routerId);
+  const result = await pool.query<RouterRow>(
+    `UPDATE routers SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+    values,
+  );
+  return result.rows[0];
+}
+
+// ---------------------------------------------------------------------------
+// Public service function
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply a hotspot login-page template to a router.
+ *
+ * Status lifecycle:
+ *   → pending  (immediate, before touching the router)
+ *   → applied  (all files fetched + html-directory updated)
+ *   → failed   (any RouterOS error; returns the router row rather than throwing)
+ *
+ * Only 4xx validation / ownership errors are thrown — the caller returns those
+ * as error responses. A RouterOS-level failure is swallowed and surfaced as
+ * { hotspotTemplateStatus: 'failed', hotspotTemplateError: '...' } so the
+ * mobile app can show "Failed – Retry" without receiving a 500.
+ */
+export async function applyHotspotTemplate(
+  userId: string,
+  routerId: string,
+  templateId: string,
+): Promise<RouterInfo> {
+  // 1. Ownership check
+  const ownerCheck = await pool.query<RouterRow>(
+    'SELECT * FROM routers WHERE id = $1 AND user_id = $2',
+    [routerId, userId],
+  );
+  if (ownerCheck.rows.length === 0) {
+    throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
+  }
+
+  // 2. Template existence check (4xx — the caller passed a bad id somehow)
+  const template = getTemplate(templateId);
+  if (!template) {
+    throw new AppError(400, `Unknown template id: ${templateId}`, 'TEMPLATE_NOT_FOUND');
+  }
+
+  // 3. Persist pending immediately so the mobile app shows progress
+  await persistStatus(routerId, {
+    status: 'pending',
+    templateId,
+    error: null,
+  });
+
+  // 4. Connect to the router (circuit-breaker + retries inside connectToRouter)
+  let client: import('routeros-client').RouterOSClient;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let api: any;
+
+  try {
+    ({ client, api } = await connectToRouter(routerId, userId));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn('applyHotspotTemplate: could not connect to router', { routerId, error: msg });
+    const row = await persistStatus(routerId, { status: 'failed', error: msg });
+    return toRouterInfo(row);
+  }
+
+  try {
+    // 5. Fetch each template file onto the router via /tool/fetch.
+    // The router pulls over the WireGuard tunnel (plain HTTP to the VPS wg0 IP),
+    // NOT the public WAN — the tunnel is encrypted and peer-authenticated, so the
+    // pushed login page cannot be tampered with in transit and no router-side CA
+    // trust is required.
+    const baseUrl = `http://${WG_SERVER_TUNNEL_IP}:${config.PORT}/api/v1/public/hotspot-templates/${templateId}`;
+
+    for (const file of template.files) {
+      const url = `${baseUrl}/${file}`;
+      const dstPath = `${HOTSPOT_TEMPLATE_DIR}/${file}`;
+
+      logger.info('Fetching hotspot template file onto router', { routerId, url, dstPath });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fetchResult = await (api as any)
+        .menu('/tool/fetch')
+        .exec('run', {
+          url,
+          'dst-path': dstPath,
+          mode: 'http',
+        });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const status = String((fetchResult as any)?.[0]?.status ?? '');
+      if (status === 'failed') {
+        throw new Error(`/tool/fetch failed for ${file} (status=failed)`);
+      }
+    }
+
+    // 6. Find the default (or first) hotspot profile and set html-directory
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const profiles = (await (api as any).menu('/ip/hotspot/profile').get()) as Array<Record<string, unknown>>;
+
+    if (!profiles || profiles.length === 0) {
+      throw new Error('No hotspot configured on this router');
+    }
+
+    // Prefer a profile named "default", otherwise use the first one
+    const profile =
+      profiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ?? profiles[0];
+    const profileId = String(profile['.id'] ?? '');
+
+    if (!profileId) {
+      throw new Error('No hotspot configured on this router');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (api as any).menu('/ip/hotspot/profile').where('.id', profileId).update({
+      'html-directory': HOTSPOT_TEMPLATE_DIR,
+    });
+
+    logger.info('Hotspot template applied successfully', { routerId, templateId });
+
+    // 7. Persist success
+    const row = await persistStatus(routerId, {
+      status: 'applied',
+      templateId,
+      error: null,
+      setAppliedAt: true,
+    });
+    return toRouterInfo(row);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn('applyHotspotTemplate: RouterOS operation failed', { routerId, templateId, error: msg });
+    const row = await persistStatus(routerId, { status: 'failed', error: msg });
+    return toRouterInfo(row);
+  } finally {
+    try {
+      await client.disconnect();
+    } catch {
+      // ignore disconnect errors
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Runtime path for static template files
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the absolute filesystem path to the hotspot-templates directory.
+ *
+ * In dev (ts-node from src/): resolves to `<repo>/backend/src/hotspot-templates`.
+ * In prod (compiled to dist/): the build script copies the directory to
+ * `<repo>/backend/dist/hotspot-templates`; we resolve relative to __dirname
+ * which will be `<repo>/backend/dist/services`, so `../hotspot-templates` lands
+ * correctly in both environments.
+ */
+export function getTemplatesRootDir(): string {
+  // __dirname is `src/services` (dev) or `dist/services` (prod).
+  // One level up gives `src/` or `dist/`; then `hotspot-templates` is a
+  // sibling of `services/` in both trees.
+  return path.resolve(__dirname, '..', 'hotspot-templates');
+}

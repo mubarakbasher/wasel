@@ -75,7 +75,7 @@ router.get('/readyz', healthHandler);
 router.use('/auth', authRoutes);
 router.use('/subscription', subscriptionRoutes);
 router.use('/routers', routerRoutes);
-router.use('/public/routers', publicRouterRoutes);
+router.use('/public', publicRouterRoutes);
 router.use('/profiles', profileRoutes);
 router.use('/routers/:id/vouchers', voucherRoutes);
 router.use('/routers/:id/sessions', sessionRoutes);

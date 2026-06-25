@@ -35,6 +35,10 @@ export interface RouterRow {
   last_health_report: unknown;
   created_at: Date;
   updated_at: Date;
+  hotspot_template_id: string | null;
+  hotspot_template_status: string | null;
+  hotspot_template_applied_at: Date | null;
+  hotspot_template_error: string | null;
 }
 
 export interface RouterInfo {
@@ -53,6 +57,10 @@ export interface RouterInfo {
   lastHealthReport: unknown;
   createdAt: string;
   updatedAt: string;
+  hotspotTemplateId: string | null;
+  hotspotTemplateStatus: string | null;
+  hotspotTemplateAppliedAt: string | null;
+  hotspotTemplateError: string | null;
 }
 
 // ----- Helpers -----
@@ -76,6 +84,12 @@ function toRouterInfo(row: RouterRow): RouterInfo {
     lastHealthReport: row.last_health_report ?? null,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
+    hotspotTemplateId: row.hotspot_template_id ?? null,
+    hotspotTemplateStatus: row.hotspot_template_status ?? null,
+    hotspotTemplateAppliedAt: row.hotspot_template_applied_at
+      ? new Date(row.hotspot_template_applied_at).toISOString()
+      : null,
+    hotspotTemplateError: row.hotspot_template_error ?? null,
   };
 }
 

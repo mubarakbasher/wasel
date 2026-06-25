@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi Login — Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  @keyframes auroraA { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-30px) scale(1.1); } }
+  @keyframes auroraB { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-50px,40px) scale(1.15); } }
+  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Space Grotesk','Cairo',sans-serif; background: #070912; overflow: hidden; }
+  .aurora-a { position: absolute; top: -160px; left: -120px; width: 520px; height: 520px; background: radial-gradient(circle at center, rgba(56,189,248,0.35), rgba(56,189,248,0) 65%); animation: auroraA 11s ease-in-out infinite; pointer-events: none; }
+  .aurora-b { position: absolute; bottom: -200px; right: -140px; width: 560px; height: 560px; background: radial-gradient(circle at center, rgba(139,92,246,0.4), rgba(139,92,246,0) 66%); animation: auroraB 13s ease-in-out infinite; pointer-events: none; }
+  .wrap { position: relative; width: 100%; max-width: 430px; }
+  .card { position: relative; background: rgba(18,22,38,0.72); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); border: 1px solid rgba(120,140,220,0.18); border-radius: 26px; padding: 34px 38px 38px; box-shadow: 0 40px 90px -30px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.06); }
+  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .lang-toggle { display: inline-flex; background: rgba(10,14,26,0.6); border: 1px solid rgba(120,140,220,0.18); border-radius: 999px; padding: 3px; gap: 2px; }
+  .lang-btn { font-family: 'Space Grotesk',sans-serif; font-size: 12.5px; font-weight: 600; padding: 7px 16px; border: none; border-radius: 999px; cursor: pointer; background: transparent; color: #8b93b5; }
+  .lang-btn.ar { font-family: 'Cairo',sans-serif; font-size: 13px; font-weight: 700; }
+  .lang-btn.active { background: rgba(56,189,248,0.16); color: #7dd3fc; }
+  .brand { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; margin-bottom: 28px; }
+  .brand-logo { position: relative; width: 84px; height: 84px; border-radius: 22px; background: linear-gradient(150deg, rgba(56,189,248,0.18), rgba(139,92,246,0.18)); border: 1px solid rgba(120,140,220,0.28); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 40px -8px rgba(56,189,248,0.5); }
+  .brand-logo svg { width: 48px; height: 48px; color: #eaf6ff; }
+  .brand-text { display: flex; flex-direction: column; gap: 7px; }
+  .pill { align-self: center; font-size: 10.5px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: #7dd3fc; background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.25); padding: 5px 13px; border-radius: 999px; }
+  .brand h1 { margin: 0; font-size: 25px; font-weight: 700; color: #f1f4ff; letter-spacing: -0.01em; }
+  .brand p { margin: 0; font-size: 14px; color: #8b93b5; font-weight: 400; }
+  form { display: flex; flex-direction: column; gap: 13px; }
+  .field { position: relative; display: block; }
+  .field .icon { position: absolute; inset-inline-start: 16px; top: 50%; transform: translateY(-50%); color: #6b73a0; display: flex; pointer-events: none; }
+  .input { width: 100%; height: 54px; padding-block: 0; padding-inline-start: 46px; padding-inline-end: 16px; font-family: inherit; font-size: 16px; font-weight: 600; letter-spacing: 0.08em; color: #eaeefc; background: rgba(10,14,26,0.55); border: 1.5px solid rgba(120,140,220,0.2); border-radius: 13px; outline: none; }
+  .input::placeholder { font-weight: 400; letter-spacing: 0; color: #6b73a0; }
+  .input:focus { border-color: #38bdf8; box-shadow: 0 0 0 4px rgba(56,189,248,0.14); }
+  .btn { margin-top: 6px; height: 54px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: inherit; font-size: 15.5px; font-weight: 600; color: #04121f; background: linear-gradient(135deg,#38bdf8,#22d3ee); border: none; border-radius: 13px; cursor: pointer; box-shadow: 0 0 30px -6px rgba(56,189,248,0.7); }
+  .btn-label { white-space: nowrap; }
+  .footer-info { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 24px; padding-top: 22px; border-top: 1px solid rgba(120,140,220,0.14); }
+  .footer-info .chip { display: flex; align-items: center; gap: 7px; color: #8b93b5; font-size: 12.5px; font-weight: 500; }
+  .dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(120,140,220,0.4); }
+  .foot { text-align: center; margin: 22px 0 0; font-size: 12.5px; color: #6b73a0; font-weight: 400; }
+  .foot b { font-weight: 600; color: #9fb4e8; }
+</style>
+</head>
+<body>
+  <div class="aurora-a"></div>
+  <div class="aurora-b"></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="lang-row">
+        <div class="lang-toggle">
+          <button type="button" class="lang-btn active">EN</button>
+          <button type="button" class="lang-btn ar">عربي</button>
+        </div>
+      </div>
+      <div class="brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+        </div>
+        <div class="brand-text">
+          <span class="pill">Wasel</span>
+          <h1>Riverside Café</h1>
+          <p>Complimentary Wi-Fi for our guests</p>
+        </div>
+      </div>
+      <form onsubmit="return false">
+        <label class="field">
+          <span class="icon">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H4v4"></path><path d="M2 7h20v3a2 2 0 0 0 0 4v3H2v-3a2 2 0 0 0 0-4z"></path><path d="M12 5v14" stroke-dasharray="2 3"></path></svg>
+          </span>
+          <input class="input" type="text" value="48291023" placeholder="Enter access code">
+        </label>
+        <button class="btn" type="submit"><span class="btn-label">Connect to Wi-Fi</span></button>
+      </form>
+      <div class="footer-info">
+        <div class="chip">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <span>Secured</span>
+        </div>
+        <span class="dot"></span>
+        <div class="chip">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7dd3fc" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polyline></svg>
+          <span>High speed</span>
+        </div>
+      </div>
+    </div>
+    <p class="foot">Connected via <b>Riverside Café</b> · Need help? Ask our staff</p>
+  </div>
+</body>
+</html>

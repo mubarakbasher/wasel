@@ -12,6 +12,10 @@ class RouterModel {
   final DateTime? lastSeen;
   final DateTime createdAt;
   final DateTime updatedAt;
+  // Hotspot login-page template
+  final String? hotspotTemplateId;
+  final String? hotspotTemplateStatus; // pending | applied | failed
+  final String? hotspotTemplateError;
 
   const RouterModel({
     required this.id,
@@ -27,6 +31,9 @@ class RouterModel {
     this.lastSeen,
     required this.createdAt,
     required this.updatedAt,
+    this.hotspotTemplateId,
+    this.hotspotTemplateStatus,
+    this.hotspotTemplateError,
   });
 
   bool get isOnline => status == 'online';
@@ -50,6 +57,9 @@ class RouterModel {
           : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      hotspotTemplateId: json['hotspot_template_id'] as String?,
+      hotspotTemplateStatus: json['hotspot_template_status'] as String?,
+      hotspotTemplateError: json['hotspot_template_error'] as String?,
     );
   }
 
@@ -68,6 +78,9 @@ class RouterModel {
       'lastSeen': lastSeen?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'hotspot_template_id': hotspotTemplateId,
+      'hotspot_template_status': hotspotTemplateStatus,
+      'hotspot_template_error': hotspotTemplateError,
     };
   }
 }

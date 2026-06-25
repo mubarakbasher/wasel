@@ -85,8 +85,16 @@ sudo ufw allow 443/tcp                                                         c
 sudo ufw allow 51820/udp                                                       comment 'WireGuard'
 sudo ufw limit from 10.10.0.0/16 to any port 1812,1813 proto udp              comment 'RADIUS auth+accounting (WG only)'
 sudo ufw allow from 10.10.0.0/16 to any port 3799 proto udp                   comment 'RADIUS CoA (WG only)'
+sudo ufw allow from 10.10.0.0/16 to any port 3000 proto tcp                   comment 'Hotspot template fetch — router /tool fetch over WG only'
 sudo ufw enable
 ```
+
+> The `port 3000` rule lets a router pull its selected hotspot login-page template
+> from the backend **over the WireGuard tunnel** (`http://10.10.0.1:3000/...`). It is
+> scoped to the `10.10.0.0/16` tunnel subnet — port 3000 must never be reachable from
+> the public internet (the public API is served via Nginx on 443). Apply the same rule
+> on prod before promoting the hotspot-login-page feature, or `apply` will report
+> `failed` because the router's `/tool fetch` can't reach the backend.
 
 WARNING: RADIUS ports (1812, 1813, 3799) must never be exposed to the public internet. The rules above restrict them to the WireGuard tunnel subnet only.
 

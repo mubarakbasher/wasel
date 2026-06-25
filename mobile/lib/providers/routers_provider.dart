@@ -165,6 +165,19 @@ class RoutersNotifier extends StateNotifier<RoutersState> {
     }
   }
 
+  /// Injects an already-fetched [router] into the list and selected slot
+  /// without making a new network request. Used by the hotspot template
+  /// picker after a successful PUT so the detail screen stays in sync.
+  Future<void> refreshRouter(RouterModel router) async {
+    final updatedList = state.routers.map((r) {
+      return r.id == router.id ? router : r;
+    }).toList();
+    state = state.copyWith(
+      routers: updatedList,
+      selectedRouter: router,
+    );
+  }
+
   void clearSelection() {
     state = state.copyWith(
       clearSelectedRouter: true,

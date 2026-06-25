@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connecting…</title>
+<meta http-equiv="refresh" content="2; url=$(link-redirect)">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="-1">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Plus Jakarta Sans',sans-serif; background: #eceef4; }
+  .card { width: 100%; max-width: 430px; background: #ffffff; border: 1px solid #e7e9f1; border-radius: 28px; padding: 44px 40px; text-align: center; box-shadow: 0 30px 70px -30px rgba(40,42,80,0.35); }
+  .spinner { width: 44px; height: 44px; border: 4px solid #e7e9f1; border-top-color: #4f46e5; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 22px; }
+  h1 { margin: 0 0 8px; font-size: 21px; font-weight: 800; color: #1a1c2e; }
+  p { margin: 0; font-size: 14px; color: #7b7f95; font-weight: 500; }
+  a { color: #4f46e5; font-weight: 700; text-decoration: none; }
+</style>
+<script language="JavaScript">
+<!--
+function startRedirect() {
+$(if popup == 'true')
+  open('$(link-status)', 'hotspot_status', 'toolbar=0,location=0,directories=0,status=0,menubars=0,resizable=1,width=320,height=420');
+$(endif)
+  location.href = '$(link-redirect)';
+}
+//-->
+</script>
+</head>
+<body onload="startRedirect()">
+  <div class="card">
+    <div class="spinner"></div>
+    <h1>You're connected</h1>
+    <p>Taking you online… If nothing happens, <a href="$(link-redirect)">tap here to continue</a>.</p>
+  </div>
+</body>
+</html>

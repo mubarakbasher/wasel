@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi Status</title>
+<meta http-equiv="refresh" content="60">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  @keyframes auroraA { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-30px) scale(1.1); } }
+  @keyframes auroraB { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-50px,40px) scale(1.15); } }
+  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Space Grotesk','Cairo',sans-serif; background: #070912; overflow: hidden; }
+  .aurora-a { position: absolute; top: -160px; left: -120px; width: 520px; height: 520px; background: radial-gradient(circle at center, rgba(56,189,248,0.35), rgba(56,189,248,0) 65%); animation: auroraA 11s ease-in-out infinite; pointer-events: none; }
+  .aurora-b { position: absolute; bottom: -200px; right: -140px; width: 560px; height: 560px; background: radial-gradient(circle at center, rgba(139,92,246,0.4), rgba(139,92,246,0) 66%); animation: auroraB 13s ease-in-out infinite; pointer-events: none; }
+  .wrap { position: relative; width: 100%; max-width: 430px; }
+  .card { position: relative; background: rgba(18,22,38,0.72); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); border: 1px solid rgba(120,140,220,0.18); border-radius: 26px; padding: 34px 38px 38px; box-shadow: 0 40px 90px -30px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.06); }
+  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .lang-toggle { display: inline-flex; background: rgba(10,14,26,0.6); border: 1px solid rgba(120,140,220,0.18); border-radius: 999px; padding: 3px; gap: 2px; }
+  .lang-btn { font-family: 'Space Grotesk',sans-serif; font-size: 12.5px; font-weight: 600; padding: 7px 16px; border: none; border-radius: 999px; cursor: pointer; transition: all .15s; background: transparent; color: #8b93b5; }
+  .lang-btn.ar { font-family: 'Cairo',sans-serif; font-size: 13px; font-weight: 700; }
+  .lang-btn.active { background: rgba(56,189,248,0.16); color: #7dd3fc; }
+  .stack { display: flex; flex-direction: column; gap: 15px; }
+  .banner { display: flex; align-items: center; gap: 12px; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: 15px; padding: 14px 16px; }
+  .banner .tick { flex: none; width: 38px; height: 38px; border-radius: 50%; background: #22c55e; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px -2px rgba(34,197,94,0.7); }
+  .banner .t1 { font-size: 15px; font-weight: 600; color: #86efac; }
+  .banner .t2 { font-size: 12.5px; font-weight: 400; color: #5fae7a; }
+  .hero { background: linear-gradient(135deg, rgba(56,189,248,0.16), rgba(139,92,246,0.16)); border: 1px solid rgba(120,140,220,0.22); border-radius: 17px; padding: 18px 20px; color: #f1f4ff; }
+  .hero .lbl { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #9fb4e8; }
+  .hero .big { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; margin-top: 6px; }
+  .rows { display: flex; flex-direction: column; border: 1px solid rgba(120,140,220,0.16); border-radius: 15px; overflow: hidden; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid rgba(120,140,220,0.12); }
+  .row:last-child { border-bottom: none; }
+  .row .k { font-size: 13px; font-weight: 400; color: #8b93b5; }
+  .row .v { font-size: 13.5px; font-weight: 600; color: #eaeefc; letter-spacing: 0.04em; white-space: nowrap; }
+  .logout-btn { height: 52px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; font-family: inherit; font-size: 15px; font-weight: 600; color: #fca5a5; background: rgba(248,113,113,0.08); border: 1.5px solid rgba(248,113,113,0.28); border-radius: 13px; cursor: pointer; transition: background .15s; }
+  .logout-btn:hover { background: rgba(248,113,113,0.16); }
+  form { margin: 0; }
+</style>
+</head>
+<body>
+  <div class="aurora-a"></div>
+  <div class="aurora-b"></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="lang-row">
+        <div class="lang-toggle">
+          <button type="button" id="btn-en" class="lang-btn active" onclick="setLang('en')">EN</button>
+          <button type="button" id="btn-ar" class="lang-btn ar" onclick="setLang('ar')">عربي</button>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="banner">
+          <span class="tick">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#04121f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </span>
+          <div>
+            <div class="t1" data-i18n="connTitle">You're connected</div>
+            <div class="t2" data-i18n="connSub">Enjoy your session</div>
+          </div>
+        </div>
+
+        <div class="hero">
+          <div class="lbl">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7dd3fc" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span data-i18n="lblTimeLeft">Time remaining</span>
+          </div>
+          <div class="big">$(session-time-left)</div>
+        </div>
+
+        <div class="rows">
+          <div class="row"><span class="k" data-i18n="lblVoucher">Voucher</span><span class="v">$(username)</span></div>
+          <div class="row"><span class="k" data-i18n="lblUptime">Uptime</span><span class="v">$(uptime)</span></div>
+          <div class="row"><span class="k" data-i18n="lblDown">Downloaded</span><span class="v">$(bytes-in-nice)</span></div>
+          <div class="row"><span class="k" data-i18n="lblUp">Uploaded</span><span class="v">$(bytes-out-nice)</span></div>
+        </div>
+
+        <form action="$(link-logout)" method="post">
+          <button class="logout-btn" type="submit">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            <span data-i18n="disconnect">Disconnect</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+<script type="text/javascript">
+var I18N = {
+  en: { connTitle: "You're connected", connSub: "Enjoy your session", lblTimeLeft: "Time remaining", lblVoucher: "Voucher", lblUptime: "Uptime", lblDown: "Downloaded", lblUp: "Uploaded", disconnect: "Disconnect" },
+  ar: { connTitle: "أنت متصل الآن", connSub: "استمتع بجلستك", lblTimeLeft: "الوقت المتبقي", lblVoucher: "الرمز", lblUptime: "مدة الاتصال", lblDown: "تم التنزيل", lblUp: "تم الرفع", disconnect: "قطع الاتصال" }
+};
+function setLang(lang) {
+  var t = I18N[lang] || I18N.en;
+  document.documentElement.lang = (lang === 'ar') ? 'ar' : 'en';
+  document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+  var nodes = document.querySelectorAll('[data-i18n]');
+  for (var i = 0; i < nodes.length; i++) { var k = nodes[i].getAttribute('data-i18n'); if (t[k] != null) nodes[i].textContent = t[k]; }
+  document.getElementById('btn-en').classList.toggle('active', lang !== 'ar');
+  document.getElementById('btn-ar').classList.toggle('active', lang === 'ar');
+}
+setLang('en');
+</script>
+</body>
+</html>

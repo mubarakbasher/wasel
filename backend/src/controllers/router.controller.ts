@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import * as routerService from '../services/router.service';
 import { runHealthCheck } from '../services/routerHealth.service';
+import { applyHotspotTemplate } from '../services/hotspotTemplate.service';
+import { HOTSPOT_TEMPLATES } from '../hotspot-templates/manifest';
+import { config } from '../config';
 
 export async function createRouter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -106,6 +109,49 @@ export async function getRouterHealth(
     res.status(200).json({
       success: true,
       data: report,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listHotspotTemplates(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const templates = HOTSPOT_TEMPLATES.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      previewUrl: `${config.PUBLIC_BASE_URL}/api/v1/public/hotspot-templates/${t.id}/preview.png`,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: templates,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function setHotspotTemplate(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const routerId = req.params.id as string;
+    const userId = req.user!.id;
+    const { templateId } = req.body as { templateId: string };
+
+    const router = await applyHotspotTemplate(userId, routerId, templateId);
+
+    res.status(200).json({
+      success: true,
+      data: router,
     });
   } catch (error) {
     next(error);

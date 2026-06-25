@@ -13,6 +13,7 @@ import '../screens/routers/router_list_screen.dart';
 import '../screens/routers/add_router_screen.dart';
 import '../screens/routers/router_detail_screen.dart';
 import '../screens/routers/edit_router_screen.dart';
+import '../screens/routers/hotspot_template_screen.dart';
 import '../screens/routers/setup_guide_screen.dart';
 import '../screens/vouchers/voucher_list_screen.dart';
 import '../screens/vouchers/create_voucher_wizard.dart';
@@ -177,6 +178,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             );
           }
           return SetupGuideScreen(routerId: extra as String? ?? '');
+        },
+      ),
+      GoRoute(
+        path: '/routers/hotspot-template',
+        parentNavigatorKey: appNavigatorKey,
+        builder: (context, state) {
+          final routerId = state.extra as String? ?? '';
+          return HotspotTemplateScreen(routerId: routerId);
         },
       ),
       // Voucher routes

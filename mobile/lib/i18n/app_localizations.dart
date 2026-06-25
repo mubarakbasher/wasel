@@ -772,6 +772,19 @@ class AppLocalizations {
     'reports.copiedToClipboard': 'Copied to clipboard',
     'reports.copy': 'Copy',
 
+    // ── Hotspot template picker ──────────────────────────────────────────────
+    'routers.hotspotTemplate.title': 'Login Page',
+    'routers.hotspotTemplate.subtitle': 'Choose the login page design guests will see when connecting to your hotspot.',
+    'routers.hotspotTemplate.action': 'Login page',
+    'routers.hotspotTemplate.notSet': 'Not configured',
+    'routers.hotspotTemplate.selected': 'Selected',
+    'routers.hotspotTemplate.applying': 'Applying...',
+    'routers.hotspotTemplate.applied': 'Applied',
+    'routers.hotspotTemplate.failed': 'Failed',
+    'routers.hotspotTemplate.status.pending': 'Applying...',
+    'routers.hotspotTemplate.status.applied': 'Applied',
+    'routers.hotspotTemplate.status.failed': 'Failed',
+
     // ── Common extra ─────────────────────────────────────────────────────────
     'common.notAvailable': 'N/A',
 
@@ -1487,6 +1500,19 @@ class AppLocalizations {
     'reports.csvDataLines': 'بيانات CSV  ·  {0} سطر',
     'reports.copiedToClipboard': 'تم النسخ إلى الحافظة',
     'reports.copy': 'نسخ',
+
+    // ── Hotspot template picker ──────────────────────────────────────────────
+    'routers.hotspotTemplate.title': 'صفحة الدخول',
+    'routers.hotspotTemplate.subtitle': 'اختر تصميم صفحة الدخول التي سيراها الضيوف عند الاتصال بنقطة الاتصال.',
+    'routers.hotspotTemplate.action': 'صفحة الدخول',
+    'routers.hotspotTemplate.notSet': 'غير مهيأ',
+    'routers.hotspotTemplate.selected': 'محدد',
+    'routers.hotspotTemplate.applying': 'جارٍ التطبيق...',
+    'routers.hotspotTemplate.applied': 'تم التطبيق',
+    'routers.hotspotTemplate.failed': 'فشل',
+    'routers.hotspotTemplate.status.pending': 'جارٍ التطبيق...',
+    'routers.hotspotTemplate.status.applied': 'تم التطبيق',
+    'routers.hotspotTemplate.status.failed': 'فشل',
 
     // ── Common extra ─────────────────────────────────────────────────────────
     'common.notAvailable': 'غير متاح',

@@ -26,6 +26,10 @@ RUN npm install --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY src/migrations/sql ./dist/migrations/sql
+# hotspot-templates are non-TS static files not emitted by tsc; the build script
+# copies them to dist/ in the builder stage, so the COPY above already includes them.
+# This explicit copy is a belt-and-suspenders fallback in case tsc cleans dist/.
+COPY src/hotspot-templates ./dist/hotspot-templates
 
 # Create non-root user. Entrypoint runs as root to chown the uploads volume
 # (named volumes can carry stale ownership from earlier image builds), then
