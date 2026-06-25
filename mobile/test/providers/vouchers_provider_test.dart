@@ -61,12 +61,12 @@ void main() {
             limitType: null,
             search: null,
             page: 1,
-            limit: 20,
+            limit: 100,
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher, mockVoucher2],
             total: 2,
             page: 1,
-            limit: 20,
+            limit: 100,
           ));
 
       await notifier.loadVouchers('r-1');
@@ -148,12 +148,12 @@ void main() {
             limitType: null,
             search: null,
             page: 1,
-            limit: 20,
+            limit: 100,
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher, mockVoucher2],
             total: 2,
             page: 1,
-            limit: 20,
+            limit: 100,
           ));
       await notifier.loadVouchers('r-1');
 
@@ -175,12 +175,12 @@ void main() {
             limitType: null,
             search: null,
             page: 1,
-            limit: 20,
+            limit: 100,
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher],
             total: 1,
             page: 1,
-            limit: 20,
+            limit: 100,
           ));
       await notifier.loadVouchers('r-1');
 
