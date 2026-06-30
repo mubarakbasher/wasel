@@ -1183,3 +1183,87 @@ export async function getSystemStatus(): Promise<SystemStatus> {
     },
   };
 }
+
+// ----- Timeseries -----
+
+export interface TimeseriesPoint {
+  date: string;
+  revenue: number;
+  newUsers: number;
+  vouchers: number;
+  activeSubscriptions: number | null;
+  routersOnline: number | null;
+}
+
+interface TimeseriesRawRow {
+  date: string;
+  revenue: string;
+  newUsers: string;
+  vouchers: string;
+  activeSubscriptions: number | null;
+  routersOnline: number | null;
+}
+
+/**
+ * Daily time-series for the admin dashboard trends view.
+ * Builds a continuous date spine via generate_series so every day in
+ * [today-days+1 … today] is present. Flow metrics (revenue, new users,
+ * vouchers) fall back to 0 for days with no activity; snapshot metrics
+ * (active_subscriptions, routers_online) are null for days with no snapshot.
+ */
+export async function getStatsTimeseries(
+  days: number,
+): Promise<{ days: number; series: TimeseriesPoint[] }> {
+  const result = await pool.query<TimeseriesRawRow>(
+    `SELECT
+       TO_CHAR(d::date, 'YYYY-MM-DD')       AS date,
+       COALESCE(rev.revenue, 0)             AS revenue,
+       COALESCE(u.new_users, 0)             AS "newUsers",
+       COALESCE(v.vouchers, 0)              AS vouchers,
+       md.active_subscriptions              AS "activeSubscriptions",
+       md.routers_online                    AS "routersOnline"
+     FROM generate_series(
+       (CURRENT_DATE - ($1::int - 1)),
+       CURRENT_DATE,
+       INTERVAL '1 day'
+     ) AS d
+     LEFT JOIN (
+       SELECT COALESCE(reviewed_at, created_at)::date AS dt,
+              SUM(amount)                              AS revenue
+       FROM payments
+       WHERE status = 'approved'
+       GROUP BY 1
+     ) rev ON rev.dt = d::date
+     LEFT JOIN (
+       SELECT created_at::date AS dt,
+              COUNT(*)         AS new_users
+       FROM users
+       WHERE role = 'user'
+       GROUP BY 1
+     ) u ON u.dt = d::date
+     LEFT JOIN (
+       SELECT created_at::date AS dt,
+              COUNT(*)         AS vouchers
+       FROM voucher_meta
+       GROUP BY 1
+     ) v ON v.dt = d::date
+     LEFT JOIN metrics_daily md ON md.snapshot_date = d::date
+     ORDER BY d ASC`,
+    [days],
+  );
+
+  const series: TimeseriesPoint[] = result.rows.map((row) => ({
+    date: row.date,
+    revenue: parseFloat(row.revenue),
+    newUsers: parseInt(row.newUsers, 10),
+    vouchers: parseInt(row.vouchers, 10),
+    activeSubscriptions:
+      row.activeSubscriptions !== null ? Number(row.activeSubscriptions) : null,
+    routersOnline:
+      row.routersOnline !== null ? Number(row.routersOnline) : null,
+  }));
+
+  logger.info('Admin fetched stats timeseries', { days });
+
+  return { days, series };
+}

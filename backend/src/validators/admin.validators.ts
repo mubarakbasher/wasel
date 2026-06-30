@@ -159,3 +159,11 @@ export const testEmailBodySchema = z.object({
   type: z.enum(EMAIL_TEMPLATE_TYPES),
   language: z.enum(['en', 'ar']),
 });
+
+// ---------------------------------------------------------------------------
+// Stats timeseries
+// ---------------------------------------------------------------------------
+
+export const statsTimeseriesQuerySchema = z.object({
+  days: z.coerce.number().int().min(7).max(365).default(30),
+});

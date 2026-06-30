@@ -53,6 +53,11 @@ router.put('/payments/:id', validate({ params: validators.paymentIdParamSchema, 
 
 // Stats & Read-only
 router.get('/stats', adminController.getStats);
+router.get(
+  '/stats/timeseries',
+  validate({ query: validators.statsTimeseriesQuerySchema }),
+  adminController.getStatsTimeseries,
+);
 router.get('/routers', validate({ query: validators.listRoutersQuerySchema }), adminController.listRouters);
 router.get(
   '/routers/:id/setup-guide',

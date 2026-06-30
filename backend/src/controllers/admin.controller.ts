@@ -451,6 +451,20 @@ export async function sendTestEmail(
   }
 }
 
+export async function getStatsTimeseries(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { days } = req.query as Record<string, string>;
+    const result = await adminService.getStatsTimeseries(Number(days) || 30);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function socketReachability(): Promise<{ path: string; exists: boolean; readable: boolean; writable: boolean }> {
   const path = getRadminSocketPath();
   let exists = false;
