@@ -119,3 +119,43 @@ export const updatePlanBodySchema = z.object({
   allowed_durations: z.array(z.coerce.number().int().min(1).max(12)).min(1).optional(),
   is_active: z.boolean().optional(),
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
+
+// ---------------------------------------------------------------------------
+// Email log
+// ---------------------------------------------------------------------------
+
+export const listEmailLogQuerySchema = z.object({
+  ...paginationSchema,
+  type: z.string().max(64).optional(),
+  status: z.enum(['sent', 'failed']).optional(),
+  search: z.string().max(255).optional(),
+  from: z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'Invalid date').optional(),
+  to: z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'Invalid date').optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Email templates
+// ---------------------------------------------------------------------------
+
+const EMAIL_TEMPLATE_TYPES = ['verification_otp', 'password_reset_otp', 'payment_submitted_admin', 'payment_approved', 'payment_rejected'] as const;
+
+export const emailTemplateParamSchema = z.object({
+  type: z.enum(EMAIL_TEMPLATE_TYPES),
+  language: z.enum(['en', 'ar']),
+});
+
+export const updateEmailTemplateBodySchema = z
+  .object({
+    subject: z.string().min(1).max(255).optional(),
+    body_html: z.string().min(1).max(64000).optional(),
+    is_active: z.boolean().optional(),
+  })
+  .refine(
+    (data) => data.subject !== undefined || data.body_html !== undefined || data.is_active !== undefined,
+    { message: 'At least one field (subject, body_html, is_active) is required' },
+  );
+
+export const testEmailBodySchema = z.object({
+  type: z.enum(EMAIL_TEMPLATE_TYPES),
+  language: z.enum(['en', 'ar']),
+});

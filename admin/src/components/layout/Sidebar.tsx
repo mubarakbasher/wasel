@@ -9,6 +9,8 @@ import {
   ScrollText,
   Package,
   MessageCircle,
+  Mail,
+  FileText,
   Settings,
 } from 'lucide-react';
 import api from '../../lib/api';
@@ -23,6 +25,8 @@ const navItems = [
   { to: '/messages', label: 'Messages', icon: MessageCircle },
   { to: '/routers', label: 'Routers', icon: Router },
   { to: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
+  { to: '/email-log', label: 'Email Log', icon: Mail },
+  { to: '/email-templates', label: 'Email Templates', icon: FileText },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

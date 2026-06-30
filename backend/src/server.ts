@@ -4,6 +4,7 @@ import logger from './config/logger';
 import { testDbConnection, pool } from './config/database';
 import { redis } from './config/redis';
 import { startPurgeUnverifiedJob } from './jobs/purgeUnverified';
+import { startPurgeEmailLogJob } from './jobs/purgeEmailLog';
 import { startSubscriptionNotificationJob } from './jobs/subscriptionNotifications';
 import { startQuotaMonitorJob } from './jobs/quotaMonitor';
 import { startValidityExpirationJob } from './jobs/validityExpiration';
@@ -98,6 +99,7 @@ async function startServer(): Promise<void> {
 
     // Start background jobs
     startPurgeUnverifiedJob();
+    startPurgeEmailLogJob();
     startSubscriptionNotificationJob();
     startQuotaMonitorJob();
     startValidityExpirationJob();

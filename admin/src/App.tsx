@@ -14,6 +14,8 @@ import AuditLogsPage from './pages/AuditLogsPage';
 import PlansPage from './pages/PlansPage';
 import MessagesPage from './pages/MessagesPage';
 import ConversationPage from './pages/ConversationPage';
+import EmailLogPage from './pages/EmailLogPage';
+import EmailTemplatesPage from './pages/EmailTemplatesPage';
 import SettingsPage from './pages/SettingsPage';
 import { useEffect, type ReactNode } from 'react';
 
@@ -71,6 +73,8 @@ export default function App() {
                 <Route path="/messages/:userId" element={<ConversationPage />} />
                 <Route path="/routers" element={<RoutersPage />} />
                 <Route path="/audit-logs" element={<AuditLogsPage />} />
+                <Route path="/email-log" element={<EmailLogPage />} />
+                <Route path="/email-templates" element={<EmailTemplatesPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

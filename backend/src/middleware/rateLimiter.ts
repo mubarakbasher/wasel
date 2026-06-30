@@ -60,3 +60,21 @@ export const authLimiter = rateLimit({
     error: { message: 'Too many auth attempts, please try again later.', code: 'AUTH_RATE_LIMIT_EXCEEDED' },
   },
 });
+
+export const adminEmailLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipInTest,
+  store: makeStore('rl:adminEmail:'),
+  // Suppress IPv6-fallback warning: this limiter keys on authenticated user ID;
+  // the IP fallback ('unknown') is only a safety net for unauthenticated requests
+  // that have already been blocked by requireAdmin middleware.
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => ((req as unknown as { user?: { id?: string } }).user?.id) ?? req.ip ?? 'unknown',
+  message: {
+    success: false,
+    error: { message: 'Too many email requests, please try again later.', code: 'EMAIL_RATE_LIMIT_EXCEEDED' },
+  },
+});

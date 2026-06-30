@@ -6,6 +6,10 @@ import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import { notifyPaymentConfirmed, isFcmAvailable, getFcmInitError } from './notification.service';
 import { getActiveSubscription, SubscriptionInfo } from './subscription.service';
+import {
+  sendPaymentApproved,
+  sendPaymentRejected,
+} from './email.service';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -742,12 +746,45 @@ export async function reviewPayment(
 
     await client.query('COMMIT');
 
-    // 3. Send notification if approved (outside transaction — non-critical)
+    // 3. Post-commit notifications (push + email) — non-critical, never rethrow
+    // Resolve the plan display name once for email subjects/bodies.
+    const planLabel = await (async (): Promise<string> => {
+      try {
+        const r = await pool.query<{ name: string }>(
+          'SELECT name FROM plans WHERE tier = $1 AND is_active = TRUE LIMIT 1',
+          [payment.plan_tier],
+        );
+        return r.rows[0]?.name ?? payment.plan_tier;
+      } catch {
+        return payment.plan_tier;
+      }
+    })();
+
     if (decision === 'approved') {
       try {
         await notifyPaymentConfirmed(payment.user_id, payment.plan_tier);
       } catch (error) {
         logger.error('Failed to send payment confirmation notification', { error, paymentId });
+      }
+      try {
+        await sendPaymentApproved(
+          payment.user_id,
+          planLabel,
+          String(payment.amount),
+          payment.currency,
+        );
+      } catch (error) {
+        logger.error('Failed to send payment approved email', { error, paymentId });
+      }
+    } else {
+      try {
+        await sendPaymentRejected(
+          payment.user_id,
+          planLabel,
+          rejectionReason ?? '',
+        );
+      } catch (error) {
+        logger.error('Failed to send payment rejected email', { error, paymentId });
       }
     }
 

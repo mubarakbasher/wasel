@@ -5,6 +5,9 @@ import { AuthenticatedRequest } from '../types';
 import * as adminService from '../services/admin.service';
 import * as auditService from '../services/audit.service';
 import * as routerService from '../services/router.service';
+import * as emailLogService from '../services/emailLog.service';
+import * as emailTemplateService from '../services/emailTemplate.service';
+import * as emailService from '../services/email.service';
 import {
   getRadminSocketPath,
   showFreeradiusClients,
@@ -339,6 +342,110 @@ export async function getSystemStatus(req: AuthenticatedRequest, res: Response, 
   try {
     const status = await adminService.getSystemStatus();
     res.status(200).json({ success: true, data: status });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Email log
+// ---------------------------------------------------------------------------
+
+export async function listEmailLog(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { page, limit, type, status, search, from, to } = req.query as Record<string, string>;
+    const result = await emailLogService.getEmailLog({
+      page: Number(page) || 1,
+      limit: Number(limit) || 20,
+      type,
+      status: (status as 'sent' | 'failed') || undefined,
+      search,
+      from,
+      to,
+    });
+    res.status(200).json({
+      success: true,
+      data: result.logs,
+      meta: { page: result.page, limit: result.limit, total: result.total },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Email templates
+// ---------------------------------------------------------------------------
+
+export async function listEmailTemplates(
+  _req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const templates = await emailTemplateService.listEmailTemplates();
+    res.status(200).json({ success: true, data: templates });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateEmailTemplate(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { type, language } = req.params as { type: string; language: string };
+    const template = await emailTemplateService.updateEmailTemplate(
+      type,
+      language,
+      req.body as { subject?: string; body_html?: string; is_active?: boolean },
+      req.user!.id,
+    );
+    const bodyRecord = req.body as Record<string, unknown>;
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'email_template.update',
+      targetEntity: 'email_template',
+      targetId: `${type}:${language}`,
+      details: {
+        type: req.params.type,
+        language: req.params.language,
+        fields: Object.keys(bodyRecord),
+        subject_changed: 'subject' in bodyRecord,
+        body_changed: 'body_html' in bodyRecord,
+      },
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: template });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function sendTestEmail(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { type, language } = req.body as { type: string; language: string };
+    const adminEmail = req.user!.email;
+    await emailService.sendTestEmail(type, language, adminEmail);
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'email.test_send',
+      targetEntity: 'email_template',
+      targetId: `${type}:${language}`,
+      details: { type, language, to: adminEmail },
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: { sent: true } });
   } catch (error) {
     next(error);
   }

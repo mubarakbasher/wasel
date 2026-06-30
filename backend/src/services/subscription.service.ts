@@ -2,6 +2,7 @@ import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import crypto from 'crypto';
+import * as emailService from './email.service';
 
 // ----- Plan definitions -----
 
@@ -342,6 +343,11 @@ export async function uploadReceipt(
     paymentId,
     wasRejected: payment.status === 'rejected',
   });
+
+  // Fire-and-forget admin alert — never breaks the main flow
+  void emailService
+    .sendPaymentSubmittedAdminAlert(paymentId)
+    .catch((e) => logger.error('admin payment alert failed', { e }));
 }
 
 /**

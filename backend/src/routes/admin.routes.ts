@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { validate } from '../middleware/validate';
+import { adminEmailLimiter } from '../middleware/rateLimiter';
 import * as validators from '../validators/admin.validators';
 import * as adminController from '../controllers/admin.controller';
 import * as settingsController from '../controllers/settings.controller';
@@ -92,6 +93,28 @@ router.get('/system-status', adminController.getSystemStatus);
 
 // FreeRADIUS diagnostics — lets an admin inspect radmin socket and client list.
 router.get('/freeradius/status', adminController.getFreeradiusStatus);
+
+// Email log
+router.get(
+  '/email-log',
+  validate({ query: validators.listEmailLogQuerySchema }),
+  adminController.listEmailLog,
+);
+
+// Email templates
+router.get('/email-templates', adminController.listEmailTemplates);
+router.put(
+  '/email-templates/:type/:language',
+  adminEmailLimiter,
+  validate({ params: validators.emailTemplateParamSchema, body: validators.updateEmailTemplateBodySchema }),
+  adminController.updateEmailTemplate,
+);
+router.post(
+  '/email-templates/test',
+  adminEmailLimiter,
+  validate({ body: validators.testEmailBodySchema }),
+  adminController.sendTestEmail,
+);
 
 // Support messages
 router.get('/support/unread-count', supportController.adminUnreadCount);

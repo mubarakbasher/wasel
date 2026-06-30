@@ -58,14 +58,14 @@ export async function register(input: RegisterInput): Promise<RegisterResult> {
   const result = await pool.query(
     `INSERT INTO users (name, email, phone, password_hash, business_name)
      VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, name, email`,
+     RETURNING id, name, email, language`,
     [input.name, input.email, input.phone || null, passwordHash, input.business_name || null],
   );
 
   const user = result.rows[0];
 
   const otp = await tokenService.createVerificationOtp(user.id);
-  await emailService.sendVerificationOtp(user.email, user.name, otp);
+  await emailService.sendVerificationOtp(user.email, user.name, otp, user.language ?? 'en');
 
   const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name, 'user');
 
@@ -197,7 +197,7 @@ export async function verifyEmail(email: string, otp: string): Promise<void> {
 
 export async function resendVerification(email: string): Promise<void> {
   const result = await pool.query(
-    'SELECT id, name, is_verified FROM users WHERE email = $1 AND is_active = TRUE',
+    'SELECT id, name, is_verified, language FROM users WHERE email = $1 AND is_active = TRUE',
     [email],
   );
 
@@ -212,14 +212,14 @@ export async function resendVerification(email: string): Promise<void> {
   }
 
   const otp = await tokenService.createVerificationOtp(user.id);
-  await emailService.sendVerificationOtp(email, user.name, otp);
+  await emailService.sendVerificationOtp(email, user.name, otp, user.language ?? 'en');
 
   logger.info('Verification OTP resent', { email });
 }
 
 export async function forgotPassword(email: string): Promise<void> {
   const result = await pool.query(
-    'SELECT id, name FROM users WHERE email = $1 AND is_active = TRUE',
+    'SELECT id, name, language FROM users WHERE email = $1 AND is_active = TRUE',
     [email],
   );
 
@@ -229,7 +229,7 @@ export async function forgotPassword(email: string): Promise<void> {
   }
 
   const otp = await tokenService.createPasswordResetOtp(email);
-  await emailService.sendPasswordResetOtp(email, otp);
+  await emailService.sendPasswordResetOtp(email, otp, result.rows[0].language ?? 'en');
 
   logger.info('Password reset OTP sent', { email });
 }
