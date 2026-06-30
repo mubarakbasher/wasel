@@ -132,10 +132,16 @@ describe('generateSetupSteps', () => {
     expect(steps[12].command).toContain('comment=wasel-wg');
   });
 
-  it('step 10 disables the MAC cookie so RADIUS is consulted on every reconnect', () => {
+  it('step 9 enables radius-accounting and radius-interim-update on the hotspot profile', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
-    expect(steps[9].command).toContain('add-mac-cookie=no');
-    expect(steps[9].command).toContain('mac-cookie-timeout=0s');
+    expect(steps[8].command).toContain('radius-accounting=yes');
+    expect(steps[8].command).toContain('radius-interim-update=00:05:00');
+  });
+
+  it('step 10 enables MAC-cookie auto-relogin with 30d timeout', () => {
+    const steps = generateSetupSteps(BASE_PARAMS);
+    expect(steps[9].command).toContain('add-mac-cookie=yes');
+    expect(steps[9].command).toContain('mac-cookie-timeout=30d');
   });
 
   it('every step has a non-empty title, description, and command', () => {
@@ -175,14 +181,14 @@ describe('generateMikrotikConfigText', () => {
     expect(text).not.toContain('/tool fetch');
   });
 
-  it('does not contain radius-interim-update', () => {
+  it('contains radius-interim-update on the hotspot profile command', () => {
     const text = generateMikrotikConfigText(TEXT_PARAMS);
-    expect(text).not.toContain('radius-interim-update');
+    expect(text).toContain('radius-interim-update=00:05:00');
   });
 
-  it('disables MAC cookie auto-login on the user profile', () => {
+  it('enables MAC-cookie auto-relogin on the user profile', () => {
     const text = generateMikrotikConfigText(TEXT_PARAMS);
-    expect(text).toContain('add-mac-cookie=no');
-    expect(text).toContain('mac-cookie-timeout=0s');
+    expect(text).toContain('add-mac-cookie=yes');
+    expect(text).toContain('mac-cookie-timeout=30d');
   });
 });

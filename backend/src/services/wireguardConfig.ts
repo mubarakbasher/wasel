@@ -188,16 +188,21 @@ export function generateMikrotikConfig(params: {
     // 8. CoA listener — accept=yes lets FreeRADIUS disconnect sessions and push policy updates
     `/radius incoming set accept=yes port=3799`,
 
-    // 9. Hotspot profile — enable RADIUS authentication
-    `/ip hotspot profile set default use-radius=yes`,
+    // 9. Hotspot profile — enable RADIUS auth, accounting, and 5-minute interim updates.
+    //    radius-interim-update=00:05:00 sends periodic Accounting-Interim-Update packets
+    //    so the stale-session reaper can confirm a session is still alive.
+    //    login-by includes mac-cookie so re-logins can reuse the stored credential.
+    `/ip hotspot profile set default use-radius=yes radius-accounting=yes radius-interim-update=00:05:00 login-by=mac-cookie,http-chap,http-pap,https`,
 
-    // 10. Hotspot user profile — timing defaults + disable MAC-cookie auto-login.
-    //     add-mac-cookie=no + mac-cookie-timeout=0s force RouterOS to send a fresh
-    //     RADIUS Access-Request on every reconnect. With the default add-mac-cookie=yes
-    //     a returning client with the same MAC is auto-logged in for up to 3 days
-    //     without contacting FreeRADIUS, so voucher validity (rlm_expiration) and
-    //     disable status are silently bypassed across sessions.
-    `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m add-mac-cookie=no mac-cookie-timeout=0s`,
+    // 10. Hotspot user profile — timing defaults + MAC-cookie auto-relogin enabled.
+    //     add-mac-cookie=yes + mac-cookie-timeout=30d lets RouterOS auto-resume returning
+    //     clients. A mac-cookie relogin re-submits the stored username/password through
+    //     the normal RADIUS login path (fresh Access-Request each reconnect), so
+    //     rlm_expiration and Auth-Type := Reject are still enforced on every reconnect —
+    //     a disabled or expired voucher is rejected even with mac-cookie enabled.
+    //     Interim updates (step 9) keep accounting rows current so the stale-session
+    //     reaper does not incorrectly close live sessions.
+    `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m add-mac-cookie=yes mac-cookie-timeout=30d`,
 
     // 11. Firewall — allow RADIUS auth from VPS
     `/ip firewall filter add chain=input action=accept protocol=udp src-address=${params.radiusServerIp} dst-port=1812 comment=wasel-radius-auth place-before=0`,
@@ -315,20 +320,28 @@ Allows Wasel to disconnect voucher sessions and push policy updates.
   /radius incoming set accept=yes port=3799
 
 --------------------------------------------------------------------------------
-STEP 9: Enable RADIUS on the hotspot profile
+STEP 9: Enable RADIUS on the hotspot profile + accounting + interim updates
 --------------------------------------------------------------------------------
+radius-accounting=yes + radius-interim-update=00:05:00 sends periodic
+Accounting-Interim-Update packets so Wasel can track active session time.
+login-by includes mac-cookie so returning clients can auto-resume.
 
-  /ip hotspot profile set default use-radius=yes
+  /ip hotspot profile set default use-radius=yes radius-accounting=yes \\
+     radius-interim-update=00:05:00 \\
+     login-by=mac-cookie,http-chap,http-pap,https
 
 --------------------------------------------------------------------------------
-STEP 10: Set hotspot user profile timing defaults + disable MAC-cookie
+STEP 10: Set hotspot user profile timing defaults + enable MAC-cookie
 --------------------------------------------------------------------------------
-add-mac-cookie=no forces RouterOS to re-authenticate every reconnect via RADIUS.
-Without this the router auto-resumes returning clients from a 3-day MAC cookie
-and voucher validity (and disable status) are silently bypassed across sessions.
+add-mac-cookie=yes lets returning clients auto-resume without re-typing the code.
+A mac-cookie relogin re-submits the stored username/password through the normal
+RADIUS login path (fresh Access-Request each reconnect), so rlm_expiration and
+Auth-Type := Reject are still enforced — a disabled or expired voucher is rejected
+even with mac-cookie enabled. Interim updates from step 9 keep accounting rows
+current so the stale-session reaper does not close live sessions.
 
   /ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m \\
-     add-mac-cookie=no mac-cookie-timeout=0s
+     add-mac-cookie=yes mac-cookie-timeout=30d
 
 --------------------------------------------------------------------------------
 STEP 11: Firewall — allow RADIUS authentication traffic
@@ -455,15 +468,15 @@ export function generateSetupSteps(params: {
     },
     {
       step: 9,
-      title: 'Enable RADIUS on the hotspot profile',
-      description: 'Tells the hotspot to authenticate users via RADIUS instead of the local user database.',
-      command: `/ip hotspot profile set default use-radius=yes`,
+      title: 'Enable RADIUS on the hotspot profile + accounting + interim updates',
+      description: 'Tells the hotspot to authenticate via RADIUS. radius-accounting=yes + radius-interim-update=00:05:00 sends periodic Accounting-Interim-Update packets so Wasel can track active sessions. login-by includes mac-cookie so returning clients can auto-resume.',
+      command: `/ip hotspot profile set default use-radius=yes radius-accounting=yes radius-interim-update=00:05:00 login-by=mac-cookie,http-chap,http-pap,https`,
     },
     {
       step: 10,
-      title: 'Set hotspot user profile defaults + disable MAC-cookie auto-login',
-      description: 'Sets idle and keepalive timeouts, and disables the MAC-cookie that would otherwise auto-resume returning clients without contacting RADIUS — required so voucher validity and disable status are enforced on every reconnect.',
-      command: `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m add-mac-cookie=no mac-cookie-timeout=0s`,
+      title: 'Set hotspot user profile timing defaults + enable MAC-cookie auto-relogin',
+      description: 'Sets idle and keepalive timeouts and enables MAC-cookie auto-relogin. A mac-cookie relogin re-submits stored credentials through the RADIUS login path (fresh Access-Request each reconnect) — so disabled or expired vouchers are still rejected. Interim updates from step 9 keep accounting rows current so the stale-session reaper does not close live sessions.',
+      command: `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m add-mac-cookie=yes mac-cookie-timeout=30d`,
     },
     {
       step: 11,

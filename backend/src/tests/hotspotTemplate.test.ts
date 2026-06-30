@@ -27,6 +27,7 @@ vi.mock('../services/routerOs.service', () => ({
   getActiveHotspotUsers: vi.fn(),
   disconnectHotspotUser: vi.fn(),
   testConnection: vi.fn(),
+  ensureHotspotRadiusSettings: vi.fn().mockResolvedValue(true),
 }));
 
 // ─── Other mocks needed by app-level imports ─────────────────────────────────

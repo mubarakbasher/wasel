@@ -12,6 +12,11 @@
  * Brand glyph: each login/status page renders the Wi-Fi mark as an inline SVG
  * (no external image), so there is NO `wifi-logo.png` to ship. If a raster logo
  * is reintroduced later, add `'wifi-logo.png'` back to every bundle's `files`.
+ *
+ * Fonts: pages are fully self-contained — the captive browser has no internet
+ * before login, so fonts MUST be bundled locally (no Google Fonts <link>).
+ * `cairo.woff2` (Arabic subset, used by every login/status page) is common to
+ * all bundles; each design also ships its own Latin display font(s).
  */
 
 export interface HotspotTemplate {
@@ -24,6 +29,7 @@ export interface HotspotTemplate {
 /**
  * Files common to every bundle, in upload order. Excludes preview.html.
  * md5.js is required for CHAP login hashing in login.html.
+ * cairo.woff2 is the bundled Arabic font (login/status are bilingual EN/AR).
  */
 const COMMON_FILES = [
   'login.html',
@@ -33,6 +39,7 @@ const COMMON_FILES = [
   'rlogin.html',
   'error.html',
   'md5.js',
+  'cairo.woff2',
 ] as const;
 
 export const HOTSPOT_TEMPLATES: HotspotTemplate[] = [
@@ -40,19 +47,19 @@ export const HOTSPOT_TEMPLATES: HotspotTemplate[] = [
     id: 'clean',
     name: 'Clean',
     description: 'Light, minimal card with an indigo accent.',
-    files: [...COMMON_FILES],
+    files: [...COMMON_FILES, 'plus-jakarta-sans.woff2'],
   },
   {
     id: 'dark',
     name: 'Dark',
     description: 'Glassmorphic dark card with aurora glow.',
-    files: [...COMMON_FILES],
+    files: [...COMMON_FILES, 'space-grotesk.woff2'],
   },
   {
     id: 'warm',
     name: 'Warm',
     description: 'Warm terracotta hero with a serif headline.',
-    files: [...COMMON_FILES],
+    files: [...COMMON_FILES, 'dm-sans.woff2', 'fraunces.woff2'],
   },
 ];
 

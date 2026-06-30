@@ -355,6 +355,9 @@ describe('PUT /api/v1/routers/:id/vouchers/:vid', () => {
       .mockResolvedValueOnce(undefined) // INSERT Auth-Type Reject
       .mockResolvedValueOnce(undefined); // COMMIT
 
+    // FIX 3: sendCoaDisconnect router lookup fires after COMMIT (empty → early exit)
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
     // Batch enrichment (3 queries) — row.status is 'disabled' → stays disabled
     mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
 

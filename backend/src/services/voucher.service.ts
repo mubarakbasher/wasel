@@ -54,6 +54,17 @@ export interface VoucherListResult {
   limit: number;
 }
 
+// ----- Constants -----
+
+/**
+ * Default maximum concurrent sessions per voucher.
+ * Set to 20 to tolerate MAC-randomization overlap and brief double-connect
+ * during handoff (e.g. a phone reconnects before the old session accounting
+ * row is closed). The stale-session reaper closes abandoned rows once interim
+ * updates stop arriving, so live session counts converge quickly.
+ */
+const VOUCHER_SIMULTANEOUS_USE = 20;
+
 // ----- Helpers -----
 
 /**
@@ -392,8 +403,9 @@ type PgClient = { query: (...args: any[]) => Promise<any> };
  *
  * No per-voucher NAS scoping: vouchers authenticate on any NAS that
  * successfully presents its shared secret. Voucher usernames are random
- * 8-char strings and Simultaneous-Use=1 prevents replay within a router,
- * so cross-router replay is a negligible concern. A previous NAS-IP-Address
+ * 8-char strings and Simultaneous-Use=20 tolerates MAC-rotation overlap;
+ * the stale-session reaper closes stragglers quickly. Cross-router replay
+ * is a negligible concern. A previous NAS-IP-Address
  * scope row (commit 588eeb5) compared against the NAS-self-reported
  * NAS-IP-Address AVP (RFC 2865 §5.4), which RouterOS sets to the router's
  * own IP — not the WireGuard peer IP — so the comparison structurally
@@ -413,10 +425,10 @@ async function insertRadiusEntriesV2(
     [username, 'Cleartext-Password', ':=', password],
   );
 
-  // radcheck: Simultaneous-Use (default 1)
+  // radcheck: Simultaneous-Use
   await client.query(
     'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
-    [username, 'Simultaneous-Use', ':=', '1'],
+    [username, 'Simultaneous-Use', ':=', String(VOUCHER_SIMULTANEOUS_USE)],
   );
 
   // radcheck: limit attribute
@@ -569,9 +581,9 @@ export async function createVouchers(
       rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
       rcValues.push(cred.username, 'Cleartext-Password', ':=', cred.username);
 
-      // Simultaneous-Use = 1
+      // Simultaneous-Use
       rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
-      rcValues.push(cred.username, 'Simultaneous-Use', ':=', '1');
+      rcValues.push(cred.username, 'Simultaneous-Use', ':=', String(VOUCHER_SIMULTANEOUS_USE));
 
       // Limit attribute
       if (data.limitType === 'time') {
@@ -779,6 +791,35 @@ export async function updateVoucher(
   const voucher = existing.rows[0];
   const username = voucher.radius_username;
 
+  // FIX 4: Guard against reactivating a genuinely exhausted voucher.
+  // Queries cumulative usage from radacct and throws 409 if the voucher has
+  // already consumed its full allowance — consistent with the usage-limit
+  // enforcement cron. A "false latch" (cron fired but real usage < limit due
+  // to stale-reaped rows) will have an accurate sum < limit_value here and
+  // will pass through normally, allowing clean reactivation without
+  // re-latching within 30 s via the cron.
+  if (
+    data.status === 'active' &&
+    voucher.status !== 'active' &&
+    (voucher.limit_type === 'time' || voucher.limit_type === 'data') &&
+    voucher.limit_value
+  ) {
+    const usageResult = await pool.query<{ total_used: string }>(
+      voucher.limit_type === 'time'
+        ? `SELECT COALESCE(SUM(acctsessiontime), 0)::bigint AS total_used FROM radacct WHERE username = $1`
+        : `SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0)::bigint AS total_used FROM radacct WHERE username = $1`,
+      [username],
+    );
+    const totalUsed = BigInt(usageResult.rows[0]?.total_used ?? '0');
+    if (totalUsed >= BigInt(voucher.limit_value)) {
+      throw new AppError(
+        409,
+        'Voucher has reached its usage limit and cannot be reactivated — please issue a new voucher.',
+        'VOUCHER_LIMIT_REACHED',
+      );
+    }
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -817,7 +858,11 @@ export async function updateVoucher(
         `INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)`,
         [username, 'Auth-Type', ':=', 'Reject'],
       );
-    } else if (data.status === 'active' && voucher.status === 'disabled') {
+    } else if (data.status === 'active' && voucher.status !== 'active') {
+      // Clear any Auth-Type := Reject row regardless of how it was latched
+      // (disabled by operator OR expired by the usage-limit enforcement cron).
+      // This lets operators reactivate an 'expired' voucher directly without
+      // the awkward disable→reactivate two-step.
       await client.query(
         `DELETE FROM radcheck WHERE username = $1 AND attribute = 'Auth-Type'`,
         [username],
@@ -840,6 +885,15 @@ export async function updateVoucher(
     }
 
     await client.query('COMMIT');
+
+    // FIX 3: Fire-and-forget CoA disconnect when an operator disables a voucher,
+    // mirroring deleteVoucher. This terminates the live session immediately so
+    // the device is kicked off the network rather than waiting for the next
+    // Access-Request or session timeout.
+    if (data.status === 'disabled') {
+      try { await sendCoaDisconnect(userId, routerId, username); }
+      catch (error) { logger.warn('CoA disconnect on disable failed (non-fatal)', { voucherId, username, error: error instanceof Error ? error.message : String(error) }); }
+    }
 
     logger.info('Voucher updated', {
       voucherId,

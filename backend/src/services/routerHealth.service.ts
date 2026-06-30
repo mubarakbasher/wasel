@@ -4,7 +4,7 @@ import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getPeerStatus } from './wireguardPeer';
-import { connectToRouter, testConnection, listHotspotServers } from './routerOs.service';
+import { connectToRouter, testConnection, listHotspotServers, ensureHotspotRadiusSettings } from './routerOs.service';
 import { sendAccessRequest } from './radclient.service';
 
 const execFileAsync = promisify(execFile);
@@ -269,13 +269,23 @@ async function probeHotspotUsesRadius(
       const ok = failing.length === 0;
       const names = targetProfiles.map((p) => String(p.name)).join(', ');
       const failNames = failing.map((p) => String(p.name)).join(', ');
+
+      // Best-effort remediation: if any profile is missing use-radius/accounting,
+      // apply the full set of RADIUS + mac-cookie settings now so the next health
+      // check (or first login) will be correct. Never throws.
+      let remediated = false;
+      if (!ok) {
+        remediated = await ensureHotspotRadiusSettings(api, { serverProfileNames: failing.map((p) => String(p.name)) });
+        logger.info('Health probe applied RADIUS remediation', { profiles: failNames, remediated });
+      }
+
       return {
         id: 'hotspotUsesRadius',
         label: 'Hotspot profile uses RADIUS',
         status: ok ? 'pass' : 'fail',
         detail: ok
           ? `Profile(s) "${names}" have use-radius=yes`
-          : `Profile(s) "${failNames}" still have use-radius=no`,
+          : `Profile(s) "${failNames}" still have use-radius=no — ${remediated ? 'remediation applied' : 'remediation attempted, see logs'}`,
         setupStep: 6,
         remediation: ok
           ? undefined

@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wi-Fi Status</title>
 <meta http-equiv="refresh" content="60">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+  @font-face { font-family: 'DM Sans'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('dm-sans.woff2') format('woff2'); }
+  @font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 500 700; font-display: swap; src: url('fraunces.woff2') format('woff2'); }
+  @font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('cairo.woff2') format('woff2'); }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   @keyframes blob { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20px,-16px) scale(1.08); } }
-  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'DM Sans','Cairo',sans-serif; background: #f4ede2; overflow: hidden; }
+  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'DM Sans','Cairo',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background: #f4ede2; overflow: hidden; }
   .blob-a { position: absolute; top: -140px; inset-inline-start: -100px; width: 440px; height: 440px; background: radial-gradient(circle at center, rgba(232,160,92,0.35), rgba(232,160,92,0) 66%); animation: blob 10s ease-in-out infinite; pointer-events: none; }
   .blob-b { position: absolute; bottom: -180px; inset-inline-end: -120px; width: 480px; height: 480px; background: radial-gradient(circle at center, rgba(193,108,74,0.28), rgba(193,108,74,0) 66%); pointer-events: none; }
   .wrap { position: relative; width: 100%; max-width: 430px; }

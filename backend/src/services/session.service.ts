@@ -128,9 +128,10 @@ export async function disconnectSession(
   const username = await disconnectHotspotUser(routerId, userId, sessionId);
 
   // Fire-and-forget: send CoA Disconnect-Request via the safe spawn-based helper.
-  // B1 fix: scope the radacct lookup by USERNAME (Simultaneous-Use=1 guarantees
-  // at most one active session per voucher) so we find the correct radacct row
-  // and pass its real acctsessionid to the CoA packet. Scoping by the RouterOS
+  // B1 fix: scope the radacct lookup by USERNAME (Simultaneous-Use=20 means up to
+  // 20 open rows are possible due to MAC-randomisation; the stale-session reaper
+  // closes stragglers, so the most-recent open row is the live one). We send a
+  // single CoA per disconnect action — intentional UX. Scoping by the RouterOS
   // .id (the URL :sid param) was broken — that value never appears in radacct.
   try {
     const tunnelIp = router.tunnel_ip;

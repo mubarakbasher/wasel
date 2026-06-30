@@ -35,6 +35,9 @@ vi.mock('../../services/routerOs.service', () => ({
   testConnection: testConnectionMock,
   connectToRouter: connectToRouterMock,
   listHotspotServers: listHotspotServersMock,
+  // Best-effort helper called by probeHotspotUsesRadius during remediation;
+  // must be present in the mock so the import resolves to a callable function.
+  ensureHotspotRadiusSettings: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../services/radclient.service', () => ({

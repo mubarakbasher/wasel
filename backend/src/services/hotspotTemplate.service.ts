@@ -3,7 +3,7 @@ import { pool } from '../config/database';
 import { config } from '../config';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
-import { connectToRouter } from './routerOs.service';
+import { connectToRouter, ensureHotspotRadiusSettings } from './routerOs.service';
 import { HOTSPOT_TEMPLATE_DIR, getTemplate } from '../hotspot-templates/manifest';
 import { RouterRow, RouterInfo } from './router.service';
 
@@ -188,6 +188,11 @@ export async function applyHotspotTemplate(
     await (api as any).menu('/ip/hotspot/profile').where('.id', profileId).update({
       'html-directory': HOTSPOT_TEMPLATE_DIR,
     });
+
+    // 6b. Best-effort: ensure RADIUS accounting + MAC-cookie are enabled on the
+    //     hotspot profile. Piggy-backs on the template re-apply action so operators
+    //     don't need a separate remediation step. Never throws.
+    await ensureHotspotRadiusSettings(api);
 
     logger.info('Hotspot template applied successfully', { routerId, templateId });
 

@@ -5,15 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wi-Fi Status</title>
 <meta http-equiv="refresh" content="60">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+  @font-face { font-family: 'Space Grotesk'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('space-grotesk.woff2') format('woff2'); }
+  @font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('cairo.woff2') format('woff2'); }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   @keyframes auroraA { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-30px) scale(1.1); } }
   @keyframes auroraB { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-50px,40px) scale(1.15); } }
-  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Space Grotesk','Cairo',sans-serif; background: #070912; overflow: hidden; }
+  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Space Grotesk','Cairo',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background: #070912; overflow: hidden; }
   .aurora-a { position: absolute; top: -160px; left: -120px; width: 520px; height: 520px; background: radial-gradient(circle at center, rgba(56,189,248,0.35), rgba(56,189,248,0) 65%); animation: auroraA 11s ease-in-out infinite; pointer-events: none; }
   .aurora-b { position: absolute; bottom: -200px; right: -140px; width: 560px; height: 560px; background: radial-gradient(circle at center, rgba(139,92,246,0.4), rgba(139,92,246,0) 66%); animation: auroraB 13s ease-in-out infinite; pointer-events: none; }
   .wrap { position: relative; width: 100%; max-width: 430px; }

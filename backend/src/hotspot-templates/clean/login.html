@@ -5,10 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wi-Fi Login</title>
 $(if chap-id)<script type="text/javascript" src="md5.js"></script>$(endif)
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+  @font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('plus-jakarta-sans.woff2') format('woff2'); }
+  @font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('cairo.woff2') format('woff2'); }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -16,7 +15,7 @@ $(if chap-id)<script type="text/javascript" src="md5.js"></script>$(endif)
   body {
     position: relative; min-height: 100vh; width: 100%;
     display: flex; align-items: center; justify-content: center;
-    padding: 32px; font-family: 'Plus Jakarta Sans','Cairo',sans-serif;
+    padding: 32px; font-family: 'Plus Jakarta Sans','Cairo',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
     background: #eceef4; overflow: hidden;
   }
   .glow-a { position: absolute; top: -220px; left: 50%; width: 760px; height: 760px; transform: translateX(-50%); background: radial-gradient(circle at center, rgba(99,102,241,0.28), rgba(99,102,241,0) 62%); animation: floatGlow 9s ease-in-out infinite; pointer-events: none; }
@@ -54,6 +53,8 @@ $(if chap-id)<script type="text/javascript" src="md5.js"></script>$(endif)
   .dot { width: 4px; height: 4px; border-radius: 50%; background: #d4d7e2; }
   .foot { text-align: center; margin: 22px 0 0; font-size: 12.5px; color: #9095a8; font-weight: 500; }
   .foot b { font-weight: 700; color: #6b7088; }
+  .tip { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; padding: 11px 13px; background: #f3f5fb; border: 1px solid #e7e9f1; border-radius: 12px; font-size: 12.5px; line-height: 1.45; color: #7b7f95; font-weight: 500; }
+  .tip svg { flex: none; margin-top: 1px; color: #6366f1; }
 </style>
 </head>
 <body>
@@ -99,6 +100,11 @@ $(if chap-id)<script type="text/javascript" src="md5.js"></script>$(endif)
         <button class="btn" type="submit"><span class="spinner" hidden></span><span class="btn-label" data-i18n="connect">Connect to Wi-Fi</span></button>
       </form>
 
+      <p class="tip">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5"></path></svg>
+        <span data-i18n="tip">Tip: allow your device to reconnect automatically to stay online.</span>
+      </p>
+
       <div class="footer-info">
         <div class="chip">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
@@ -131,13 +137,15 @@ var I18N = {
     pill: "Wasel", brand: "Riverside Café", tag: "Complimentary Wi-Fi for our guests",
     phVoucher: "Enter access code", connect: "Connect to Wi-Fi",
     secured: "Secured", highSpeed: "High speed",
-    footerPre: "Connected via ", footerPost: " · Need help? Ask our staff"
+    footerPre: "Connected via ", footerPost: " · Need help? Ask our staff",
+    tip: "Tip: allow your device to reconnect automatically to stay online."
   },
   ar: {
     pill: "واصل", brand: "مقهى ريفرسايد", tag: "واي فاي مجاني لضيوفنا الكرام",
     phVoucher: "أدخل رمز الدخول", connect: "الاتصال بالواي فاي",
     secured: "آمن", highSpeed: "سرعة عالية",
-    footerPre: "متصل عبر ", footerPost: " · تحتاج مساعدة؟ اسأل فريقنا"
+    footerPre: "متصل عبر ", footerPost: " · تحتاج مساعدة؟ اسأل فريقنا",
+    tip: "نصيحة: اسمح لجهازك بإعادة الاتصال تلقائيًا للبقاء على الإنترنت."
   }
 };
 function setLang(lang) {

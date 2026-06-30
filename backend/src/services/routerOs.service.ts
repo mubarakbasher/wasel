@@ -111,6 +111,11 @@ async function fetchRouterRecord(routerId: string, userId: string) {
   return router;
 }
 
+// ----- Constants -----
+
+/** Tunable window for mac-cookie auto-relogin. Used in ensureHotspotRadiusSettings. */
+const MAC_COOKIE_TIMEOUT = '30d';
+
 // ----- Service functions -----
 
 /**
@@ -442,6 +447,111 @@ export async function listHotspotProfiles(api: any): Promise<HotspotProfile[]> {
     useRadius: String(e['use-radius'] ?? 'false').toLowerCase() === 'yes' ||
                String(e['use-radius'] ?? 'false').toLowerCase() === 'true',
   }));
+}
+
+/**
+ * Best-effort: configure RADIUS accounting, interim-update intervals, and
+ * MAC-cookie auto-relogin on the router's hotspot profiles.
+ *
+ * MAC-cookie relogin re-submits the stored username/password through the
+ * normal RADIUS login path (fresh Access-Request each reconnect), so
+ * rlm_expiration and Auth-Type := Reject are still enforced on every
+ * reconnect — a disabled or expired voucher is rejected even with the
+ * mac-cookie enabled.
+ *
+ * radius-interim-update=00:05:00 sends periodic Accounting-Interim-Update
+ * packets so the stale-session reaper can confirm a session is still alive
+ * and avoid closing active accounting rows prematurely.
+ *
+ * When `opts.serverProfileNames` is non-empty every profile whose name
+ * (case-insensitive) appears in that list is updated; otherwise the default
+ * (or first) profile is updated — the original behaviour.
+ *
+ * Returns true on success, false if an error was caught (never throws).
+ */
+export async function ensureHotspotRadiusSettings(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api: any,
+  opts?: { serverProfileNames?: string[] },
+): Promise<boolean> {
+  try {
+    // --- /ip/hotspot/profile ---
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hsProfiles = (await (api as any).menu('/ip/hotspot/profile').get()) as Array<
+      Record<string, unknown>
+    >;
+    if (hsProfiles && hsProfiles.length > 0) {
+      const updatePayload = {
+        'use-radius': 'yes',
+        'radius-accounting': 'yes',
+        'radius-interim-update': '00:05:00',
+        'login-by': 'mac-cookie,http-chap,http-pap,https',
+      };
+
+      if (opts?.serverProfileNames && opts.serverProfileNames.length > 0) {
+        // Update every profile whose name (case-insensitive) is in the list.
+        const targetNames = new Set(opts.serverProfileNames.map((n) => n.toLowerCase()));
+        for (const profile of hsProfiles) {
+          if (targetNames.has(String(profile.name ?? '').toLowerCase())) {
+            const profileId = String(profile['.id'] ?? '');
+            if (profileId) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (api as any).menu('/ip/hotspot/profile').where('.id', profileId).update(updatePayload);
+              logger.info('ensureHotspotRadiusSettings: hotspot profile updated', {
+                profileId,
+                name: String(profile.name ?? ''),
+              });
+            }
+          }
+        }
+      } else {
+        // Default-or-first behaviour: update a single profile.
+        const profile =
+          hsProfiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ??
+          hsProfiles[0];
+        const profileId = String(profile['.id'] ?? '');
+        if (profileId) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (api as any).menu('/ip/hotspot/profile').where('.id', profileId).update(updatePayload);
+          logger.info('ensureHotspotRadiusSettings: hotspot profile updated', {
+            profileId,
+            name: String(profile.name ?? ''),
+          });
+        }
+      }
+    }
+
+    // --- /ip/hotspot/user/profile ---
+    // Always uses default-or-first behaviour regardless of opts.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const userProfiles = (await (api as any).menu('/ip/hotspot/user/profile').get()) as Array<
+      Record<string, unknown>
+    >;
+    if (userProfiles && userProfiles.length > 0) {
+      const userProfile =
+        userProfiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ??
+        userProfiles[0];
+      const userProfileId = String(userProfile['.id'] ?? '');
+      if (userProfileId) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (api as any).menu('/ip/hotspot/user/profile').where('.id', userProfileId).update({
+          'add-mac-cookie': 'yes',
+          'mac-cookie-timeout': MAC_COOKIE_TIMEOUT,
+        });
+        logger.info('ensureHotspotRadiusSettings: hotspot user profile updated', {
+          userProfileId,
+          name: String(userProfile.name ?? ''),
+        });
+      }
+    }
+
+    return true;
+  } catch (err) {
+    logger.warn('ensureHotspotRadiusSettings: best-effort update failed (non-fatal)', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
 }
 
 /**
