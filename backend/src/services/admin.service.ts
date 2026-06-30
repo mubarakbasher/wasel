@@ -58,6 +58,7 @@ interface PaymentRow {
   created_at: string;
   user_name: string;
   user_email: string;
+  plan_name: string | null;
 }
 
 interface RouterRow {
@@ -601,18 +602,23 @@ export async function getPayments(
   const params: unknown[] = [];
   let paramIndex = 1;
 
-  const filterStatus = status || 'pending';
-  conditions.push(`p.status = $${paramIndex++}`);
-  params.push(filterStatus);
+  // Always exclude receipts that were never uploaded — those payments are incomplete.
+  conditions.push(`p.receipt_url IS NOT NULL`);
+
+  if (status) {
+    conditions.push(`p.status = $${paramIndex++}`);
+    params.push(status);
+  }
 
   const whereClause = `WHERE ${conditions.join(' AND ')}`;
   const offset = (page - 1) * limit;
 
   const [dataResult, countResult] = await Promise.all([
     pool.query(
-      `SELECT p.*, u.name AS user_name, u.email AS user_email
+      `SELECT p.*, u.name AS user_name, u.email AS user_email, pl.name AS plan_name
        FROM payments p
        JOIN users u ON p.user_id = u.id
+       LEFT JOIN plans pl ON pl.tier = p.plan_tier
        ${whereClause}
        ORDER BY p.created_at DESC
        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
@@ -629,7 +635,7 @@ export async function getPayments(
 
   const total = parseInt(countResult.rows[0].count, 10);
 
-  logger.info('Admin fetched payments', { page, limit, status: filterStatus, total });
+  logger.info('Admin fetched payments', { page, limit, status: status ?? 'all', total });
 
   return { payments: dataResult.rows, total, page, limit };
 }
@@ -653,19 +659,26 @@ export async function reviewPayment(
     // 1. Update the payment status. On approval, clear any prior rejection_reason
     //    (defensive — payment may have been rejected then resubmitted).
     const reasonToStore = decision === 'rejected' ? (rejectionReason ?? null) : null;
+    // receipt_url IS NOT NULL: a payment with no uploaded receipt is incomplete and
+    // must not be actionable. This mirrors the getPayments() list filter so the
+    // "no receipt-less payments reach the admin" invariant holds at the action site
+    // too, not just in the list view (defense-in-depth against direct API calls).
     const paymentResult = await client.query(
       `UPDATE payments
        SET status = $1,
            reviewed_by = $2,
            reviewed_at = NOW(),
            rejection_reason = $4
-       WHERE id = $3 AND status = 'pending'
+       WHERE id = $3 AND status = 'pending' AND receipt_url IS NOT NULL
        RETURNING *`,
       [decision, adminId, paymentId, reasonToStore],
     );
 
     if (paymentResult.rowCount === 0) {
-      throw new AppError(404, 'Payment not found or already reviewed');
+      throw new AppError(
+        404,
+        'Payment not found, already reviewed, or has no receipt uploaded',
+      );
     }
 
     const payment = paymentResult.rows[0];
@@ -763,7 +776,9 @@ export async function getStats(): Promise<AdminStats> {
   ] = await Promise.all([
     pool.query(`SELECT COUNT(*) AS count FROM users WHERE role = 'user'`),
     pool.query(`SELECT status, COUNT(*) AS count FROM subscriptions GROUP BY status`),
-    pool.query(`SELECT COUNT(*) AS count FROM payments WHERE status = 'pending'`),
+    pool.query(
+      `SELECT COUNT(*) AS count FROM payments WHERE status = 'pending' AND receipt_url IS NOT NULL`,
+    ),
     pool.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE status = 'approved'`),
     pool.query(`SELECT status, COUNT(*) AS count FROM routers GROUP BY status`),
     pool.query(`SELECT COUNT(*) AS count FROM voucher_meta`),

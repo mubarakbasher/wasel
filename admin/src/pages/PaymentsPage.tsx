@@ -14,13 +14,15 @@ interface Payment {
   user_name: string;
   user_email: string;
   plan_tier: string;
+  plan_name: string | null;
   amount: number;
   currency: string;
-  reference_code: string;
+  reference_code: string | null;
   receipt_url: string | null;
   rejection_reason: string | null;
   status: string;
   created_at: string;
+  reviewed_at: string | null;
   [key: string]: unknown;
 }
 
@@ -37,6 +39,7 @@ export default function PaymentsPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [detailPayment, setDetailPayment] = useState<Payment | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentionally reset the dialog inputs whenever the confirm action opens/closes
@@ -84,6 +87,19 @@ export default function PaymentsPage() {
     },
   });
 
+  // Hand off from the detail modal to the approve/reject confirm modal. Closing the
+  // detail modal and opening the confirm modal in the same commit makes their focus
+  // effects race — the detail modal's focus-restore can clobber the confirm modal's
+  // focus and strand the keyboard on the underlying row. Deferring the open to the
+  // next tick lets the detail modal fully unmount (and restore focus) first, so the
+  // confirm modal then mounts cleanly and traps focus as expected.
+  const openConfirmFromDetail = (decision: 'approved' | 'rejected') => {
+    if (!detailPayment) return;
+    const id = detailPayment.id;
+    setDetailPayment(null);
+    setTimeout(() => setConfirmAction({ id, decision }), 0);
+  };
+
   const payments: Payment[] = data?.data ?? [];
   const total: number = data?.meta?.total ?? 0;
 
@@ -103,7 +119,7 @@ export default function PaymentsPage() {
       header: 'Plan',
       render: (row) => (
         <span className="inline-block px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium capitalize">
-          {row.plan_tier}
+          {row.plan_name ?? row.plan_tier}
         </span>
       ),
     },
@@ -116,7 +132,11 @@ export default function PaymentsPage() {
         </span>
       ),
     },
-    { key: 'reference_code', header: 'Reference Code' },
+    {
+      key: 'reference_code',
+      header: 'Reference Code',
+      render: (row) => row.reference_code ?? '—',
+    },
     {
       key: 'status',
       header: 'Status',
@@ -144,6 +164,7 @@ export default function PaymentsPage() {
             href={url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
           >
             <ExternalLink className="w-3.5 h-3.5" />
@@ -166,14 +187,20 @@ export default function PaymentsPage() {
         row.status === 'pending' ? (
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setConfirmAction({ id: row.id, decision: 'approved' })}
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmAction({ id: row.id, decision: 'approved' });
+              }}
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 transition-colors"
             >
               <CheckCircle className="w-3.5 h-3.5" />
               Approve
             </button>
             <button
-              onClick={() => setConfirmAction({ id: row.id, decision: 'rejected' })}
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmAction({ id: row.id, decision: 'rejected' });
+              }}
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
             >
               <XCircle className="w-3.5 h-3.5" />
@@ -234,6 +261,7 @@ export default function PaymentsPage() {
             limit={20}
             onPageChange={setPage}
             isLoading={isLoading}
+            onRowClick={setDetailPayment}
           />
         </div>
       )}
@@ -292,6 +320,144 @@ export default function PaymentsPage() {
         {errorMsg && (
           <div className="mt-4 px-3 py-2 rounded bg-red-50 text-red-700 text-sm">
             {errorMsg}
+          </div>
+        )}
+      </Modal>
+
+      {/* Detail view */}
+      <Modal
+        open={!!detailPayment}
+        onClose={() => setDetailPayment(null)}
+        title="Payment Details"
+        size="lg"
+        footer={
+          detailPayment && (
+            <>
+              {detailPayment.status === 'pending' && (
+                <>
+                  <Button
+                    variant="success"
+                    leftIcon={<CheckCircle className="w-4 h-4" />}
+                    onClick={() => openConfirmFromDetail('approved')}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    variant="danger"
+                    leftIcon={<XCircle className="w-4 h-4" />}
+                    onClick={() => openConfirmFromDetail('rejected')}
+                  >
+                    Reject
+                  </Button>
+                </>
+              )}
+              <Button variant="ghost" onClick={() => setDetailPayment(null)}>
+                Close
+              </Button>
+            </>
+          )
+        }
+      >
+        {detailPayment && (
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Payer
+                </div>
+                <div className="mt-1 font-medium text-slate-900">
+                  {detailPayment.user_name}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {detailPayment.user_email}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Plan
+                </div>
+                <div className="mt-1 text-slate-700">
+                  {detailPayment.plan_name ?? detailPayment.plan_tier}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Amount
+                </div>
+                <div className="mt-1 font-medium text-slate-900">
+                  {detailPayment.currency ?? 'SDG'}{' '}
+                  {Number(detailPayment.amount).toFixed(2)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Reference Code
+                </div>
+                <div className="mt-1 font-mono text-slate-700">
+                  {detailPayment.reference_code ?? '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Status
+                </div>
+                <div className="mt-1">
+                  <StatusBadge status={detailPayment.status} />
+                  {detailPayment.status === 'rejected' &&
+                    detailPayment.rejection_reason && (
+                      <div className="mt-1 text-xs text-red-700">
+                        {detailPayment.rejection_reason}
+                      </div>
+                    )}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Created
+                </div>
+                <div className="mt-1 text-slate-700">
+                  {formatDateTime(detailPayment.created_at)}
+                </div>
+                {detailPayment.reviewed_at && (
+                  <div className="mt-1 text-xs text-slate-500">
+                    Reviewed: {formatDateTime(detailPayment.reviewed_at)}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-2">
+                Receipt
+              </div>
+              {(() => {
+                const receiptUrl = resolveAssetUrl(detailPayment.receipt_url);
+                return receiptUrl ? (
+                  <div className="space-y-2">
+                    <div className="overflow-auto rounded-lg bg-slate-50 p-2">
+                      <img
+                        src={receiptUrl}
+                        alt="Payment receipt"
+                        className="max-h-96 w-auto rounded-lg border border-slate-200 object-contain"
+                      />
+                    </div>
+                    <a
+                      href={receiptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      View full size
+                    </a>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-xs text-slate-400">
+                    No receipt uploaded
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         )}
       </Modal>
