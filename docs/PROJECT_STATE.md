@@ -2,14 +2,14 @@
 
 > Living "where are we right now" snapshot. For architecture & conventions see `CLAUDE.md`; this file tracks in-flight work, the active blocker, and gotchas already hit. **Keep it updated as state changes.**
 
-**Last updated:** 2026-06-25
+**Last updated:** 2026-06-30
 
 ## TL;DR
-Security hardening (Critical RCE + 4 High findings) plus several follow-on features are committed and pushed on `dev`: mobile UX + Arabic localization, a voucher-code-collision fix, an admin panel polish/responsive pass, CI extended to run on `dev`, and the **operator-selectable hotspot login page** (built end-to-end). **All await the staging gate before promotion.** A dedicated **staging VPS** (`wa-sel.cloud`, `185.166.39.70`) is the pre-merge gate; the Docker stack has been deploying `dev` and reaching healthy. Production (`wa-sel.com`) is live with paying users and **untouched**.
+Security hardening (Critical RCE + 4 High findings) plus several follow-on features are committed and pushed on `dev`: mobile UX + Arabic localization, a voucher-code-collision fix, an admin panel polish/responsive pass, CI extended to run on `dev`, and the **operator-selectable hotspot login page** (built end-to-end), and a **payment-flow fix** (receipt-less payments no longer reach the admin queue + a new admin payment-detail view with inline receipt preview). **All await the staging gate before promotion.** A dedicated **staging VPS** (`wa-sel.cloud`, `185.166.39.70`) is the pre-merge gate; the Docker stack has been deploying `dev` and reaching healthy. Production (`wa-sel.com`) is live with paying users and **untouched**.
 
 ## Branch / deploy state
 - `main` — production. **Untouched** this cycle.
-- `dev` — pushed to `origin/dev` (`github.com/mubarakbasher/wasel`); this is what the staging VPS pulls. Carries, on top of security hardening `7aa841f`: localized errors/offline session `2700de7`, splash-gate `253cef2`, compose healthcheck fix `840b9e0`, CI-on-dev + Admin CI `b1bb560`, voucher-collision fix `cbb3553`, admin polish/responsive `a02cb54`, and the hotspot login page `32253b8`.
+- `dev` — pushed to `origin/dev` (`github.com/mubarakbasher/wasel`); this is what the staging VPS pulls. Carries, on top of security hardening `7aa841f`: localized errors/offline session `2700de7`, splash-gate `253cef2`, compose healthcheck fix `840b9e0`, CI-on-dev + Admin CI `b1bb560`, voucher-collision fix `cbb3553`, admin polish/responsive `a02cb54`, the hotspot login page `32253b8`, the voucher provider test-stub alignment `98ef162`, and the payment-flow fix `9a9b38a`.
 - `staging-vps-setup` — feature branch, already fast-forward-merged into `dev`; safe to delete.
 
 ## Security hardening — DONE (on `dev`)
@@ -46,6 +46,45 @@ Operators pick a captive-portal login page (clean / dark / warm) in the mobile a
 - **Voucher-code collision fix `cbb3553`** — creation now regenerates colliding 8-digit codes instead of aborting with "already on the system"; rare SELECT-vs-INSERT race → clean 409 not 500. +unit tests.
 - **Admin polish + responsive `a02cb54`** — shared `Button`/`Modal`/`ConfirmDialog` primitives, a11y (status dots, `scope`, focus-trap, reduced-motion), a slide-in mobile sidebar drawer, accent normalized to blue. Lint+build clean.
 - **CI on `dev` `b1bb560`** — backend/mobile CI now run on `dev` + manual dispatch; new Admin CI (lint+build+docker). Backend healthcheck fix `840b9e0` (probe `127.0.0.1`, IPv4 bind).
+
+## Payment flow fix — DONE (on `dev` `9a9b38a`, pending staging)
+Two defects in the manual bank-transfer flow, fixed backend + admin. **No migration** — `payments.receipt_url` was already nullable; this is a query/visibility + UI change.
+- **Receipt-less payments no longer reach the admin.** The `payments` row is created up front at `POST /subscription/request` (so the bank `reference_code` can be shown) with `receipt_url=NULL`; receipt upload is a separate later call (`POST /subscription/receipt`). A user who viewed the bank details and backed out left a `pending`, receipt-less row the admin could see — and approve, activating a subscription with no proof of payment. Fixes:
+  - `getPayments()` always filters `p.receipt_url IS NOT NULL` (every tab).
+  - `reviewPayment()` carries the **same guard on its `UPDATE … WHERE`**, so approve/reject are refused at the action site too, not just hidden in the list (defense-in-depth vs direct API calls — security-auditor finding; list-hide alone was bypassable).
+  - `getStats()` pending-payments tile now matches the actionable queue.
+  - Also fixes the **"all" tab**, which showed only pending because the service defaulted `status || 'pending'`; the status predicate is now applied only when a status is provided.
+- **Admin payment-detail view.** Backend `LEFT JOIN plans` for the display name (`plan_name`). Clicking a row opens a detail modal: payer, plan, amount, reference code, status/rejection reason, dates, and an **inline receipt-image preview** (via the host-allowlisted `resolveAssetUrl` — confirmed no XSS/phishing surface); Approve/Reject available from the modal.
+- Verified: backend `tsc` clean + **254 tests** (new `backend/src/tests/adminPayments.test.ts` covers the `getPayments` WHERE-clause + the `reviewPayment` receipt guard); admin `tsc -b && vite build` clean. Reviewed by security-auditor + code-reviewer — both blocking findings fixed in the same commit.
+- **E2E to run on staging:** a receipt-less pending payment is **absent** from the admin Payments tab → upload a receipt (`POST /subscription/receipt`) → it **appears** → click the row → detail modal shows the receipt image inline → Approve activates the subscription → the "all" tab lists every receipt-bearing payment across statuses.
+
+## Updating a deployed VPS (pull → rebuild)
+Full runbooks: `docs/deploy.md` (§2 deploy, §7 useful commands) and `docs/STAGING.md`. Migrations **auto-run on backend boot** (idempotent), so a code pull is usually all that's needed. Quick reference:
+
+**Staging** (`wa-sel.cloud` · `185.166.39.70` · repo `/opt/wasel`, branch `dev`):
+```bash
+cd /opt/wasel
+git pull origin dev
+# rebuild only what changed; the payment fix touches backend + admin:
+docker compose --env-file /etc/wasel/compose.env build backend admin
+docker compose --env-file /etc/wasel/compose.env up -d backend admin
+docker compose --env-file /etc/wasel/compose.env ps            # all healthy?
+curl http://localhost:3000/api/v1/health                       # {"status":"ok"}
+docker compose --env-file /etc/wasel/compose.env logs -f backend   # confirm "migrations ran"
+```
+- This change adds **no migration**, so no DB step is needed (backend boot still runs the runner — a no-op here).
+- **Admin gotcha (see Gotchas below):** the admin image bakes `VITE_API_URL` at build time. On staging it must be the staging API origin (same-origin `/api/v1`, or `https://api.wa-sel.cloud/api/v1`), **never** the prod default `api.wa-sel.com`. Verify the built bundle contains no `api.wa-sel.com` before exposing `admin.wa-sel.cloud`.
+- A backend-only change can skip the admin rebuild: `… build backend && … up -d backend`. An admin-only change skips the backend.
+
+**Production** (`wa-sel.com`, branch `main`) — **only** after staging passes and a `dev → main` fast-forward:
+```bash
+cd /opt/wasel               # prod path; uses the prod docker-compose.yml, never the dev one
+git pull origin main
+docker compose --env-file /etc/wasel/compose.env up -d --build
+docker compose --env-file /etc/wasel/compose.env ps
+curl http://localhost:3000/api/v1/health
+```
+**Never push directly to `main`. Prod is live with paying users** — promote `dev → main` fast-forward only, after the staging E2E checklist (`docs/STAGING.md` §11).
 
 ## Staging VPS bring-up — IN PROGRESS
 Runbook: `docs/STAGING.md`. Host `185.166.39.70`, Ubuntu, repo at `/opt/wasel` on branch `dev`.
