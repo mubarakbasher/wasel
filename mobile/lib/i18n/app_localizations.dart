@@ -731,6 +731,20 @@ class AppLocalizations {
     'payments.cancelConfirmAction': 'Yes, cancel',
     'payments.keepPayment': 'Keep it',
     'payments.resubmitSuccess': 'New receipt uploaded. Admin will review it again.',
+    // Pending-payment recovery (upload / replace / cancel from the list, and
+    // the "leave without uploading" guard on the payment screen).
+    'payments.uploadReceipt': 'Upload receipt',
+    'payments.replaceReceipt': 'Replace receipt',
+    'payments.pendingUploadHint':
+        'Upload your receipt so the admin can verify your payment.',
+    'payments.awaitingReviewNote':
+        'Your receipt is awaiting admin review. You can replace it or cancel this payment.',
+    'payment.leaveTitle': 'Leave without uploading?',
+    'payment.leaveBody':
+        'Your payment is saved as pending. You can upload the receipt later from Settings → Payments, or cancel it now.',
+    'payment.uploadLater': 'Upload later',
+    'payment.cancelPayment': 'Cancel payment',
+    'payment.stay': 'Stay',
 
     // ── Reports ─────────────────────────────────────────────────────────────
     'reports.rangeSeparator': 'to',
@@ -1451,7 +1465,20 @@ class AppLocalizations {
     'payments.cancelConfirmAction': 'نعم، إلغاء',
     'payments.keepPayment': 'الإبقاء عليها',
     'payments.resubmitSuccess': 'تم رفع الإيصال الجديد. سيقوم المسؤول بمراجعته.',
-    'payment.uploadReceipt': 'رفع الإيصال',
+    // استرجاع الدفعات قيد الانتظار (رفع / استبدال / إلغاء من القائمة، وتنبيه
+    // المغادرة دون رفع الإيصال في شاشة الدفع).
+    'payments.uploadReceipt': 'رفع الإيصال',
+    'payments.replaceReceipt': 'استبدال الإيصال',
+    'payments.pendingUploadHint':
+        'ارفع إيصالك حتى يتمكن المسؤول من التحقق من دفعتك.',
+    'payments.awaitingReviewNote':
+        'إيصالك قيد مراجعة المسؤول. يمكنك استبداله أو إلغاء هذه الدفعة.',
+    'payment.leaveTitle': 'المغادرة دون رفع الإيصال؟',
+    'payment.leaveBody':
+        'تم حفظ دفعتك كطلب قيد الانتظار. يمكنك رفع الإيصال لاحقاً من الإعدادات ← المدفوعات، أو إلغاؤها الآن.',
+    'payment.uploadLater': 'الرفع لاحقاً',
+    'payment.cancelPayment': 'إلغاء الدفعة',
+    'payment.stay': 'البقاء',
     'payment.receiptUrlDesc': 'أدخل رابط إيصال الدفع (مثل رابط صورة أو لقطة شاشة).',
     'payment.receiptUrl': 'رابط الإيصال',
     'payment.receiptUrlRequired': 'رابط الإيصال مطلوب',

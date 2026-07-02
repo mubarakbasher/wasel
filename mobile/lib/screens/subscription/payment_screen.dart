@@ -51,9 +51,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     if (Platform.isAndroid) {
       SecureWindow.enable();
     }
-    Future.microtask(
-      () => ref.read(subscriptionProvider.notifier).loadBankInfo(),
-    );
+    Future.microtask(() {
+      final notifier = ref.read(subscriptionProvider.notifier);
+      notifier.loadBankInfo();
+      // Also refresh the payment list so we can recover the pending payment's
+      // id if `lastRequest` was lost (e.g. the app was restarted mid-flow).
+      notifier.loadPayments();
+    });
   }
 
   @override
@@ -163,17 +167,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   }
 
   Future<void> _handleUpload() async {
-    final request = ref.read(subscriptionProvider).lastRequest;
-    if (request == null) {
+    if (_receiptFile == null) return;
+
+    final paymentId = _resolvePendingPaymentId();
+    if (paymentId == null) {
       AppSnackbar.info(context, context.tr('payment.noPendingPayment'));
       return;
     }
-    if (_receiptFile == null) return;
 
     final success = await ref
         .read(subscriptionProvider.notifier)
         .uploadReceipt(
-          paymentId: request.paymentId,
+          paymentId: paymentId,
           file: _receiptFile!,
         );
 
@@ -183,33 +188,131 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     }
   }
 
+  /// Resolve the id of the payment we're uploading a receipt for. Prefers the
+  /// in-memory request from this session; falls back to the current pending
+  /// payment from the loaded list so upload still works after an app restart
+  /// (where `lastRequest` is gone).
+  String? _resolvePendingPaymentId() {
+    final state = ref.read(subscriptionProvider);
+    final fromRequest = state.lastRequest?.paymentId;
+    if (fromRequest != null) return fromRequest;
+    for (final p in state.payments) {
+      if (p.isPending) return p.id;
+    }
+    return null;
+  }
+
+  Future<void> _handleBack() async {
+    final leave = await _confirmLeaveIfPending();
+    if (!mounted) return;
+    if (leave) context.go('/subscription');
+  }
+
+  /// Android system back / swipe handler for [PopScope]. Kept as a method (not
+  /// an inline closure) so `context` resolves to the State's own context and
+  /// the `mounted` guard correlates with it.
+  Future<void> _onPopInvoked(bool didPop) async {
+    if (didPop) return;
+    final leave = await _confirmLeaveIfPending();
+    if (!mounted) return;
+    if (leave) context.go('/subscription');
+  }
+
+  /// Returns true if it's OK to leave the payment screen now. If a pending,
+  /// receipt-less payment was left behind (and we're not already on the
+  /// success step), prompts the user to upload later, cancel it, or stay —
+  /// so the payment is never silently orphaned.
+  Future<bool> _confirmLeaveIfPending() async {
+    if (_currentStep >= 2) return true;
+
+    final state = ref.read(subscriptionProvider);
+    String? pendingId = state.lastRequest?.paymentId;
+    if (pendingId == null) {
+      for (final p in state.payments) {
+        if (p.isPending && !p.hasReceipt) {
+          pendingId = p.id;
+          break;
+        }
+      }
+    }
+    if (pendingId == null) return true; // nothing left behind — free to leave
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(context.tr('payment.leaveTitle')),
+        content: Text(context.tr('payment.leaveBody')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'stay'),
+            child: Text(context.tr('payment.stay')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: Text(
+              context.tr('payment.cancelPayment'),
+              style: const TextStyle(color: AppColors.error),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, 'leave'),
+            child: Text(context.tr('payment.uploadLater')),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return false;
+
+    if (choice == 'cancel') {
+      final ok = await ref
+          .read(subscriptionProvider.notifier)
+          .cancelPayment(pendingId);
+      if (!mounted) return false;
+      if (!ok) {
+        final err = ref.read(subscriptionProvider).error;
+        if (err != null) AppSnackbar.error(context, err);
+        return false; // stay so the user can retry
+      }
+      return true;
+    }
+    return choice == 'leave';
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(subscriptionProvider);
     final request = state.lastRequest;
     final sub = state.subscription;
 
-    return Stack(
-      children: [
-        Scaffold(
-          appBar: AppBar(
-            title: Text(context.tr('payment.title')),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.go('/subscription'),
+    return PopScope(
+      // Intercept the Android system back / swipe so a pending, receipt-less
+      // payment isn't silently abandoned. The AppBar back button and the
+      // in-app navigations (go to dashboard/settings) route around this.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) => _onPopInvoked(didPop),
+      child: Stack(
+        children: [
+          Scaffold(
+            appBar: AppBar(
+              title: Text(context.tr('payment.title')),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _handleBack,
+              ),
             ),
+            body: _buildStepper(state, request, sub),
           ),
-          body: _buildStepper(state, request, sub),
-        ),
-        // iOS: blur the screen when app becomes inactive (switcher thumbnail).
-        if (_obscured)
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(color: AppColors.scrim),
+          // iOS: blur the screen when app becomes inactive (switcher thumbnail).
+          if (_obscured)
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(color: AppColors.scrim),
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 

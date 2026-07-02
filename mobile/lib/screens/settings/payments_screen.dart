@@ -242,6 +242,7 @@ class _PaymentTile extends StatelessWidget {
               ),
             ],
           ),
+          // Rejected: show the admin's reason.
           if (payment.isRejected) ...[
             const SizedBox(height: AppSpacing.md),
             Container(
@@ -279,6 +280,57 @@ class _PaymentTile extends StatelessWidget {
                 ],
               ),
             ),
+          ],
+          // Pending: tell the user what to do next — upload a receipt (so the
+          // admin can see it) or, if a receipt is already in, that it's under
+          // review. Without this hint a fresh pending payment looked inert.
+          if (payment.isPending) ...[
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: (payment.hasReceipt
+                        ? AppColors.primary
+                        : AppColors.warning)
+                    .withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(
+                    color: (payment.hasReceipt
+                            ? AppColors.primary
+                            : AppColors.warning)
+                        .withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    payment.hasReceipt
+                        ? Icons.hourglass_top
+                        : Icons.receipt_long,
+                    size: 18,
+                    color: payment.hasReceipt
+                        ? AppColors.primary
+                        : AppColors.warning,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Expanded(
+                    child: Text(
+                      payment.hasReceipt
+                          ? context.tr('payments.awaitingReviewNote')
+                          : context.tr('payments.pendingUploadHint'),
+                      style: AppTypography.footnote
+                          .copyWith(color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          // Recovery actions for any non-terminal payment (pending OR
+          // rejected). The backend accepts cancel + (re)upload from both
+          // states; approved/cancelled are terminal and show no actions.
+          if (payment.isPending || payment.isRejected) ...[
             const SizedBox(height: AppSpacing.md),
             Row(
               children: [
@@ -298,7 +350,13 @@ class _PaymentTile extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: busy ? null : onResubmit,
                     icon: const Icon(Icons.upload_file, size: 18),
-                    label: Text(context.tr('payments.resubmitReceipt')),
+                    label: Text(
+                      payment.isRejected
+                          ? context.tr('payments.resubmitReceipt')
+                          : payment.hasReceipt
+                              ? context.tr('payments.replaceReceipt')
+                              : context.tr('payments.uploadReceipt'),
+                    ),
                   ),
                 ),
               ],

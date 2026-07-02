@@ -45,4 +45,9 @@ class PaymentRecord {
   bool get isApproved => status == 'approved';
   bool get isRejected => status == 'rejected';
   bool get isCancelled => status == 'cancelled';
+
+  /// Whether a receipt image has been uploaded for this payment. A pending
+  /// payment with no receipt is one the user created but never submitted a
+  /// receipt for — it is invisible to the admin until a receipt exists.
+  bool get hasReceipt => receiptUrl != null && receiptUrl!.isNotEmpty;
 }
