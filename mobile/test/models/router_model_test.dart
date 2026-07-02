@@ -56,5 +56,33 @@ void main() {
       expect(json['name'], 'Office Router');
       expect(json['status'], 'online');
     });
+
+    test('fromJson parses hotspot template fields from camelCase', () {
+      // The backend serializes these in camelCase (like every other field).
+      // Reading snake_case here would leave them null and hide the operator's
+      // selected login-page design in the picker + router detail.
+      final router = RouterModel.fromJson({
+        ...validJson,
+        'hotspotTemplateId': 'dark',
+        'hotspotTemplateStatus': 'applied',
+        'hotspotTemplateError': null,
+      });
+      expect(router.hotspotTemplateId, 'dark');
+      expect(router.hotspotTemplateStatus, 'applied');
+      expect(router.hotspotTemplateError, isNull);
+    });
+
+    test('toJson round-trips hotspot template fields', () {
+      final router = RouterModel.fromJson({
+        ...validJson,
+        'hotspotTemplateId': 'warm',
+        'hotspotTemplateStatus': 'failed',
+        'hotspotTemplateError': 'unreachable',
+      });
+      final round = RouterModel.fromJson(router.toJson());
+      expect(round.hotspotTemplateId, 'warm');
+      expect(round.hotspotTemplateStatus, 'failed');
+      expect(round.hotspotTemplateError, 'unreachable');
+    });
   });
 }

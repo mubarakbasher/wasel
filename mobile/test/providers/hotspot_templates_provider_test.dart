@@ -107,7 +107,10 @@ void main() {
   });
 
   group('RouterModel hotspot fields', () {
-    test('fromJson reads hotspot_template_id, status, error', () {
+    test('fromJson reads camelCase hotspotTemplateId, status, error', () {
+      // The backend serializes these in camelCase (see router.service.ts) —
+      // the model must read the same keys, or the operator's selected design
+      // is invisible in the picker + router detail.
       final json = {
         'id': 'r-1',
         'userId': 'u-1',
@@ -115,9 +118,9 @@ void main() {
         'status': 'online',
         'createdAt': '2026-01-01T00:00:00.000Z',
         'updatedAt': '2026-01-01T00:00:00.000Z',
-        'hotspot_template_id': 'dark',
-        'hotspot_template_status': 'applied',
-        'hotspot_template_error': null,
+        'hotspotTemplateId': 'dark',
+        'hotspotTemplateStatus': 'applied',
+        'hotspotTemplateError': null,
       };
       final router = RouterModel.fromJson(json);
       expect(router.hotspotTemplateId, 'dark');
@@ -147,9 +150,9 @@ void main() {
         templateError: 'timeout',
       );
       final json = router.toJson();
-      expect(json['hotspot_template_id'], 'warm');
-      expect(json['hotspot_template_status'], 'pending');
-      expect(json['hotspot_template_error'], 'timeout');
+      expect(json['hotspotTemplateId'], 'warm');
+      expect(json['hotspotTemplateStatus'], 'pending');
+      expect(json['hotspotTemplateError'], 'timeout');
     });
   });
 }

@@ -57,9 +57,9 @@ class RouterModel {
           : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
-      hotspotTemplateId: json['hotspot_template_id'] as String?,
-      hotspotTemplateStatus: json['hotspot_template_status'] as String?,
-      hotspotTemplateError: json['hotspot_template_error'] as String?,
+      hotspotTemplateId: json['hotspotTemplateId'] as String?,
+      hotspotTemplateStatus: json['hotspotTemplateStatus'] as String?,
+      hotspotTemplateError: json['hotspotTemplateError'] as String?,
     );
   }
 
@@ -78,9 +78,9 @@ class RouterModel {
       'lastSeen': lastSeen?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
-      'hotspot_template_id': hotspotTemplateId,
-      'hotspot_template_status': hotspotTemplateStatus,
-      'hotspot_template_error': hotspotTemplateError,
+      'hotspotTemplateId': hotspotTemplateId,
+      'hotspotTemplateStatus': hotspotTemplateStatus,
+      'hotspotTemplateError': hotspotTemplateError,
     };
   }
 }

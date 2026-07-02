@@ -67,6 +67,20 @@ class HotspotTemplateNotifier extends Notifier<HotspotApplyState> {
       // full reload. RoutersNotifier exposes refreshRouter for exactly this.
       await ref.read(routersProvider.notifier).refreshRouter(updated);
 
+      // The backend returns HTTP 200 even when the RouterOS push failed — it
+      // persists hotspotTemplateStatus='failed' rather than throwing. Surface
+      // that as a real failure so the operator sees the error instead of a
+      // false "applied" (e.g. when the router can't be reached over the tunnel).
+      if (updated.hotspotTemplateStatus == 'failed') {
+        state = state.copyWith(
+          status: HotspotApplyStatus.failed,
+          error: (updated.hotspotTemplateError?.isNotEmpty ?? false)
+              ? updated.hotspotTemplateError
+              : 'routers.hotspotTemplate.applyFailed',
+        );
+        return updated;
+      }
+
       state = state.copyWith(status: HotspotApplyStatus.applied);
       return updated;
     } catch (e) {

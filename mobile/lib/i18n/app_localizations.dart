@@ -792,6 +792,9 @@ class AppLocalizations {
     'routers.hotspotTemplate.action': 'Login page',
     'routers.hotspotTemplate.notSet': 'Not configured',
     'routers.hotspotTemplate.selected': 'Selected',
+    'routers.hotspotTemplate.applySuccess': 'Login page updated.',
+    'routers.hotspotTemplate.applyFailed':
+        'Could not apply the login page to the router. Make sure it is online and try again.',
     'routers.hotspotTemplate.applying': 'Applying...',
     'routers.hotspotTemplate.applied': 'Applied',
     'routers.hotspotTemplate.failed': 'Failed',
@@ -1534,6 +1537,9 @@ class AppLocalizations {
     'routers.hotspotTemplate.action': 'صفحة الدخول',
     'routers.hotspotTemplate.notSet': 'غير مهيأ',
     'routers.hotspotTemplate.selected': 'محدد',
+    'routers.hotspotTemplate.applySuccess': 'تم تحديث صفحة الدخول.',
+    'routers.hotspotTemplate.applyFailed':
+        'تعذّر تطبيق صفحة الدخول على الراوتر. تأكد من أنه متصل ثم حاول مرة أخرى.',
     'routers.hotspotTemplate.applying': 'جارٍ التطبيق...',
     'routers.hotspotTemplate.applied': 'تم التطبيق',
     'routers.hotspotTemplate.failed': 'فشل',

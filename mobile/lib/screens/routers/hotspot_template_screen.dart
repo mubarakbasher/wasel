@@ -21,6 +21,17 @@ class HotspotTemplateScreen extends ConsumerWidget {
     final applyState = ref.watch(hotspotTemplateNotifierProvider);
     final router = ref.watch(routersProvider).selectedRouter;
 
+    // Confirm a successful apply — the "Selected" badge is the only other
+    // success signal, so a snackbar makes the action feel acknowledged.
+    ref.listen<HotspotApplyState>(hotspotTemplateNotifierProvider,
+        (prev, next) {
+      if (prev?.status != next.status &&
+          next.status == HotspotApplyStatus.applied) {
+        AppSnackbar.success(
+            context, context.tr('routers.hotspotTemplate.applySuccess'));
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: Text(context.tr('routers.hotspotTemplate.title')),
