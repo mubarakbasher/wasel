@@ -12,7 +12,7 @@
 
 All Markdown documentation lives in `docs/`. When creating any new `.md` file (audits, runbooks, plans, design notes, reports), write it to `docs/` — never to the repo root or a feature folder.
 
-**Exceptions that stay in place** (tooling / convention require it): `CLAUDE.md` (root — read as project instructions), and `README.md` files in each project root (`./`, `admin/`, `mobile/`) since GitHub renders them per-directory.
+**Exceptions that stay in place** (tooling / convention require it): `CLAUDE.md` (root — read as project instructions), and `README.md` files in each project root (`./`, `admin/`, `mobile/`, `landing/`) since GitHub renders them per-directory.
 
 ## Architecture
 
@@ -22,6 +22,7 @@ All Markdown documentation lives in `docs/`. When creating any new `.md` file (a
 4. **FreeRADIUS** — AAA on the VPS; vouchers stored as RADIUS users in PostgreSQL
 5. **WireGuard** — VPN tunnels between VPS and routers (`/30` subnets from `10.10.0.0/16`)
 6. **RouterOS API** — Router config/sessions over WireGuard (TCP 8728)
+7. **Landing Page** — `landing/`, public marketing site for `wa-sel.com` (bilingual AR-first Vite/React SPA, no backend dependency); compose service on loopback `:8080` behind the host Nginx
 
 Vouchers are RADIUS users (not Mikrotik-local hotspot users). Routers delegate auth to FreeRADIUS over WireGuard.
 

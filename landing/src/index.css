@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/* Self-hosted Cairo variable font — the same file the captive portals bundle
+   (backend/src/hotspot-templates/clean/cairo.woff2). No Google Fonts CDN:
+   repo convention after the captive-portal white-page incident, and target
+   users are on slow connections. */
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/cairo.woff2') format('woff2');
+}
+
+@theme {
+  --font-sans: 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Brand tokens transcribed from docs/UIUX_DESIGN_BRIEF.md §3.
+     Semantic names are stable; values may evolve. */
+  --color-brand: #2563eb;
+  --color-brand-dark: #1d4ed8;
+  --color-brand-light: #dbeafe;
+  --color-cta: #f97316; /* FILL ONLY — never as text/small-icon color (2.80:1 on white) */
+  --color-cta-dark: #ea580c;
+  --color-success: #16a34a;
+  --color-success-light: #dcfce7;
+  --color-success-dark: #166534;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
+  --color-info: #0284c7;
+  --color-bg: #f8fafc;
+  --color-surface-muted: #f1f5f9;
+  --color-line: #e2e8f0;
+  --color-ink: #1e293b;
+  --color-ink-2: #64748b;
+  --color-ink-3: #94a3b8; /* decorative/large only — 2.56:1 on white */
+  --color-night: #0f172a; /* slate-900: dark band + shadow tint */
+
+  --radius-card: 16px;
+
+  /* Slate-tinted layered shadows (mobile app_shadows.dart transcription) */
+  --shadow-card: 0 2px 8px rgb(15 23 42 / 0.05), 0 1px 2px rgb(15 23 42 / 0.03);
+  --shadow-card-md: 0 4px 16px rgb(15 23 42 / 0.08);
+  --shadow-card-lg: 0 8px 28px rgb(15 23 42 / 0.1);
+
+  --ease-brand: cubic-bezier(0.33, 1, 0.68, 1); /* easeOutCubic */
+
+  --animate-rise: rise 0.6s var(--ease-brand) both;
+  --animate-float: float 7s ease-in-out infinite;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-bg text-ink font-sans antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Subtle slate dot-grid texture for section backdrops */
+.dot-grid {
+  background-image: radial-gradient(circle, rgb(15 23 42 / 0.05) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

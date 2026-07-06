@@ -198,6 +198,7 @@ All services run in containers with `network_mode: host` (except admin), bind lo
 | **redis** | redis:7-alpine | 6379 (localhost) | password-protected; tokens + rate-limit |
 | **freeradius** | local build (3.2.8) | 1812/1813/3799 udp | dynamic NAS from DB; SQL auth/acct |
 | **admin** | local build | 5173 (localhost) | React SPA, Nginx-proxied on 443 |
+| **landing** | local build | 8080 (localhost) | static marketing site for `wa-sel.com`, no backend dependency |
 
 ### FreeRADIUS
 

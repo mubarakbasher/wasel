@@ -43,6 +43,12 @@ Operators pick a captive-portal login page (clean / dark / warm) in the mobile a
 - Verified: backend `tsc` clean + **246 tests**; mobile `dart analyze` clean. Apply-to-router path is covered only by mocked tests so far.
 - **⚠️ Staging prerequisite:** add UFW rule `from 10.10.0.0/16 to any port 3000 proto tcp` on each VPS, or `/tool fetch` can't reach the backend and apply reports `failed` (documented in `STAGING.md` §1.3). **E2E to run:** apply a template → confirm `wasel-hotspot/login.html` on the router (`/file print`) + `html-directory` set → voucher still gets **Access-Accept** through the themed page.
 
+## Landing page — BUILT (on `dev`, 2026-07-07)
+Public marketing site for `wa-sel.com` at `landing/` (the apex previously served nothing; closes the ROADMAP launch-gate item). Bilingual **Arabic-first** (default `ar`/RTL, EN toggle persisted in localStorage) Vite + React 19 + Tailwind 4 SPA mirroring `admin/` conventions; brand tokens transcribed from `docs/UIUX_DESIGN_BRIEF.md`; self-hosted Cairo woff2 + portal `preview.png`s reused from `backend/src/hotspot-templates/`. Sections: hero (CSS app-card mock), trust strip, 4-differentiator bento with terminal mock, how-it-works, 6-feature grid, portal-design showcase, dark security band, FAQ (`<details>`), CTA band + footer. Copy respects the MARKETING_PLAN "claims to avoid" list (no iOS/PDF-export/SLA claims).
+- **Deploy:** own nginx container (strict self-only CSP), compose service `landing` on `127.0.0.1:8080`; host-nginx vhost + certbot runbook added at `docs/deploy.md` §3.1. New `Landing CI` workflow (lint+build+docker on `landing/**`).
+- Verified: lint + `tsc -b && vite build` clean (71 KB gz JS); Playwright pass AR+EN at 1440/375 — RTL mirrors, no h-scroll, zero console errors; images sized 500×920 (no CLS). Local `docker build` blocked by a machine-level Docker Hub 403 pulling `node:20-alpine` (same base as admin) — CI/VPS build will verify.
+- **⚠️ Before go-live:** replace placeholder WhatsApp/APK links in `landing/src/config.ts`; DNS A records `wa-sel.com`+`www` → VPS; `certbot --nginx -d wa-sel.com -d www.wa-sel.com`.
+
 ## Other `dev` work landed this cycle (pending staging)
 - **Voucher-code collision fix `cbb3553`** — creation now regenerates colliding 8-digit codes instead of aborting with "already on the system"; rare SELECT-vs-INSERT race → clean 409 not 500. +unit tests.
 - **Admin polish + responsive `a02cb54`** — shared `Button`/`Modal`/`ConfirmDialog` primitives, a11y (status dots, `scope`, focus-trap, reduced-motion), a slide-in mobile sidebar drawer, accent normalized to blue. Lint+build clean.
@@ -156,6 +162,7 @@ Open inbound **TCP 80 + 443** in the **VPS provider's** firewall/security-group 
 - **Terminal paste:** multi-line pastes can inject a `^[[200~` bracketed-paste marker that corrupts the first command (`docker: command not found`) — run those commands one line at a time.
 
 ## Key references
+- `docs/release/` — release pack (2026-07-07): readiness scorecard + blocker checklist, marketing plan, roadmap
 - `docs/STAGING.md` — staging VPS runbook (provision → E2E checklist → dev→staging→main promotion gate)
 - `docs/SECURITY_AUDIT_2026-06-12.md` — the findings (local/untracked)
 - `docs/deploy.md` — prod deploy · `docs/RUNBOOKS.md` — incident runbooks · `docs/test.md` — test plan

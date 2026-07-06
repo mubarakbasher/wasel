@@ -308,6 +308,39 @@ sudo certbot --nginx -d api.wa-sel.com
 
 If you don't have a domain, you can test with `http://<VPS_IP>:3000` directly. This only works with debug APKs (Flutter debug mode allows HTTP).
 
+### 3.1 Landing page vhost (`wa-sel.com`)
+
+The public marketing site (`landing/`) is built into its own nginx container by the compose stack and listens on loopback `127.0.0.1:8080`. The host nginx fronts it at the apex domain.
+
+**Prereq:** DNS A records for `wa-sel.com` and `www.wa-sel.com` → the VPS IP. Ports 80/443 are already open in the §1.3 UFW rule set.
+
+```bash
+sudo nano /etc/nginx/sites-available/wasel-landing
+```
+
+```nginx
+server {
+    listen 80;
+    server_name wa-sel.com www.wa-sel.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/wasel-landing /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d wa-sel.com -d www.wa-sel.com
+```
+
+**Deploying landing changes:** `docker compose --env-file /etc/wasel/compose.env build landing && docker compose --env-file /etc/wasel/compose.env up -d landing`. The page is fully static (no API, no env vars baked in), so the same image is safe on staging and prod. **Before first go-live:** replace the placeholder WhatsApp/APK links in `landing/src/config.ts`.
+
 ---
 
 ## 4. Point the Mobile App to Your VPS
