@@ -104,7 +104,7 @@ describe('buildNotificationText', () => {
 
     it('interpolates percentUsed in Arabic', () => {
       const result = buildNotificationText('voucher_quota_low', 'ar', { percentUsed: '80' });
-      expect(result.title).toBe('رصيد القسائم منخفض');
+      expect(result.title).toBe('رصيد الكروت منخفض');
       expect(result.body).toContain('80%');
     });
   });
@@ -125,7 +125,7 @@ describe('buildNotificationText', () => {
         count: '50',
         routerName: 'Main',
       });
-      expect(result.title).toBe('تم إنشاء القسائم');
+      expect(result.title).toBe('تم إنشاء الكروت');
       expect(result.body).toContain('50');
       expect(result.body).toContain('Main');
     });

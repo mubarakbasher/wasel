@@ -66,21 +66,21 @@ const templates: Record<string, NotificationTemplate> = {
   voucher_quota_low: {
     title: {
       en: 'Voucher Quota Running Low',
-      ar: 'رصيد القسائم منخفض',
+      ar: 'رصيد الكروت منخفض',
     },
     body: {
       en: 'You have used {percentUsed}% of your monthly voucher quota.',
-      ar: 'لقد استخدمت {percentUsed}% من حصة القسائم الشهرية.',
+      ar: 'لقد استخدمت {percentUsed}% من حصة الكروت الشهرية.',
     },
   },
   bulk_creation_complete: {
     title: {
       en: 'Bulk Vouchers Created',
-      ar: 'تم إنشاء القسائم',
+      ar: 'تم إنشاء الكروت',
     },
     body: {
       en: '{count} vouchers created for {routerName}.',
-      ar: 'تم إنشاء {count} قسيمة لـ {routerName}.',
+      ar: 'تم إنشاء {count} كرت لـ {routerName}.',
     },
   },
   support_reply: {
