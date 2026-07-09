@@ -35,6 +35,7 @@ class PrintService {
     List<Voucher> vouchers,
     String businessName, {
     int columns = 4,
+    bool monochrome = true,
   }) async {
     await _ensureFont();
 
@@ -78,6 +79,7 @@ class PrintService {
             cardH: cardH,
             gutterH: gutterH,
             gutterV: gutterV,
+            monochrome: monochrome,
           ),
         ),
       );
@@ -95,6 +97,7 @@ class PrintService {
     required double cardH,
     required double gutterH,
     required double gutterV,
+    bool monochrome = true,
   }) {
     final List<pw.Widget> rowWidgets = [];
 
@@ -106,7 +109,7 @@ class PrintService {
           cards.add(pw.SizedBox(
             width: cardW,
             height: cardH,
-            child: _buildCard(vouchers[idx], businessName, cardW, cardH, columns),
+            child: _buildCard(vouchers[idx], businessName, cardW, cardH, columns, monochrome),
           ));
         } else {
           cards.add(pw.SizedBox(width: cardW, height: cardH));
@@ -126,6 +129,7 @@ class PrintService {
     double w,
     double h,
     int columns,
+    bool monochrome,
   ) {
     // Responsive sizing
     final double headerFs = (10 - (columns - 2) * 0.5).clamp(5.0, 12.0);
@@ -135,13 +139,71 @@ class PrintService {
     final double pad = (5 - (columns - 2) * 0.25).clamp(2.0, 7.0);
     final double headerBandH = (h * 0.22).clamp(8.0, 24.0);
 
+    // Mode-dependent colors
+    final PdfColor borderColor = monochrome ? PdfColors.black : PdfColors.grey300;
+    final double borderWidth = monochrome ? 0.5 : 0.4;
+    final PdfColor? bodyBg = monochrome ? null : _lightBg;
+    final PdfColor brandColor = monochrome ? PdfColors.grey700 : PdfColors.grey500;
+    final PdfColor dividerColor = monochrome ? PdfColors.black : _accentColor;
+    final PdfColor limitColor = monochrome ? PdfColors.black : _headerColor;
+    final PdfColor sepColor = monochrome ? PdfColors.grey700 : PdfColors.grey400;
+    final PdfColor validityColor = monochrome ? PdfColors.grey800 : PdfColors.grey700;
+
     final validityText = _formatValidity(v.validitySeconds);
+
+    // Build header widget based on mode
+    final pw.Widget headerWidget = monochrome
+        ? pw.Container(
+            decoration: pw.BoxDecoration(
+              border: pw.Border(
+                bottom: pw.BorderSide(color: PdfColors.black, width: 0.6),
+              ),
+            ),
+            padding: pw.EdgeInsets.symmetric(
+              horizontal: pad,
+              vertical: pad * 0.5,
+            ),
+            child: pw.Directionality(
+              textDirection: _direction(businessName),
+              child: pw.Text(
+                businessName,
+                style: pw.TextStyle(
+                  fontSize: headerFs,
+                  fontWeight: pw.FontWeight.bold,
+                  font: _arabicFont,
+                  color: PdfColors.black,
+                ),
+                textAlign: pw.TextAlign.center,
+                maxLines: 1,
+              ),
+            ),
+          )
+        : pw.Container(
+            height: headerBandH,
+            color: _headerColor,
+            alignment: pw.Alignment.center,
+            padding: pw.EdgeInsets.symmetric(horizontal: pad),
+            child: pw.Directionality(
+              textDirection: _direction(businessName),
+              child: pw.Text(
+                businessName,
+                style: pw.TextStyle(
+                  fontSize: headerFs,
+                  fontWeight: pw.FontWeight.bold,
+                  font: _arabicFont,
+                  color: PdfColors.white,
+                ),
+                textAlign: pw.TextAlign.center,
+                maxLines: 1,
+              ),
+            ),
+          );
 
     return pw.Container(
       width: w,
       height: h,
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey300, width: 0.4),
+        border: pw.Border.all(color: borderColor, width: borderWidth),
         borderRadius: pw.BorderRadius.circular(3),
       ),
       child: pw.ClipRRect(
@@ -150,32 +212,12 @@ class PrintService {
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            // Header band: business name
-            pw.Container(
-              height: headerBandH,
-              color: _headerColor,
-              alignment: pw.Alignment.center,
-              padding: pw.EdgeInsets.symmetric(horizontal: pad),
-              child: pw.Directionality(
-                textDirection: _direction(businessName),
-                child: pw.Text(
-                  businessName,
-                  style: pw.TextStyle(
-                    fontSize: headerFs,
-                    fontWeight: pw.FontWeight.bold,
-                    font: _arabicFont,
-                    color: PdfColors.white,
-                  ),
-                  textAlign: pw.TextAlign.center,
-                  maxLines: 1,
-                ),
-              ),
-            ),
+            headerWidget,
 
             // Body
             pw.Expanded(
               child: pw.Container(
-                color: _lightBg,
+                color: bodyBg,
                 padding: pw.EdgeInsets.symmetric(
                   horizontal: pad,
                   vertical: pad * 0.4,
@@ -188,7 +230,7 @@ class PrintService {
                       'Wasel',
                       style: pw.TextStyle(
                         fontSize: brandFs,
-                        color: PdfColors.grey500,
+                        color: brandColor,
                         fontWeight: pw.FontWeight.bold,
                         font: _arabicFont,
                         letterSpacing: 1.5,
@@ -211,7 +253,7 @@ class PrintService {
                     // Divider
                     pw.Container(
                       height: 0.6,
-                      color: _accentColor,
+                      color: dividerColor,
                       margin: pw.EdgeInsets.symmetric(horizontal: w * 0.1),
                     ),
 
@@ -227,14 +269,14 @@ class PrintService {
                               fontSize: infoFs,
                               fontWeight: pw.FontWeight.bold,
                               font: _arabicFont,
-                              color: _headerColor,
+                              color: limitColor,
                             ),
                           ),
                         ),
                         pw.Container(
                           width: 0.5,
                           height: infoFs * 1.2,
-                          color: PdfColors.grey400,
+                          color: sepColor,
                         ),
                         pw.Directionality(
                           textDirection: _direction(validityText),
@@ -243,7 +285,7 @@ class PrintService {
                             style: pw.TextStyle(
                               fontSize: infoFs,
                               font: _arabicFont,
-                              color: PdfColors.grey700,
+                              color: validityColor,
                             ),
                           ),
                         ),

@@ -27,6 +27,7 @@ class VoucherPrintScreen extends StatefulWidget {
 
 class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
   int _columnCount = 4;
+  bool _printerFriendly = true;
   final PrintService _printService = PrintService();
 
   Future<Uint8List> _generatePdf(PdfPageFormat format) {
@@ -34,6 +35,7 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
       widget.vouchers,
       widget.routerName,
       columns: _columnCount,
+      monochrome: _printerFriendly,
     );
   }
 
@@ -87,6 +89,22 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xs),
+                Row(
+                  children: [
+                    Text(
+                      context.tr('vouchers.printerFriendly'),
+                      style: AppTypography.footnote.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const Expanded(child: SizedBox()),
+                    Switch(
+                      value: _printerFriendly,
+                      activeThumbColor: AppColors.primary,
+                      onChanged: (v) => setState(() => _printerFriendly = v),
+                    ),
+                  ],
+                ),
                 Text(
                   context.tr('vouchers.readyToPrint', [widget.vouchers.length.toString()]),
                   style: AppTypography.footnote.copyWith(
@@ -99,7 +117,7 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
           const Divider(height: 1, color: AppColors.border),
           Expanded(
             child: PdfPreview(
-              key: ValueKey('vouchers_$_columnCount'),
+              key: ValueKey('vouchers_${_columnCount}_$_printerFriendly'),
               build: _generatePdf,
               canChangePageFormat: false,
               canChangeOrientation: false,
