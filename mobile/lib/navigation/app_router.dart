@@ -234,6 +234,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ChangePasswordScreen(),
       ),
       GoRoute(
+        path: '/settings/verify-email-change',
+        parentNavigatorKey: appNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          final newEmail = extra['newEmail'] as String? ?? '';
+          return VerifyEmailScreen(
+            email: newEmail,
+            isEmailChange: true,
+            newEmail: newEmail,
+          );
+        },
+      ),
+      GoRoute(
         path: '/settings/payments',
         parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const PaymentsScreen(),

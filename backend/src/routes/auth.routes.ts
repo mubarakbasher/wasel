@@ -13,6 +13,8 @@ import {
   logoutSchema,
   updateProfileSchema,
   changePasswordSchema,
+  changeEmailSchema,
+  verifyEmailChangeSchema,
 } from '../validators/auth.validators';
 import * as authController from '../controllers/auth.controller';
 
@@ -87,6 +89,20 @@ router.post(
   authenticate,
   validate({ body: changePasswordSchema }),
   authController.changePassword,
+);
+
+router.post(
+  '/change-email',
+  authenticate,
+  validate({ body: changeEmailSchema }),
+  authController.changeEmail,
+);
+
+router.post(
+  '/verify-email-change',
+  authenticate,
+  validate({ body: verifyEmailChangeSchema }),
+  authController.verifyEmailChange,
 );
 
 export default router;

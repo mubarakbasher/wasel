@@ -69,3 +69,15 @@ export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
   newPassword: passwordSchema,
 });
+
+export const changeEmailSchema = z.object({
+  newEmail: z
+    .string()
+    .email('Invalid email address')
+    .max(255, 'Email must be at most 255 characters')
+    .transform((e) => e.trim().toLowerCase()),
+});
+
+export const verifyEmailChangeSchema = z.object({
+  otp: z.string().regex(/^\d{6}$/, 'OTP must be exactly 6 digits'),
+});

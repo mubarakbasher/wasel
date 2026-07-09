@@ -139,6 +139,26 @@ class AuthService {
       'newPassword': newPassword,
     });
   }
+
+  /// POST /auth/change-email
+  /// Body: { newEmail }
+  /// Returns: { pendingEmail: the pending email address }
+  Future<Map<String, dynamic>> changeEmail(String newEmail) async {
+    final response = await _api.post('/auth/change-email', data: {
+      'newEmail': newEmail,
+    });
+    return response.data['data'] as Map<String, dynamic>;
+  }
+
+  /// POST /auth/verify-email-change
+  /// Body: { otp }
+  /// Returns updated User (id, name, email, phone, business_name, is_verified)
+  Future<User> verifyEmailChange(String otp) async {
+    final response = await _api.post('/auth/verify-email-change', data: {
+      'otp': otp,
+    });
+    return User.fromJson(response.data['data'] as Map<String, dynamic>);
+  }
 }
 
 class LoginResult {

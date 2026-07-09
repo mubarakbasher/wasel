@@ -14,7 +14,20 @@ import '../../widgets/widgets.dart';
 
 class VerifyEmailScreen extends ConsumerStatefulWidget {
   final String email;
-  const VerifyEmailScreen({super.key, required this.email});
+
+  /// When [isEmailChange] is true the screen verifies a pending email-change
+  /// OTP (POST /auth/verify-email-change) rather than a registration OTP.
+  /// [newEmail] must be provided in this mode — it is shown in the description
+  /// and used by the Resend button to re-trigger POST /auth/change-email.
+  final bool isEmailChange;
+  final String? newEmail;
+
+  const VerifyEmailScreen({
+    super.key,
+    required this.email,
+    this.isEmailChange = false,
+    this.newEmail,
+  });
 
   @override
   ConsumerState<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
@@ -65,23 +78,48 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
   Future<void> _verify() async {
     if (!_formKey.currentState!.validate()) return;
     try {
-      await ref.read(authProvider.notifier).verifyEmail(
-            email: _effectiveEmail,
-            otp: _otpController.text.trim(),
-          );
-      if (mounted) {
-        AppSnackbar.success(context, context.tr('auth.emailVerifiedSuccess'));
-        context.go('/login');
+      if (widget.isEmailChange) {
+        await ref
+            .read(authProvider.notifier)
+            .verifyEmailChange(_otpController.text.trim());
+        if (mounted) {
+          AppSnackbar.success(
+              context, context.tr('settings.emailChangedSuccess'));
+          context.pop();
+        }
+      } else {
+        await ref.read(authProvider.notifier).verifyEmail(
+              email: _effectiveEmail,
+              otp: _otpController.text.trim(),
+            );
+        if (mounted) {
+          AppSnackbar.success(
+              context, context.tr('auth.emailVerifiedSuccess'));
+          context.go('/login');
+        }
       }
     } catch (_) {}
   }
 
   Future<void> _resend() async {
     try {
-      await ref.read(authProvider.notifier).resendVerification(email: _effectiveEmail);
+      if (widget.isEmailChange) {
+        await ref
+            .read(authProvider.notifier)
+            .changeEmail(widget.newEmail!);
+      } else {
+        await ref
+            .read(authProvider.notifier)
+            .resendVerification(email: _effectiveEmail);
+      }
       if (!mounted) return;
       _startCooldown();
-      AppSnackbar.success(context, context.tr('auth.verificationResent'));
+      AppSnackbar.success(
+        context,
+        widget.isEmailChange
+            ? context.tr('settings.emailChangeCodeResent')
+            : context.tr('auth.verificationResent'),
+      );
     } catch (_) {}
   }
 
@@ -110,11 +148,21 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                 const SizedBox(height: AppSpacing.xl),
                 const Icon(Icons.mark_email_read_outlined, size: 64, color: AppColors.primary),
                 const SizedBox(height: AppSpacing.xxl),
-                Text(context.tr('auth.verifyEmail'), style: AppTypography.title1, textAlign: TextAlign.center),
+                Text(
+                  widget.isEmailChange
+                      ? context.tr('settings.changeEmailTitle')
+                      : context.tr('auth.verifyEmail'),
+                  style: AppTypography.title1,
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  context.tr('auth.enterOtpSent', [_effectiveEmail]),
-                  style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
+                  widget.isEmailChange
+                      ? context.tr('settings.emailChangeCodeSent',
+                          [widget.newEmail ?? ''])
+                      : context.tr('auth.enterOtpSent', [_effectiveEmail]),
+                  style: AppTypography.subhead
+                      .copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppSpacing.xxxl),

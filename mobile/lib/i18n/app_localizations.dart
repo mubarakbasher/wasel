@@ -510,8 +510,11 @@ class AppLocalizations {
     'settings.logout': 'Logout',
     'settings.profileUpdated': 'Profile updated successfully',
     'settings.passwordChanged': 'Password changed successfully',
-    'settings.emailCannotChange': 'Email cannot be changed',
     'settings.saveChanges': 'Save Changes',
+    'settings.changeEmailTitle': 'Verify New Email',
+    'settings.emailChangeCodeSent': 'We sent a 6-digit code to\n{0}',
+    'settings.emailChangeCodeResent': 'Verification code resent',
+    'settings.emailChangedSuccess': 'Email changed successfully',
     'settings.aboutDescription': 'Wasel is a WiFi hotspot management platform that helps businesses create, manage, and monitor internet access vouchers for their MikroTik routers.',
 
     // ── Security ─────────────────────────────────────────────────────────────
@@ -1258,8 +1261,11 @@ class AppLocalizations {
     'settings.logout': 'تسجيل الخروج',
     'settings.profileUpdated': 'تم تحديث الملف الشخصي بنجاح',
     'settings.passwordChanged': 'تم تغيير كلمة المرور بنجاح',
-    'settings.emailCannotChange': 'لا يمكن تغيير البريد الإلكتروني',
     'settings.saveChanges': 'حفظ التغييرات',
+    'settings.changeEmailTitle': 'تحقق من البريد الجديد',
+    'settings.emailChangeCodeSent': 'أرسلنا رمزاً من 6 أرقام إلى\n{0}',
+    'settings.emailChangeCodeResent': 'تم إعادة إرسال رمز التحقق',
+    'settings.emailChangedSuccess': 'تم تغيير البريد الإلكتروني بنجاح',
     'settings.aboutDescription': 'واصل هو منصة إدارة نقاط اتصال واي فاي تساعد الشركات في إنشاء وإدارة ومراقبة كروت الوصول للإنترنت لراوترات مايكروتيك.',
 
     // ── Security ─────────────────────────────────────────────────────────────

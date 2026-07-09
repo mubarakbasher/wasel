@@ -328,6 +328,75 @@ export async function updateProfile(userId: string, input: UpdateProfileInput) {
   return result.rows[0];
 }
 
+export async function changeEmail(userId: string, newEmail: string): Promise<{ pendingEmail: string }> {
+  const userResult = await pool.query(
+    'SELECT id, name, email, language FROM users WHERE id = $1 AND is_active = TRUE',
+    [userId],
+  );
+
+  if (userResult.rows.length === 0) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+
+  const user = userResult.rows[0] as { id: string; name: string; email: string; language: string | null };
+
+  if (user.email.toLowerCase() === newEmail) {
+    throw new AppError(400, 'New email matches current email', 'EMAIL_UNCHANGED');
+  }
+
+  const existing = await pool.query(
+    'SELECT id FROM users WHERE LOWER(email) = $1 AND id <> $2',
+    [newEmail, userId],
+  );
+  if (existing.rows.length > 0) {
+    throw new AppError(409, 'Email already registered', 'EMAIL_EXISTS');
+  }
+
+  const otp = await tokenService.createEmailChangeOtp(userId, newEmail);
+  await emailService.sendVerificationOtp(newEmail, user.name, otp, user.language ?? 'en');
+
+  logger.info('Email change OTP sent', { userId });
+  return { pendingEmail: newEmail };
+}
+
+export async function verifyEmailChange(userId: string, otp: string) {
+  const newEmail = await tokenService.validateEmailChangeOtp(userId, otp);
+  if (newEmail === null) {
+    throw new AppError(400, 'No pending email change or code expired', 'EMAIL_CHANGE_INVALID');
+  }
+
+  // Re-check uniqueness in case another user registered that email since the OTP was issued.
+  const existing = await pool.query(
+    'SELECT id FROM users WHERE LOWER(email) = $1 AND id <> $2',
+    [newEmail, userId],
+  );
+  if (existing.rows.length > 0) {
+    throw new AppError(409, 'Email already registered', 'EMAIL_EXISTS');
+  }
+
+  let result;
+  try {
+    result = await pool.query(
+      `UPDATE users SET email = $1, is_verified = TRUE, updated_at = NOW()
+       WHERE id = $2 AND is_active = TRUE
+       RETURNING id, name, email, phone, business_name, is_verified, language`,
+      [newEmail, userId],
+    );
+  } catch (err) {
+    if ((err as { code?: string }).code === '23505') {
+      throw new AppError(409, 'Email already registered', 'EMAIL_EXISTS');
+    }
+    throw err;
+  }
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+
+  logger.info('Email changed', { userId });
+  return result.rows[0];
+}
+
 export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
   const result = await pool.query(
     'SELECT password_hash FROM users WHERE id = $1 AND is_active = TRUE',

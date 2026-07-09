@@ -422,6 +422,44 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   // -------------------------------------------------------------------------
+  // Change email
+  // -------------------------------------------------------------------------
+
+  /// Initiates an email change — sends OTP to [newEmail].
+  /// Does NOT update the local user yet; call [verifyEmailChange] after OTP.
+  Future<void> changeEmail(String newEmail) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _authService.changeEmail(newEmail);
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _extractErrorMessage(e),
+      );
+      rethrow;
+    }
+  }
+
+  /// Verifies the OTP emailed to the pending address and commits the change.
+  /// Persists the updated user (with new email) to secure storage, exactly
+  /// like [updateProfile] does.
+  Future<void> verifyEmailChange(String otp) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final user = await _authService.verifyEmailChange(otp);
+      await _storage.setUserData(json.encode(user.toJson()));
+      state = state.copyWith(user: user, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: _extractErrorMessage(e),
+      );
+      rethrow;
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Change password
   // -------------------------------------------------------------------------
 

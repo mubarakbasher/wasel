@@ -8,11 +8,13 @@ import { AppError } from '../middleware/errorHandler';
 const REFRESH_PREFIX = 'refresh';
 const OTP_VERIFY_PREFIX = 'otp:verify';
 const OTP_RESET_PREFIX = 'otp:reset';
+const OTP_EMAIL_CHANGE_PREFIX = 'otp:email-change';
 const OTP_ATTEMPTS_PREFIX = 'otp-attempts';
 
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 const OTP_VERIFY_TTL_SECONDS = 24 * 60 * 60;  // 24 hours
 const OTP_RESET_TTL_SECONDS = 15 * 60;         // 15 minutes
+export const OTP_EMAIL_CHANGE_TTL_SECONDS = 3600; // 1 hour
 const OTP_ATTEMPTS_TTL_SECONDS = 60 * 60;      // 1 hour
 const OTP_MAX_ATTEMPTS = 5;
 
@@ -183,4 +185,44 @@ export async function validatePasswordResetOtp(email: string, otp: string): Prom
   await redis.del(key);
   await clearOtpAttempts('reset', subject);
   return true;
+}
+
+/**
+ * Store a 6-digit OTP for an email-change request.
+ * The key holds JSON { code, newEmail } so a single Redis key carries both
+ * the secret code and the destination address that was verified.
+ * TTL: 1 hour.
+ */
+export async function createEmailChangeOtp(userId: string, newEmail: string): Promise<string> {
+  const code = generateOtp();
+  const key = `${OTP_EMAIL_CHANGE_PREFIX}:${userId}`;
+  await redis.set(key, JSON.stringify({ code, newEmail }), 'EX', OTP_EMAIL_CHANGE_TTL_SECONDS);
+  // Reset any prior attempt counter so a fresh OTP gets its own 5-try budget.
+  await clearOtpAttempts('email-change', userId);
+  return code;
+}
+
+/**
+ * Validate the email-change OTP for a user.
+ * Returns the newEmail stored alongside the code on success, null when the key
+ * is absent (expired or never issued), or throws OTP_LOCKED (429) after 5 bad
+ * attempts — same rate-limiting as validateVerificationOtp.
+ */
+export async function validateEmailChangeOtp(userId: string, otp: string): Promise<string | null> {
+  const key = `${OTP_EMAIL_CHANGE_PREFIX}:${userId}`;
+  const stored = await redis.get(key);
+  if (!stored) {
+    return null;
+  }
+  const { code, newEmail } = JSON.parse(stored) as { code: string; newEmail: string };
+  if (code !== otp) {
+    const locked = await recordWrongOtpAttempt(key, 'email-change', userId);
+    if (locked) {
+      throw new AppError(429, 'Too many wrong codes. Please restart.', 'OTP_LOCKED');
+    }
+    return null;
+  }
+  await redis.del(key);
+  await clearOtpAttempts('email-change', userId);
+  return newEmail;
 }

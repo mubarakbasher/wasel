@@ -19,6 +19,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _businessNameController = TextEditingController();
 
@@ -28,11 +29,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final user = ref.read(authProvider).user;
     if (user != null) {
       _nameController.text = user.name;
+      _emailController.text = user.email;
       _phoneController.text = user.phone ?? '';
       _businessNameController.text = user.businessName ?? '';
     }
     for (final c in [
       _nameController,
+      _emailController,
       _phoneController,
       _businessNameController,
     ]) {
@@ -48,6 +51,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    final user = ref.read(authProvider).user;
+    final newEmail = _emailController.text.trim().toLowerCase();
+    final currentEmail = (user?.email ?? '').toLowerCase();
+    final emailChanged = newEmail != currentEmail;
+
+    // Step 1: update profile fields (name, phone, businessName).
     try {
       await ref.read(authProvider.notifier).updateProfile(
             name: _nameController.text.trim(),
@@ -58,18 +68,36 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 ? null
                 : _businessNameController.text.trim(),
           );
+    } catch (_) {
+      return; // Error displayed via state banner
+    }
+
+    if (!emailChanged) {
       if (mounted) {
         AppSnackbar.success(context, context.tr('settings.profileUpdated'));
         context.pop();
       }
+      return;
+    }
+
+    // Step 2: initiate email change — sends OTP to the new address.
+    try {
+      await ref.read(authProvider.notifier).changeEmail(newEmail);
+      if (mounted) {
+        context.push(
+          '/settings/verify-email-change',
+          extra: {'newEmail': newEmail},
+        );
+      }
     } catch (_) {
-      // Error displayed via state
+      // Error displayed via state banner
     }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _emailController.dispose();
     _phoneController.dispose();
     _businessNameController.dispose();
     super.dispose();
@@ -108,15 +136,16 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
-                // Email (read-only)
+                // Email (editable — triggers OTP verification on change)
                 TextFormField(
-                  initialValue: authState.user?.email ?? '',
-                  enabled: false,
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
                     labelText: context.tr('auth.email'),
                     prefixIcon: const Icon(Icons.email_outlined),
-                    helperText: context.tr('settings.emailCannotChange'),
                   ),
+                  validator: Validators.validateEmail,
                 ),
                 const SizedBox(height: AppSpacing.lg),
 

@@ -146,3 +146,21 @@ export async function changePassword(req: AuthenticatedRequest, res: Response, n
     next(error);
   }
 }
+
+export async function changeEmail(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await authService.changeEmail(req.user!.id, req.body.newEmail);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function verifyEmailChange(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = await authService.verifyEmailChange(req.user!.id, req.body.otp);
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    next(error);
+  }
+}
