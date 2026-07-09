@@ -49,4 +49,23 @@ jobs:
           cache: true
 
       - run: flutter pub get
+
+      # google-services.json is gitignored (Firebase config). Use the real config
+      # from the GOOGLE_SERVICES_JSON secret (base64) when set; otherwise fall back
+      # to a CI-only dummy so the debug build compiles. The dummy's Firebase/FCM is
+      # non-functional, but CI only verifies the Android build — it never ships the APK.
+      - name: Provision google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+          DEST=android/app/google-services.json
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" | base64 -d > "$DEST"
+            echo "Provisioned google-services.json from GOOGLE_SERVICES_JSON secret."
+          else
+            echo "::warning::GOOGLE_SERVICES_JSON secret not set — using a CI-only dummy (debug build only; Firebase/FCM non-functional). Add the secret for real config."
+            echo 'eyJwcm9qZWN0X2luZm8iOnsicHJvamVjdF9udW1iZXIiOiIwMDAwMDAwMDAwMDAiLCJwcm9qZWN0X2lkIjoid2FzZWwtY2ktZHVtbXkiLCJzdG9yYWdlX2J1Y2tldCI6Indhc2VsLWNpLWR1bW15LmFwcHNwb3QuY29tIn0sImNsaWVudCI6W3siY2xpZW50X2luZm8iOnsibW9iaWxlc2RrX2FwcF9pZCI6IjE6MDAwMDAwMDAwMDAwOmFuZHJvaWQ6MDAwMDAwMDAwMDAwMDAwMDAwMDAwMCIsImFuZHJvaWRfY2xpZW50X2luZm8iOnsicGFja2FnZV9uYW1lIjoiY29tLndhc2VsLndhc2VsIn19LCJvYXV0aF9jbGllbnQiOltdLCJhcGlfa2V5IjpbeyJjdXJyZW50X2tleSI6IkFJemFTeUEwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCJ9XSwic2VydmljZXMiOnsiYXBwaW52aXRlX3NlcnZpY2UiOnsib3RoZXJfcGxhdGZvcm1fb2F1dGhfY2xpZW50IjpbXX19fV0sImNvbmZpZ3VyYXRpb25fdmVyc2lvbiI6IjEifQ==' | base64 -d > "$DEST"
+          fi
+
       - run: flutter build apk --debug
