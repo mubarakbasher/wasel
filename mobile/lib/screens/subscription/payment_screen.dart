@@ -205,7 +205,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   Future<void> _handleBack() async {
     final leave = await _confirmLeaveIfPending();
     if (!mounted) return;
-    if (leave) context.go('/subscription');
+    if (leave) {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/dashboard');
+      }
+    }
   }
 
   /// Android system back / swipe handler for [PopScope]. Kept as a method (not
@@ -215,7 +221,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     if (didPop) return;
     final leave = await _confirmLeaveIfPending();
     if (!mounted) return;
-    if (leave) context.go('/subscription');
+    if (leave) {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/dashboard');
+      }
+    }
   }
 
   /// Returns true if it's OK to leave the payment screen now. If a pending,

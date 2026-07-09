@@ -58,7 +58,14 @@ class _SubscriptionStatusScreenState
         router.go('/dashboard');
       },
       child: Scaffold(
-        appBar: AppBar(title: Text(context.tr('subscription.title'))),
+        appBar: AppBar(
+          title: Text(context.tr('subscription.title')),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () =>
+                router.canPop() ? router.pop() : router.go('/dashboard'),
+          ),
+        ),
         body: state.isLoading && sub == null && state.plans.isEmpty
             ? const Center(child: CircularProgressIndicator())
             : RefreshIndicator(
