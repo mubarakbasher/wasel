@@ -30,7 +30,7 @@ describe('GET /api/v1/dashboard', () => {
     // 3. Vouchers used today
     mockQuery.mockResolvedValueOnce({ rows: [{ count: '5' }] });
     // 4. Daily revenue
-    mockQuery.mockResolvedValueOnce({ rows: [{ total: '0' }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: '30' }] });
     // 5. Total vouchers
     mockQuery.mockResolvedValueOnce({ rows: [{ count: '42' }] });
     // 6. Data usage 24h
@@ -57,6 +57,7 @@ describe('GET /api/v1/dashboard', () => {
     expect(data.subscription).not.toBeNull();
     expect(data.subscription.planTier).toBe('starter');
     expect(data.vouchersUsedToday).toBe(5);
+    expect(data.dailyRevenue).toBe(30);
     expect(data.totalVouchers).toBe(42);
     expect(data.dataUsage24h.totalInput).toBe(104857600);
     expect(data.dataUsage24h.totalOutput).toBe(524288000);

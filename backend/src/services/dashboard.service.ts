@@ -71,13 +71,22 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       [userId],
     ),
 
-    // 4. Daily revenue (sum of prices of vouchers used today)
+    // 4. Daily revenue (price of vouchers FIRST activated today, counted once each).
+    //    radacct has one row per session; summing vm.price across sessions double-counts
+    //    on every hotspot reconnect. Sum over voucher_meta (one row per voucher) instead,
+    //    restricted to vouchers whose first-ever session started today.
     pool.query(
       `SELECT COALESCE(SUM(vm.price), 0) AS total
-       FROM radacct ra
-       JOIN routers r ON ra.nasipaddress = r.tunnel_ip
-       JOIN voucher_meta vm ON ra.username = vm.radius_username
-       WHERE r.user_id = $1 AND ra.acctstarttime >= CURRENT_DATE`,
+       FROM voucher_meta vm
+       WHERE vm.user_id = $1
+         AND vm.radius_username IN (
+           SELECT ra.username
+           FROM radacct ra
+           JOIN routers r ON ra.nasipaddress = r.tunnel_ip
+           WHERE r.user_id = $1
+           GROUP BY ra.username
+           HAVING MIN(ra.acctstarttime) >= CURRENT_DATE
+         )`,
       [userId],
     ),
 
