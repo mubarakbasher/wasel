@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/voucher_format.dart';
 import '../../models/voucher.dart';
 import '../../services/print_service.dart';
 import '../../theme/app_colors.dart';
@@ -27,15 +28,20 @@ class VoucherPrintScreen extends StatefulWidget {
 
 class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
   int _columnCount = 4;
-  bool _printerFriendly = true;
   final PrintService _printService = PrintService();
 
   Future<Uint8List> _generatePdf(PdfPageFormat format) {
+    final items = widget.vouchers
+        .map((v) => VoucherPrintItem(
+              code: v.username,
+              limitText: voucherLimitTextOrNull(context, v),
+              validityText: voucherValidityText(context, v.validitySeconds),
+            ))
+        .toList();
     return _printService.generateVouchersPdf(
-      widget.vouchers,
+      items,
       widget.routerName,
       columns: _columnCount,
-      monochrome: _printerFriendly,
     );
   }
 
@@ -60,7 +66,8 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
                 Row(
                   children: [
                     Text(
-                      context.tr('vouchers.columns', [_columnCount.toString()]),
+                      context.tr(
+                          'vouchers.columns', [_columnCount.toString()]),
                       style: AppTypography.footnote.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -88,25 +95,9 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.xs),
-                Row(
-                  children: [
-                    Text(
-                      context.tr('vouchers.printerFriendly'),
-                      style: AppTypography.footnote.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const Expanded(child: SizedBox()),
-                    Switch(
-                      value: _printerFriendly,
-                      activeThumbColor: AppColors.primary,
-                      onChanged: (v) => setState(() => _printerFriendly = v),
-                    ),
-                  ],
-                ),
                 Text(
-                  context.tr('vouchers.readyToPrint', [widget.vouchers.length.toString()]),
+                  context.tr('vouchers.readyToPrint',
+                      [widget.vouchers.length.toString()]),
                   style: AppTypography.footnote.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -117,7 +108,7 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
           const Divider(height: 1, color: AppColors.border),
           Expanded(
             child: PdfPreview(
-              key: ValueKey('vouchers_${_columnCount}_$_printerFriendly'),
+              key: ValueKey('vouchers_$_columnCount'),
               build: _generatePdf,
               canChangePageFormat: false,
               canChangeOrientation: false,

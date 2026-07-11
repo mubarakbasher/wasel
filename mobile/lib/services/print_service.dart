@@ -4,20 +4,38 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../models/voucher.dart';
+/// Immutable data transfer object passed to [PrintService.generateVouchersPdf].
+///
+/// Keeping the service context-free means callers resolve all l10n strings
+/// before calling the service, and the service itself remains pure/testable.
+class VoucherPrintItem {
+  final String code;
+
+  /// Localized limit string (e.g. '2 GB', '30 دقيقة', 'Basic').
+  /// `null` means the voucher has no meaningful limit — the cell and its
+  /// separator are omitted from the info row.
+  final String? limitText;
+
+  /// Localized validity string (e.g. '3 days', 'مفتوح').
+  final String validityText;
+
+  const VoucherPrintItem({
+    required this.code,
+    this.limitText,
+    required this.validityText,
+  });
+}
 
 class PrintService {
-  static final _headerColor = PdfColor.fromHex('#1a237e');
-  static final _accentColor = PdfColor.fromHex('#00897b');
-  static final _lightBg = PdfColor.fromHex('#f5f5f5');
-
   // Arabic Unicode block + Arabic Supplement + Arabic Extended-A + Arabic
   // Presentation Forms. If the string contains any of these, we must render it
   // RTL so the pdf package runs Arabic glyph shaping (joining initial/medial/
   // final forms). Without this, Arabic letters stay as isolated shapes.
-  static final _arabicRegex = RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
+  static final _arabicRegex =
+      RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
 
-  pw.Font? _arabicFont;
+  pw.Font? _cairo;
+  pw.Font? _cairoBold;
 
   bool _hasArabic(String s) => _arabicRegex.hasMatch(s);
 
@@ -25,17 +43,19 @@ class PrintService {
       _hasArabic(s) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
 
   Future<void> _ensureFont() async {
-    _arabicFont ??= pw.Font.ttf(
+    _cairo ??= pw.Font.ttf(
       await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
+    );
+    _cairoBold ??= pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
     );
   }
 
-  /// Generate A4 PDF with voucher cards in a configurable grid.
+  /// Generate an A4 PDF with voucher cards arranged in a configurable grid.
   Future<Uint8List> generateVouchersPdf(
-    List<Voucher> vouchers,
+    List<VoucherPrintItem> items,
     String businessName, {
     int columns = 4,
-    bool monochrome = true,
   }) async {
     await _ensureFont();
 
@@ -57,21 +77,21 @@ class PrintService {
     final double usableH = pageFormat.availableHeight;
 
     final double cardW = (usableW - gutterH * (columns - 1)) / columns;
-    final double cardH = cardW * 0.55;
+    final double cardH = (cardW * 0.62).clamp(56.0, 150.0);
 
     final int rows = ((usableH + gutterV) / (cardH + gutterV)).floor();
     final int perPage = rows * columns;
 
-    for (int p = 0; p * perPage < vouchers.length; p++) {
+    for (int p = 0; p * perPage < items.length; p++) {
       final start = p * perPage;
-      final end = (start + perPage).clamp(0, vouchers.length);
-      final pageVouchers = vouchers.sublist(start, end);
+      final end = (start + perPage).clamp(0, items.length);
+      final pageItems = items.sublist(start, end);
 
       doc.addPage(
         pw.Page(
           pageFormat: pageFormat,
           build: (_) => _buildGrid(
-            pageVouchers,
+            pageItems,
             businessName,
             columns: columns,
             rows: rows,
@@ -79,7 +99,6 @@ class PrintService {
             cardH: cardH,
             gutterH: gutterH,
             gutterV: gutterV,
-            monochrome: monochrome,
           ),
         ),
       );
@@ -89,7 +108,7 @@ class PrintService {
   }
 
   pw.Widget _buildGrid(
-    List<Voucher> vouchers,
+    List<VoucherPrintItem> items,
     String businessName, {
     required int columns,
     required int rows,
@@ -97,7 +116,6 @@ class PrintService {
     required double cardH,
     required double gutterH,
     required double gutterV,
-    bool monochrome = true,
   }) {
     final List<pw.Widget> rowWidgets = [];
 
@@ -105,11 +123,11 @@ class PrintService {
       final List<pw.Widget> cards = [];
       for (int c = 0; c < columns; c++) {
         final idx = r * columns + c;
-        if (idx < vouchers.length) {
+        if (idx < items.length) {
           cards.add(pw.SizedBox(
             width: cardW,
             height: cardH,
-            child: _buildCard(vouchers[idx], businessName, cardW, cardH, columns, monochrome),
+            child: _buildCard(items[idx], businessName, cardW, cardH, columns),
           ));
         } else {
           cards.add(pw.SizedBox(width: cardW, height: cardH));
@@ -124,187 +142,117 @@ class PrintService {
   }
 
   pw.Widget _buildCard(
-    Voucher v,
+    VoucherPrintItem item,
     String businessName,
     double w,
     double h,
     int columns,
-    bool monochrome,
   ) {
-    // Responsive sizing
-    final double headerFs = (10 - (columns - 2) * 0.5).clamp(5.0, 12.0);
-    final double brandFs = (6 - (columns - 2) * 0.2).clamp(3.0, 7.0);
-    final double codeFs = (12 - (columns - 2) * 0.6).clamp(6.0, 14.0);
-    final double infoFs = (7 - (columns - 2) * 0.3).clamp(3.5, 9.0);
-    final double pad = (5 - (columns - 2) * 0.25).clamp(2.0, 7.0);
-    final double headerBandH = (h * 0.22).clamp(8.0, 24.0);
-
-    // Mode-dependent colors
-    final PdfColor borderColor = monochrome ? PdfColors.black : PdfColors.grey300;
-    final double borderWidth = monochrome ? 0.5 : 0.4;
-    final PdfColor? bodyBg = monochrome ? null : _lightBg;
-    final PdfColor brandColor = monochrome ? PdfColors.grey700 : PdfColors.grey500;
-    final PdfColor dividerColor = monochrome ? PdfColors.black : _accentColor;
-    final PdfColor limitColor = monochrome ? PdfColors.black : _headerColor;
-    final PdfColor sepColor = monochrome ? PdfColors.grey700 : PdfColors.grey400;
-    final PdfColor validityColor = monochrome ? PdfColors.grey800 : PdfColors.grey700;
-
-    final validityText = _formatValidity(v.validitySeconds);
-
-    // Build header widget based on mode
-    final pw.Widget headerWidget = monochrome
-        ? pw.Container(
-            decoration: pw.BoxDecoration(
-              border: pw.Border(
-                bottom: pw.BorderSide(color: PdfColors.black, width: 0.6),
-              ),
-            ),
-            padding: pw.EdgeInsets.symmetric(
-              horizontal: pad,
-              vertical: pad * 0.5,
-            ),
-            child: pw.Directionality(
-              textDirection: _direction(businessName),
-              child: pw.Text(
-                businessName,
-                style: pw.TextStyle(
-                  fontSize: headerFs,
-                  fontWeight: pw.FontWeight.bold,
-                  font: _arabicFont,
-                  color: PdfColors.black,
-                ),
-                textAlign: pw.TextAlign.center,
-                maxLines: 1,
-              ),
-            ),
-          )
-        : pw.Container(
-            height: headerBandH,
-            color: _headerColor,
-            alignment: pw.Alignment.center,
-            padding: pw.EdgeInsets.symmetric(horizontal: pad),
-            child: pw.Directionality(
-              textDirection: _direction(businessName),
-              child: pw.Text(
-                businessName,
-                style: pw.TextStyle(
-                  fontSize: headerFs,
-                  fontWeight: pw.FontWeight.bold,
-                  font: _arabicFont,
-                  color: PdfColors.white,
-                ),
-                textAlign: pw.TextAlign.center,
-                maxLines: 1,
-              ),
-            ),
-          );
+    // Responsive sizing — legible at every column count (2–6).
+    // At 6 cols: 7pt header / 10pt code / 6.6pt info (~50pt inner height).
+    final double headerFs = (11 - (columns - 2) * 1.0).clamp(7.0, 11.0);
+    final double codeFs = (16 - (columns - 2) * 1.5).clamp(10.0, 16.0);
+    final double infoFs = (9 - (columns - 2) * 0.6).clamp(6.6, 9.0);
+    final double pad = (6 - (columns - 2) * 0.5).clamp(4.0, 6.0);
 
     return pw.Container(
       width: w,
       height: h,
+      padding: pw.EdgeInsets.symmetric(horizontal: pad, vertical: pad * 0.75),
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: borderColor, width: borderWidth),
+        border: pw.Border.all(color: PdfColors.black, width: 0.7),
         borderRadius: pw.BorderRadius.circular(3),
       ),
-      child: pw.ClipRRect(
-        horizontalRadius: 3,
-        verticalRadius: 3,
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-          children: [
-            headerWidget,
-
-            // Body
-            pw.Expanded(
-              child: pw.Container(
-                color: bodyBg,
-                padding: pw.EdgeInsets.symmetric(
-                  horizontal: pad,
-                  vertical: pad * 0.4,
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          // Header: bold business name, shrinks to fit — never clips.
+          // The height must be bounded: the stretched column fixes this box's
+          // width, and pdf's FittedBox sizes itself preserving the child's
+          // aspect ratio — an unbounded short name would balloon the header
+          // height and starve the body below it.
+          pw.SizedBox(
+            height: headerFs * 2.4,
+            child: pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              child: pw.Directionality(
+                textDirection: _direction(businessName),
+                child: pw.Text(
+                  businessName,
+                  style: pw.TextStyle(
+                    fontSize: headerFs,
+                    font: _cairoBold,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-                child: pw.Column(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // Branding
-                    pw.Text(
-                      'Wasel',
-                      style: pw.TextStyle(
-                        fontSize: brandFs,
-                        color: brandColor,
-                        fontWeight: pw.FontWeight.bold,
-                        font: _arabicFont,
-                        letterSpacing: 1.5,
-                      ),
-                      textAlign: pw.TextAlign.center,
+              ),
+            ),
+          ),
+          pw.SizedBox(height: pad * 0.4),
+          pw.Container(height: 0.8, color: PdfColors.black), // rule under header
+          pw.Expanded(
+            child: pw.Column(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+              children: [
+                // Hero code — bold monospace, shrinks to fit one line
+                pw.FittedBox(
+                  fit: pw.BoxFit.scaleDown,
+                  child: pw.Text(
+                    item.code,
+                    style: pw.TextStyle(
+                      fontSize: codeFs,
+                      font: pw.Font.courierBold(),
+                      fontWeight: pw.FontWeight.bold,
+                      letterSpacing: 1,
+                      fontFallback: [_cairo!],
                     ),
-
-                    // Username (prominent)
-                    pw.Text(
-                      v.username,
-                      style: pw.TextStyle(
-                        fontSize: codeFs,
-                        fontWeight: pw.FontWeight.bold,
-                        font: pw.Font.courier(),
-                        letterSpacing: 1,
-                      ),
-                      textAlign: pw.TextAlign.center,
-                    ),
-
-                    // Divider
-                    pw.Container(
-                      height: 0.6,
-                      color: dividerColor,
-                      margin: pw.EdgeInsets.symmetric(horizontal: w * 0.1),
-                    ),
-
-                    // Info row: limit + validity
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
-                      children: [
+                  ),
+                ),
+                // Info line: [limit | ] validity — the whole row scales as one unit
+                pw.FittedBox(
+                  fit: pw.BoxFit.scaleDown,
+                  child: pw.Row(
+                    mainAxisSize: pw.MainAxisSize.min,
+                    children: [
+                      if (item.limitText != null) ...[
                         pw.Directionality(
-                          textDirection: _direction(v.limitDisplayText),
+                          textDirection: _direction(item.limitText!),
                           child: pw.Text(
-                            v.limitDisplayText,
+                            item.limitText!,
                             style: pw.TextStyle(
                               fontSize: infoFs,
+                              font: _cairoBold,
                               fontWeight: pw.FontWeight.bold,
-                              font: _arabicFont,
-                              color: limitColor,
                             ),
                           ),
                         ),
                         pw.Container(
-                          width: 0.5,
-                          height: infoFs * 1.2,
-                          color: sepColor,
-                        ),
-                        pw.Directionality(
-                          textDirection: _direction(validityText),
-                          child: pw.Text(
-                            validityText,
-                            style: pw.TextStyle(
-                              fontSize: infoFs,
-                              font: _arabicFont,
-                              color: validityColor,
-                            ),
+                          width: 0.6,
+                          height: infoFs * 1.1,
+                          color: PdfColors.black,
+                          margin: pw.EdgeInsets.symmetric(
+                            horizontal: infoFs * 0.6,
                           ),
                         ),
                       ],
-                    ),
-                  ],
+                      pw.Directionality(
+                        textDirection: _direction(item.validityText),
+                        child: pw.Text(
+                          item.validityText,
+                          style: pw.TextStyle(
+                            fontSize: infoFs,
+                            font: _cairo,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
-  }
-
-  String _formatValidity(int? validitySeconds) {
-    if (validitySeconds == null || validitySeconds <= 0) return 'Open';
-    if (validitySeconds < 3600) return '${(validitySeconds / 60).round()} min';
-    if (validitySeconds < 86400) return '${(validitySeconds / 3600).round()} hours';
-    return '${(validitySeconds / 86400).round()} days';
   }
 }

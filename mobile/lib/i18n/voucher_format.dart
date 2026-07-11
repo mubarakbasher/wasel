@@ -3,13 +3,19 @@ import 'package:flutter/material.dart';
 import '../models/voucher.dart';
 import 'app_localizations.dart';
 
-/// Returns a localized, human-readable limit string for [v].
+/// Returns a localized, human-readable limit string for [v], or `null` when
+/// [v] has no limit type and no meaningful profile name.
+///
+/// When there is no limit, returns the trimmed [Voucher.profileName] if
+/// non-empty, otherwise `null` (useful on print cards where 'Unknown' is
+/// unhelpful).
 ///
 /// Replicates the numeric normalization of [Voucher.limitDisplayText] but
 /// emits translated unit labels instead of hard-coded English ones.
-String voucherLimitText(BuildContext c, Voucher v) {
+String? voucherLimitTextOrNull(BuildContext c, Voucher v) {
   if (v.limitType == null || v.limitValue == null || v.limitUnit == null) {
-    return v.profileName ?? c.tr('vouchers.limitUnknown');
+    final name = v.profileName?.trim();
+    return (name != null && name.isNotEmpty) ? name : null;
   }
 
   int displayValue;
@@ -42,6 +48,32 @@ String voucherLimitText(BuildContext c, Voucher v) {
   }
 
   return '$displayValue ${c.tr(unitKey)}';
+}
+
+/// Returns a localized, human-readable limit string for [v].
+///
+/// Delegates to [voucherLimitTextOrNull]; falls back to the localized
+/// 'Unknown' string when there is no limit and no profile name.
+String voucherLimitText(BuildContext c, Voucher v) =>
+    voucherLimitTextOrNull(c, v) ?? c.tr('vouchers.limitUnknown');
+
+/// Returns a localized validity string for [validitySeconds].
+///
+/// - null or `<= 0` → `'Open'` / `'مفتوح'` (the `vouchers.validityOpen` key)
+/// - `< 3600` → `'{n} minutes'` (rounded)
+/// - `< 86400` → `'{n} hours'` (rounded)
+/// - else      → `'{n} days'`  (rounded)
+String voucherValidityText(BuildContext c, int? validitySeconds) {
+  if (validitySeconds == null || validitySeconds <= 0) {
+    return c.tr('vouchers.validityOpen');
+  }
+  if (validitySeconds < 3600) {
+    return c.tr('vouchers.durationMinutes', [(validitySeconds / 60).round().toString()]);
+  }
+  if (validitySeconds < 86400) {
+    return c.tr('vouchers.durationHours', [(validitySeconds / 3600).round().toString()]);
+  }
+  return c.tr('vouchers.durationDays', [(validitySeconds / 86400).round().toString()]);
 }
 
 /// Returns a localized usage string like "{used} of {limit} used", or null if
