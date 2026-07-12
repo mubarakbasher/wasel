@@ -65,7 +65,7 @@ The WireGuard Docker container will automatically:
 
 ### 1.3 Open Firewall Ports
 
-Apply the canonical rule set below. It rate-limits SSH, scopes RADIUS ports to the WireGuard subnet only, and sets a default-deny inbound policy. Port 3000 is intentionally omitted — the backend is reached via Caddy/Nginx on 443, never directly.
+Apply the canonical rule set below. It rate-limits SSH, scopes RADIUS ports to the WireGuard subnet only, and sets a default-deny inbound policy. The public API is reached via Nginx on 443, never directly — port 3000 stays closed on the public interface. The one exception is a **WG-subnet-scoped** rule for `3000/tcp`: a router pulls its selected hotspot login-page template from the backend **over the tunnel** (`http://10.10.0.1:3000/...`), so that port must be reachable from `10.10.0.0/16` only. Without it, applying a template reports `failed` because the router's `/tool fetch` can't reach the backend.
 
 ```bash
 sudo ufw default deny incoming
@@ -76,10 +76,11 @@ sudo ufw allow 443/tcp                                                         c
 sudo ufw allow 51820/udp                                                       comment 'WireGuard'
 sudo ufw limit from 10.10.0.0/16 to any port 1812,1813 proto udp              comment 'RADIUS auth+accounting (WG only)'
 sudo ufw allow from 10.10.0.0/16 to any port 3799 proto udp                   comment 'RADIUS CoA (WG only)'
+sudo ufw allow from 10.10.0.0/16 to any port 3000 proto tcp                   comment 'Hotspot template fetch — router /tool fetch over WG only'
 sudo ufw enable
 ```
 
-WARNING: RADIUS ports (1812, 1813, 3799) must never be exposed to the public internet. The rules above restrict them to the WireGuard tunnel subnet (10.10.0.0/16) only.
+WARNING: RADIUS ports (1812, 1813, 3799) and the backend port (3000) must never be exposed to the public internet. The rules above restrict them to the WireGuard tunnel subnet (10.10.0.0/16) only — 3000 is served publicly only through Nginx on 443.
 
 ---
 
