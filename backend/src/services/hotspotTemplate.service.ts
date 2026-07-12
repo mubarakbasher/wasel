@@ -151,18 +151,32 @@ export async function applyHotspotTemplate(
 
       logger.info('Fetching hotspot template file onto router', { routerId, url, dstPath });
 
+      // Invoke as menu `/tool` + command `fetch`. The routeros-client builds the
+      // API sentence by appending the exec() verb to the menu path, so
+      // `.menu('/tool/fetch').exec('run')` emits the command word `/tool/fetch/run`
+      // — which RouterOS does not have, and answers with `!trap "no such command"`.
+      // `fetch` IS the command under the `/tool` menu, so the valid sentence is
+      // `/tool/fetch` (= menu `/tool` + command `fetch`) followed by the params.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const fetchResult = await (api as any)
-        .menu('/tool/fetch')
-        .exec('run', {
+        .menu('/tool')
+        .exec('fetch', {
           url,
           'dst-path': dstPath,
           mode: 'http',
         });
 
+      // /tool/fetch streams progress updates (!re) in emission order —
+      // connecting → downloading → a terminal `status=finished` or
+      // `status=failed`. Reading only [0] inspects the FIRST line (usually
+      // "connecting"), never the terminal state, so a mid-transfer failure
+      // (404, reset, flash write error) would slip through and we'd point
+      // html-directory at a directory missing this file. Treat the fetch as
+      // failed if ANY update reports status=failed. A parse-time failure
+      // instead rejects with !trap and is caught by the outer try/catch.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const status = String((fetchResult as any)?.[0]?.status ?? '');
-      if (status === 'failed') {
+      const updates = Array.isArray(fetchResult) ? (fetchResult as any[]) : [];
+      if (updates.some((u) => String(u?.status ?? '') === 'failed')) {
         throw new Error(`/tool/fetch failed for ${file} (status=failed)`);
       }
     }

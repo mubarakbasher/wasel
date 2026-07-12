@@ -72,7 +72,7 @@ import {
   mockSubscriptionQuery,
   TEST_ROUTER_ID,
 } from './helpers';
-import { HOTSPOT_TEMPLATES } from '../hotspot-templates/manifest';
+import { HOTSPOT_TEMPLATES, HOTSPOT_TEMPLATE_DIR } from '../hotspot-templates/manifest';
 import { connectToRouter } from '../services/routerOs.service';
 import * as fs from 'fs';
 
@@ -352,6 +352,76 @@ describe('PUT /api/v1/routers/:id/hotspot-template — service status transition
     expect(res.body.success).toBe(true);
     expect(res.body.data.hotspotTemplateStatus).toBe('applied');
     expect(res.body.data.hotspotTemplateId).toBe('clean');
+  });
+
+  it('issues the fetch as menu("/tool").exec("fetch", …) — never /tool/fetch/run (regression: "no such command")', async () => {
+    mockSubscriptionQuery(mockQuery);
+
+    // Ownership check
+    mockQuery.mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] });
+    // UPDATE → pending
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...MOCK_ROUTER_ROW, hotspot_template_status: 'pending' }] });
+    // UPDATE → applied
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        ...MOCK_ROUTER_ROW,
+        hotspot_template_id: 'clean',
+        hotspot_template_status: 'applied',
+        hotspot_template_applied_at: now,
+        hotspot_template_error: null,
+      }],
+    });
+
+    const menuMock = vi.fn();
+    const mockMenuChain = {
+      get: vi.fn().mockResolvedValue([{ '.id': '*1', name: 'default', 'use-radius': 'yes' }]),
+      exec: vi.fn().mockResolvedValue([{ status: 'finished' }]),
+      where: vi.fn(),
+      update: vi.fn().mockResolvedValue(undefined),
+    };
+    mockMenuChain.where.mockReturnValue(mockMenuChain);
+    menuMock.mockReturnValue(mockMenuChain);
+
+    vi.mocked(connectToRouter).mockResolvedValueOnce({
+      client: { disconnect: vi.fn().mockResolvedValue(undefined) } as unknown as import('routeros-client').RouterOSClient,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      api: { menu: menuMock } as any,
+    });
+
+    const res = await request(app)
+      .put(`/api/v1/routers/${TEST_ROUTER_ID}/hotspot-template`)
+      .set(authHeader())
+      .send({ templateId: 'clean' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.hotspotTemplateStatus).toBe('applied');
+
+    // routeros-client builds the API command word by appending the exec() verb to
+    // the menu path. The fetch MUST target the '/tool' menu with the 'fetch' verb
+    // (→ command word '/tool/fetch'). The old '/tool/fetch' menu + 'run' verb built
+    // '/tool/fetch/run', which RouterOS rejects with "no such command".
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const menuPaths = menuMock.mock.calls.map((c: any[]) => c[0]);
+    expect(menuPaths).toContain('/tool');
+    expect(menuPaths).not.toContain('/tool/fetch');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const execVerbs = mockMenuChain.exec.mock.calls.map((c: any[]) => c[0]);
+    expect(execVerbs).toContain('fetch');
+    expect(execVerbs).not.toContain('run');
+
+    // One exec('fetch', …) per template file, each pulling a public template URL
+    // into the router's hotspot html-directory over the WireGuard tunnel.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fetchCalls = mockMenuChain.exec.mock.calls.filter((c: any[]) => c[0] === 'fetch');
+    const clean = HOTSPOT_TEMPLATES.find((t) => t.id === 'clean')!;
+    expect(fetchCalls).toHaveLength(clean.files.length);
+    for (const call of fetchCalls) {
+      const params = call[1];
+      expect(params.mode).toBe('http');
+      expect(String(params['dst-path'])).toMatch(new RegExp(`^${HOTSPOT_TEMPLATE_DIR}/`));
+      expect(String(params.url)).toContain('/public/hotspot-templates/clean/');
+    }
   });
 
   it('returns status=failed + error when /tool/fetch returns status=failed, does not throw 500', async () => {
