@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HOTSPOT_TEMPLATES } from '../hotspot-templates/manifest';
+import { HOTSPOT_TEMPLATES, HOTSPOT_ACCENT_PRESETS } from '../hotspot-templates/manifest';
 
 export const createRouterSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be at most 100 characters'),
@@ -28,9 +28,15 @@ export const healthQuerySchema = z.object({
 // in sync with the template bundles without any hardcoding.
 const templateIds = HOTSPOT_TEMPLATES.map((t) => t.id) as [string, ...string[]];
 
+// Build the allowed accent hex enum from the preset list — same source of truth
+// as the manifest, so new presets automatically become valid values.
+const accentHexValues = HOTSPOT_ACCENT_PRESETS.map((p) => p.hex) as [string, ...string[]];
+
 export const setHotspotTemplateSchema = z.object({
   templateId: z.enum(templateIds, {
     message: `templateId must be one of: ${templateIds.join(', ')}`,
   }),
+  accentColor: z.enum(accentHexValues, {
+    message: `accentColor must be one of: ${accentHexValues.join(', ')}`,
+  }).optional(),
 });
-

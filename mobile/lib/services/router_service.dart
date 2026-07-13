@@ -237,19 +237,27 @@ class RouterService {
     return data.map((e) {
       final json = e as Map<String, dynamic>;
       final id = json['id'] as String;
+      final presetsJson = json['accentPresets'] as List<dynamic>?;
       return HotspotTemplate(
         id: id,
         name: json['name'] as String,
         description: json['description'] as String,
         previewUrl: '$base/public/hotspot-templates/$id/preview.png',
+        defaultAccent: json['defaultAccent'] as String? ?? '#0f766e',
+        accentPresets: presetsJson
+                ?.map((p) =>
+                    AccentPreset.fromJson(p as Map<String, dynamic>))
+                .toList() ??
+            const [],
       );
     }).toList();
   }
 
   Future<RouterModel> setHotspotTemplate(
     String routerId,
-    String templateId,
-  ) async {
+    String templateId, {
+    String? accentColor,
+  }) async {
     // Applying a template is a slow RouterOS operation — the backend connects
     // over the tunnel and fetches every template file onto the router before it
     // responds (10-20s in practice, more on a cold/retrying connection). The
@@ -257,9 +265,11 @@ class RouterService {
     // timeout and never record the result (leaving the design un-selected even
     // when the backend succeeds). Give this one call a generous budget so the
     // app waits for the real outcome (applied, or the actual RouterOS error).
+    final data = <String, dynamic>{'templateId': templateId};
+    if (accentColor != null) data['accentColor'] = accentColor;
     final response = await _api.dio.put(
       '/routers/$routerId/hotspot-template',
-      data: {'templateId': templateId},
+      data: data,
       options: Options(
         receiveTimeout: const Duration(seconds: 90),
         sendTimeout: const Duration(seconds: 90),

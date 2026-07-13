@@ -1,130 +1,120 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wi-Fi Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<title>الاتصال بالواي فاي</title>
 $(if chap-id)<script type="text/javascript" src="md5.js"></script>$(endif)
 <style>
-  @font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('plus-jakarta-sans.woff2') format('woff2'); }
+  /* Daylight (نهار) — the page is the paper voucher's counterpart.
+     Captive-browser rules: no external requests, no logical properties,
+     literal accent hex (no CSS vars), body must scroll, ES5 only. */
   @font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('cairo.woff2') format('woff2'); }
+  @font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('plus-jakarta-sans.woff2') format('woff2'); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: #f6f5f1; color: #20242f; font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif; }
+  html[lang="en"] body { font-family: 'Plus Jakarta Sans', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  .page { display: flex; min-height: 100vh; min-height: 100dvh; }
+  .wrap { margin: auto; width: 100%; max-width: 400px; padding: 24px 20px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+
+  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .lang-toggle { display: inline-flex; background: #edece6; border: 1px solid #e4e2da; border-radius: 999px; padding: 3px; }
+  .lang-btn { min-height: 44px; min-width: 52px; padding: 0 16px; font-family: inherit; font-size: 14px; font-weight: 700; border: none; border-radius: 999px; cursor: pointer; background: transparent; color: #5c6170; }
+  .lang-btn.active { background: #ffffff; color: #20242f; box-shadow: 0 1px 3px rgba(32,36,47,0.14); }
+
+  .brand { text-align: center; margin: 8px 0 24px; }
+  .badge { width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 50%; background: rgba(%WASEL_ACCENT_RGB%,0.10); border: 1px solid rgba(%WASEL_ACCENT_RGB%,0.25); display: flex; align-items: center; justify-content: center; }
+  .badge svg { width: 30px; height: 30px; color: %WASEL_ACCENT%; }
+  .eyebrow { margin: 0 0 2px; font-size: 15px; font-weight: 600; color: #5c6170; }
+  h1 { margin: 0; font-size: 27px; line-height: 1.35; font-weight: 800; color: #20242f; word-wrap: break-word; overflow-wrap: break-word; }
+
+  .ticket { position: relative; background: #ffffff; border: 1px solid #e4e2da; border-radius: 18px; box-shadow: 0 18px 40px -24px rgba(32,36,47,0.28); }
+  .t-top { padding: 22px 22px 20px; }
+  .t-bot { padding: 18px 22px 22px; }
+  .perf { position: relative; height: 0; border-top: 2px dashed #ddd9cf; }
+  .perf i { position: absolute; top: -10px; width: 20px; height: 20px; background: #f6f5f1; border: 1px solid #e4e2da; border-radius: 50%; }
+  .perf i.l { left: -11px; }
+  .perf i.r { right: -11px; }
+
+  .error-box { display: flex; align-items: flex-start; background: #fdeeed; border: 1px solid #f3cfcb; color: #b3261e; font-size: 14px; font-weight: 600; line-height: 1.5; padding: 12px 14px; border-radius: 12px; margin-bottom: 16px; }
+  .error-box svg { flex: none; margin-top: 3px; }
+  .error-box span { padding: 0 10px 0 0; }
+  [dir="ltr"] .error-box span { padding: 0 0 0 10px; }
+
+  .code-label { display: block; font-size: 14px; font-weight: 700; color: #5c6170; margin-bottom: 8px; }
+  .input { display: block; width: 100%; height: 56px; padding: 0 16px; font-family: 'Plus Jakarta Sans', 'Cairo', sans-serif; font-size: 17px; font-weight: 600; letter-spacing: 0.04em; color: #20242f; background: #faf9f6; border: 1.5px solid #e4e2da; border-radius: 12px; outline: none; }
+  .input::placeholder { font-family: inherit; font-weight: 400; letter-spacing: 0; color: #6f7482; }
+  .input:focus { border-color: %WASEL_ACCENT%; background: #ffffff; box-shadow: 0 0 0 4px rgba(%WASEL_ACCENT_RGB%,0.14); }
+
+  .btn { height: 56px; width: 100%; display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: 17px; font-weight: 700; color: #ffffff; background: %WASEL_ACCENT%; border: none; border-radius: 12px; cursor: pointer; box-shadow: 0 12px 22px -12px rgba(%WASEL_ACCENT_RGB%,0.55); }
+  .btn:focus { outline: 3px solid rgba(%WASEL_ACCENT_RGB%,0.4); outline-offset: 2px; }
+  .btn:active { box-shadow: none; }
+  .btn[disabled] { opacity: 0.7; cursor: default; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes floatGlow { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-18px); } }
-  body {
-    position: relative; min-height: 100vh; width: 100%;
-    display: flex; align-items: center; justify-content: center;
-    padding: 32px; font-family: 'Plus Jakarta Sans','Cairo',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-    background: #eceef4; overflow: hidden;
-  }
-  .glow-a { position: absolute; top: -220px; left: 50%; width: 760px; height: 760px; transform: translateX(-50%); background: radial-gradient(circle at center, rgba(99,102,241,0.28), rgba(99,102,241,0) 62%); animation: floatGlow 9s ease-in-out infinite; pointer-events: none; }
-  .glow-b { position: absolute; bottom: -260px; right: -120px; width: 560px; height: 560px; background: radial-gradient(circle at center, rgba(168,148,255,0.22), rgba(168,148,255,0) 64%); pointer-events: none; }
-  .wrap { position: relative; width: 100%; max-width: 430px; }
-  .card { background: #ffffff; border: 1px solid #e7e9f1; border-radius: 28px; padding: 36px 40px 40px; box-shadow: 0 30px 70px -30px rgba(40,42,80,0.35), 0 2px 8px rgba(40,42,80,0.04); }
-  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
-  .lang-toggle { display: inline-flex; background: #f1f2f8; border: 1px solid #e7e9f1; border-radius: 999px; padding: 3px; gap: 2px; }
-  .lang-btn { font-family: 'Plus Jakarta Sans',sans-serif; font-size: 12.5px; font-weight: 700; padding: 7px 16px; border: none; border-radius: 999px; cursor: pointer; transition: all .15s; background: transparent; color: #8b8fa3; }
-  .lang-btn.ar { font-family: 'Cairo',sans-serif; font-size: 13px; }
-  .lang-btn.active { background: #ffffff; color: #4f46e5; box-shadow: 0 1px 3px rgba(40,42,80,0.12); }
-  .brand { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 18px; margin-bottom: 30px; }
-  .brand-logo { position: relative; width: 88px; height: 88px; border-radius: 24px; background: #f3f5fb; border: 1px solid #e7e9f1; display: flex; align-items: center; justify-content: center; }
-  .brand-logo svg { width: 52px; height: 52px; color: #4f46e5; }
-  .brand-text { display: flex; flex-direction: column; gap: 6px; }
-  .pill { align-self: center; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6366f1; background: #eef0fe; padding: 5px 12px; border-radius: 999px; }
-  .brand h1 { margin: 0; font-size: 25px; font-weight: 800; color: #1a1c2e; letter-spacing: -0.02em; }
-  .brand p { margin: 0; font-size: 14.5px; color: #7b7f95; font-weight: 500; }
-  .error-box { display: flex; align-items: center; gap: 10px; background: #fef2f2; border: 1px solid #fecdcd; color: #c0362c; font-size: 13.5px; font-weight: 600; padding: 12px 14px; border-radius: 14px; margin-bottom: 18px; }
-  .error-box svg { flex: none; }
-  form { display: flex; flex-direction: column; gap: 14px; }
-  .field { position: relative; display: block; }
-  .field .icon { position: absolute; inset-inline-start: 16px; top: 50%; transform: translateY(-50%); color: #9499ad; display: flex; pointer-events: none; }
-  .input { width: 100%; height: 54px; padding-block: 0; padding-inline-start: 46px; padding-inline-end: 16px; font-family: inherit; font-size: 16px; font-weight: 600; letter-spacing: 0.06em; color: #1a1c2e; background: #f6f7fb; border: 1.5px solid #e7e9f1; border-radius: 14px; outline: none; transition: border-color .15s, box-shadow .15s, background .15s; }
-  .input::placeholder { font-weight: 500; letter-spacing: 0; color: #9499ad; }
-  .input:focus { border-color: #6366f1; background: #ffffff; box-shadow: 0 0 0 4px rgba(99,102,241,0.12); }
-  .btn { margin-top: 6px; height: 54px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: inherit; font-size: 15.5px; font-weight: 700; color: #ffffff; background: linear-gradient(150deg,#4f46e5,#6d63f0); border: none; border-radius: 14px; cursor: pointer; box-shadow: 0 14px 26px -12px rgba(79,70,229,0.7); transition: transform .12s, box-shadow .2s; }
-  .btn:hover { transform: translateY(-1px); box-shadow: 0 18px 30px -12px rgba(79,70,229,0.8); }
-  .btn:active { transform: translateY(0); }
-  .btn[disabled] { background: #a9a6ea; cursor: not-allowed; opacity: .85; }
-  .spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
-  .btn-label { white-space: nowrap; }
-  .footer-info { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 24px; padding-top: 22px; border-top: 1px solid #eef0f5; }
-  .footer-info .chip { display: flex; align-items: center; gap: 7px; color: #8b8fa3; font-size: 12.5px; font-weight: 600; }
-  .dot { width: 4px; height: 4px; border-radius: 50%; background: #d4d7e2; }
-  .foot { text-align: center; margin: 22px 0 0; font-size: 12.5px; color: #9095a8; font-weight: 500; }
-  .foot b { font-weight: 700; color: #6b7088; }
-  .tip { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; padding: 11px 13px; background: #f3f5fb; border: 1px solid #e7e9f1; border-radius: 12px; font-size: 12.5px; line-height: 1.45; color: #7b7f95; font-weight: 500; }
-  .tip svg { flex: none; margin-top: 1px; color: #6366f1; }
+  .spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,0.4); border-top-color: #ffffff; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; margin: 0 0 0 10px; }
+  .spinner[hidden] { display: none; }
+  [dir="ltr"] .spinner { margin: 0 10px 0 0; }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+  .foot { display: flex; align-items: center; justify-content: center; margin: 20px 0 0; font-size: 13px; font-weight: 600; color: #5c6170; }
+  .foot svg { width: 14px; height: 14px; color: %WASEL_ACCENT%; margin: 0 0 0 6px; }
+  [dir="ltr"] .foot svg { margin: 0 6px 0 0; }
 </style>
 </head>
 <body>
-  <div class="glow-a"></div>
-  <div class="glow-b"></div>
-  <div class="wrap">
-    <div class="card">
+  <div class="page">
+    <div class="wrap">
       <div class="lang-row">
         <div class="lang-toggle">
-          <button type="button" id="btn-en" class="lang-btn active" onclick="setLang('en')">EN</button>
-          <button type="button" id="btn-ar" class="lang-btn ar" onclick="setLang('ar')">عربي</button>
+          <button type="button" id="btn-ar" class="lang-btn active" onclick="setLang('ar')">عربي</button>
+          <button type="button" id="btn-en" class="lang-btn" onclick="setLang('en')">EN</button>
         </div>
       </div>
 
       <div class="brand">
-        <div class="brand-logo">
+        <div class="badge">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
         </div>
-        <div class="brand-text">
-          <span class="pill" data-i18n="pill">Wasel</span>
-          <h1 data-i18n="brand">Riverside Café</h1>
-          <p data-i18n="tag">Complimentary Wi-Fi for our guests</p>
+        <p class="eyebrow" data-i18n="eyebrow">أهلاً بك في</p>
+        <h1>%WASEL_NAME%</h1>
+      </div>
+
+      <div class="ticket">
+        <div class="t-top">
+          $(if error)
+          <div class="error-box">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <span id="err-text">$(error)</span>
+            <span id="err-raw" style="display:none">$(error)</span>
+          </div>
+          $(endif)
+          <form name="login" action="$(link-login-only)" method="post" onsubmit="return doLogin()">
+            <input type="hidden" name="dst" value="$(link-orig)">
+            <input type="hidden" name="popup" value="true">
+            <input type="hidden" name="password">
+            <label class="code-label" for="code" data-i18n="codeLabel">رمز الدخول</label>
+            <input class="input" id="code" type="text" name="username" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" data-i18n-ph="phCode" placeholder="اكتب الرمز المطبوع على القسيمة">
+        </div>
+        <div class="perf"><i class="l"></i><i class="r"></i></div>
+        <div class="t-bot">
+            <button class="btn" type="submit"><span class="btn-label" data-i18n="connect">الاتصال بالإنترنت</span><span class="spinner" hidden></span></button>
+          </form>
         </div>
       </div>
 
-      $(if error)
-      <div class="error-box">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-        <span>$(error)</span>
-      </div>
-      $(endif)
-
-      <form name="login" action="$(link-login-only)" method="post" onsubmit="return doLogin()">
-        <input type="hidden" name="dst" value="$(link-orig)">
-        <input type="hidden" name="popup" value="true">
-        <input type="hidden" name="password">
-        <label class="field">
-          <span class="icon">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H4v4"></path><path d="M2 7h20v3a2 2 0 0 0 0 4v3H2v-3a2 2 0 0 0 0-4z"></path><path d="M12 5v14" stroke-dasharray="2 3"></path></svg>
-          </span>
-          <input class="input" type="text" name="username" inputmode="numeric" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-i18n-ph="phVoucher" placeholder="Enter access code" autofocus>
-        </label>
-        <button class="btn" type="submit"><span class="spinner" hidden></span><span class="btn-label" data-i18n="connect">Connect to Wi-Fi</span></button>
-      </form>
-
-      <p class="tip">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5"></path></svg>
-        <span data-i18n="tip">Tip: allow your device to reconnect automatically to stay online.</span>
-      </p>
-
-      <div class="footer-info">
-        <div class="chip">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-          <span data-i18n="secured">Secured</span>
-        </div>
-        <span class="dot"></span>
-        <div class="chip">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polyline></svg>
-          <span data-i18n="highSpeed">High speed</span>
-        </div>
-      </div>
+      <p class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span data-i18n="poweredBy">مشغَّلة عبر منصة واصل</span></p>
     </div>
-    <p class="foot"><span data-i18n="footerPre">Connected via </span><b data-i18n="brand">Riverside Café</b><span data-i18n="footerPost"> · Need help? Ask our staff</span></p>
   </div>
 
 <script type="text/javascript">
 function doLogin() {
-  // Wasel vouchers: username == password (the access code). Always set password = code.
-  document.login.password.value = document.login.username.value;
-  $(if chap-id)document.login.password.value = hexMD5('$(chap-id)' + document.login.password.value + '$(chap-challenge)');$(endif)
+  // Wasel vouchers: username == password (the access code). Codes are case-sensitive.
+  var u = document.login.username.value.replace(/^\s+|\s+$/g, '');
+  document.login.username.value = u;
+  document.login.password.value = u;
+  $(if chap-id)document.login.password.value = hexMD5('$(chap-id)' + u + '$(chap-challenge)');$(endif)
   var btn = document.querySelector('.btn');
   var sp = document.querySelector('.spinner');
   if (btn) { btn.setAttribute('disabled', 'disabled'); }
@@ -133,39 +123,71 @@ function doLogin() {
 }
 
 var I18N = {
-  en: {
-    pill: "Wasel", brand: "Riverside Café", tag: "Complimentary Wi-Fi for our guests",
-    phVoucher: "Enter access code", connect: "Connect to Wi-Fi",
-    secured: "Secured", highSpeed: "High speed",
-    footerPre: "Connected via ", footerPost: " · Need help? Ask our staff",
-    tip: "Tip: allow your device to reconnect automatically to stay online."
-  },
   ar: {
-    pill: "واصل", brand: "مقهى ريفرسايد", tag: "واي فاي مجاني لضيوفنا الكرام",
-    phVoucher: "أدخل رمز الدخول", connect: "الاتصال بالواي فاي",
-    secured: "آمن", highSpeed: "سرعة عالية",
-    footerPre: "متصل عبر ", footerPost: " · تحتاج مساعدة؟ اسأل فريقنا",
-    tip: "نصيحة: اسمح لجهازك بإعادة الاتصال تلقائيًا للبقاء على الإنترنت."
+    eyebrow: "أهلاً بك في",
+    codeLabel: "رمز الدخول",
+    phCode: "اكتب الرمز المطبوع على القسيمة",
+    connect: "الاتصال بالإنترنت",
+    poweredBy: "مشغَّلة عبر منصة واصل"
+  },
+  en: {
+    eyebrow: "Welcome to",
+    codeLabel: "Access code",
+    phCode: "Enter your voucher code",
+    connect: "Connect to Wi-Fi",
+    poweredBy: "Powered by Wasel"
   }
 };
-function setLang(lang) {
-  var t = I18N[lang] || I18N.en;
-  document.documentElement.lang = (lang === 'ar') ? 'ar' : 'en';
+
+var ERRS = [
+  ['invalid username or password', { ar: 'رمز الدخول غير صحيح. تأكد من الرمز وحاول مرة أخرى.', en: "That code isn't right. Check it and try again." }],
+  ['no more sessions', { ar: 'هذا الرمز مستخدم على جهاز آخر حالياً.', en: 'This code is already in use on another device.' }],
+  ['simultaneous', { ar: 'هذا الرمز مستخدم على جهاز آخر حالياً.', en: 'This code is already in use on another device.' }],
+  ['uptime limit', { ar: 'انتهى وقت هذا الرمز.', en: "This code's time is used up." }],
+  ['traffic limit', { ar: 'استُهلكت بيانات هذا الرمز بالكامل.', en: "This code's data allowance is used up." }],
+  ['not responding', { ar: 'الشبكة مشغولة حالياً. حاول مرة أخرى بعد لحظات.', en: 'The network is busy. Try again in a moment.' }],
+  ['expired', { ar: 'انتهت صلاحية هذا الرمز.', en: 'This code has expired.' }],
+  ['challenge response', { ar: 'أعد تحميل الصفحة وحاول مرة أخرى.', en: 'Reload the page and try again.' }]
+];
+function friendlyError(raw, lang) {
+  var s = raw.toLowerCase();
+  for (var i = 0; i < ERRS.length; i++) {
+    if (s.indexOf(ERRS[i][0]) !== -1) { return ERRS[i][1][lang] || raw; }
+  }
+  return raw;
+}
+
+function getLang() {
+  try { var v = localStorage.getItem('waselLang'); if (v === 'en' || v === 'ar') { return v; } } catch (e) {}
+  return 'ar';
+}
+function applyLang(lang) {
+  var t = I18N[lang] || I18N.ar;
+  document.documentElement.lang = lang;
   document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
   var nodes = document.querySelectorAll('[data-i18n]');
   for (var i = 0; i < nodes.length; i++) {
     var k = nodes[i].getAttribute('data-i18n');
-    if (t[k] != null) nodes[i].textContent = t[k];
+    if (t[k] != null) { nodes[i].textContent = t[k]; }
   }
   var phs = document.querySelectorAll('[data-i18n-ph]');
   for (var j = 0; j < phs.length; j++) {
     var pk = phs[j].getAttribute('data-i18n-ph');
-    if (t[pk] != null) phs[j].setAttribute('placeholder', t[pk]);
+    if (t[pk] != null) { phs[j].setAttribute('placeholder', t[pk]); }
   }
-  document.getElementById('btn-en').classList.toggle('active', lang !== 'ar');
-  document.getElementById('btn-ar').classList.toggle('active', lang === 'ar');
+  var raw = document.getElementById('err-raw');
+  var out = document.getElementById('err-text');
+  if (raw && out) { out.textContent = friendlyError(raw.textContent || raw.innerText || '', lang); }
+  var ab = document.getElementById('btn-ar');
+  var eb = document.getElementById('btn-en');
+  if (ab) { ab.className = 'lang-btn' + (lang === 'ar' ? ' active' : ''); }
+  if (eb) { eb.className = 'lang-btn' + (lang === 'en' ? ' active' : ''); }
 }
-setLang('en');
+function setLang(lang) {
+  try { localStorage.setItem('waselLang', lang); } catch (e) {}
+  applyLang(lang);
+}
+applyLang(getLang());
 </script>
 </body>
 </html>

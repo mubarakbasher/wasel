@@ -84,5 +84,40 @@ void main() {
       expect(round.hotspotTemplateStatus, 'failed');
       expect(round.hotspotTemplateError, 'unreachable');
     });
+
+    test('fromJson parses hotspotAccentColor', () {
+      final router = RouterModel.fromJson({
+        ...validJson,
+        'hotspotAccentColor': '#4f46e5',
+      });
+      expect(router.hotspotAccentColor, '#4f46e5');
+    });
+
+    test('fromJson defaults hotspotAccentColor to null when absent', () {
+      final router = RouterModel.fromJson(validJson);
+      expect(router.hotspotAccentColor, isNull);
+    });
+
+    test('toJson round-trips hotspotAccentColor', () {
+      final router = RouterModel.fromJson({
+        ...validJson,
+        'hotspotAccentColor': '#be123c',
+      });
+      final round = RouterModel.fromJson(router.toJson());
+      expect(round.hotspotAccentColor, '#be123c');
+    });
+
+    test('copyWith preserves existing fields and updates hotspotAccentColor', () {
+      final router = RouterModel.fromJson({
+        ...validJson,
+        'hotspotTemplateId': 'clean',
+        'hotspotAccentColor': '#0f766e',
+      });
+      final updated = router.copyWith(hotspotAccentColor: '#4f46e5');
+      expect(updated.id, router.id);
+      expect(updated.name, router.name);
+      expect(updated.hotspotTemplateId, 'clean');
+      expect(updated.hotspotAccentColor, '#4f46e5');
+    });
   });
 }

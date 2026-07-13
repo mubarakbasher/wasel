@@ -17,13 +17,58 @@
  * before login, so fonts MUST be bundled locally (no Google Fonts <link>).
  * `cairo.woff2` (Arabic subset, used by every login/status page) is common to
  * all bundles; each design also ships its own Latin display font(s).
+ *
+ * Token substitution at serve time:
+ *   All .html files are served through the public route which substitutes the
+ *   following tokens before sending the response (keyed by ?router=<uuid>):
+ *
+ *   %WASEL_NAME%       → router display name, HTML-escaped (& < > " ')
+ *   %WASEL_ACCENT%     → lowercase #rrggbb accent colour
+ *   %WASEL_ACCENT_RGB% → r,g,b decimal triplet (e.g. 15,118,110)
+ *
+ *   These tokens are deliberately outside MikroTik's $(…) namespace so they
+ *   never collide with RouterOS variables — MikroTik placeholders pass through
+ *   the substitution byte-identical.
  */
+
+export interface AccentPreset {
+  id: string;
+  hex: string;
+  nameEn: string;
+  nameAr: string;
+}
+
+/**
+ * Ordered list of selectable accent colours.
+ * Used by the API validator — accentColor must be one of these hex values.
+ * The `hex` values are lowercased canonical strings (#rrggbb).
+ */
+export const HOTSPOT_ACCENT_PRESETS: AccentPreset[] = [
+  { id: 'teal',    hex: '#0f766e', nameEn: 'Teal',         nameAr: 'تركوازي'     },
+  { id: 'indigo',  hex: '#4f46e5', nameEn: 'Indigo',       nameAr: 'نيلي'        },
+  { id: 'cobalt',  hex: '#1d4ed8', nameEn: 'Cobalt',       nameAr: 'أزرق'        },
+  { id: 'emerald', hex: '#047857', nameEn: 'Emerald',      nameAr: 'زمردي'       },
+  { id: 'rose',    hex: '#be123c', nameEn: 'Rose',         nameAr: 'قرمزي'       },
+  { id: 'orange',  hex: '#c2410c', nameEn: 'Burnt orange', nameAr: 'برتقالي داكن' },
+  { id: 'violet',  hex: '#7c3aed', nameEn: 'Violet',       nameAr: 'بنفسجي'      },
+  { id: 'slate',   hex: '#334155', nameEn: 'Slate',        nameAr: 'رمادي داكن'   },
+];
 
 export interface HotspotTemplate {
   id: string;
   name: string;
   description: string;
+  /**
+   * Files pushed onto the router (and served via the public route).
+   * preview.html is excluded — it is a render-only artifact never pushed.
+   */
   files: string[];
+  /**
+   * Default accent colour (one of HOTSPOT_ACCENT_PRESETS[*].hex) used when
+   * no per-router accent has been stored, or the stored value is not a known
+   * preset hex.
+   */
+  defaultAccent: string;
 }
 
 /**
@@ -45,21 +90,24 @@ const COMMON_FILES = [
 export const HOTSPOT_TEMPLATES: HotspotTemplate[] = [
   {
     id: 'clean',
-    name: 'Clean',
-    description: 'Light, minimal card with an indigo accent.',
+    name: 'Daylight · نهار',
+    description: 'Bright paper-ticket look · تصميم فاتح بروح تذكرة ورقية',
     files: [...COMMON_FILES, 'plus-jakarta-sans.woff2'],
+    defaultAccent: '#0f766e',
   },
   {
     id: 'dark',
-    name: 'Dark',
-    description: 'Glassmorphic dark card with aurora glow.',
+    name: 'Midnight · ليل',
+    description: 'Deep night panel with a warm glow · لوحة ليلية داكنة بتوهّج هادئ',
     files: [...COMMON_FILES, 'space-grotesk.woff2'],
+    defaultAccent: '#1d4ed8',
   },
   {
     id: 'warm',
-    name: 'Warm',
-    description: 'Warm terracotta hero with a serif headline.',
-    files: [...COMMON_FILES, 'dm-sans.woff2', 'fraunces.woff2'],
+    name: 'Souq · سوق',
+    description: 'Bold poster band with your name as the hero · لافتة جريئة تتصدرها هوية عملك',
+    files: [...COMMON_FILES, 'dm-sans.woff2'],
+    defaultAccent: '#c2410c',
   },
 ];
 

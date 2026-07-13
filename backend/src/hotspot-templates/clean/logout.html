@@ -1,30 +1,69 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Logged Out</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<title>تم قطع الاتصال</title>
 <style>
+  @font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('cairo.woff2') format('woff2'); }
   @font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('plus-jakarta-sans.woff2') format('woff2'); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background: #eceef4; }
-  .card { width: 100%; max-width: 430px; background: #ffffff; border: 1px solid #e7e9f1; border-radius: 28px; padding: 40px; text-align: center; box-shadow: 0 30px 70px -30px rgba(40,42,80,0.35); }
-  .icon { width: 64px; height: 64px; border-radius: 50%; background: #eef0fe; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
-  h1 { margin: 0 0 8px; font-size: 22px; font-weight: 800; color: #1a1c2e; }
-  p { margin: 0 0 24px; font-size: 14.5px; color: #7b7f95; font-weight: 500; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; height: 50px; padding: 0 28px; font-size: 15px; font-weight: 700; color: #ffffff; text-decoration: none; background: linear-gradient(150deg,#4f46e5,#6d63f0); border-radius: 14px; box-shadow: 0 14px 26px -12px rgba(79,70,229,0.7); }
-  $(if logged-out-link)$(endif)
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: #f6f5f1; color: #20242f; font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif; }
+  html[lang="en"] body { font-family: 'Plus Jakarta Sans', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  .page { display: flex; min-height: 100vh; min-height: 100dvh; }
+  .wrap { margin: auto; width: 100%; max-width: 400px; padding: 24px 20px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .card { background: #ffffff; border: 1px solid #e4e2da; border-radius: 18px; padding: 32px 24px; text-align: center; box-shadow: 0 18px 40px -24px rgba(32,36,47,0.28); }
+  .icon { width: 60px; height: 60px; border-radius: 50%; background: rgba(%WASEL_ACCENT_RGB%,0.10); border: 1px solid rgba(%WASEL_ACCENT_RGB%,0.25); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; }
+  .icon svg { width: 28px; height: 28px; color: %WASEL_ACCENT%; }
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 800; color: #20242f; }
+  .sub { margin: 0 0 6px; font-size: 14.5px; font-weight: 600; color: #5c6170; word-wrap: break-word; overflow-wrap: break-word; }
+  .up { margin: 0 0 22px; font-size: 13.5px; font-weight: 600; color: #5c6170; }
+  .up b { font-family: 'Plus Jakarta Sans', 'Cairo', sans-serif; color: #20242f; direction: ltr; unicode-bidi: embed; }
+  .btn { display: flex; align-items: center; justify-content: center; height: 54px; width: 100%; font-family: inherit; font-size: 16px; font-weight: 700; color: #ffffff; text-decoration: none; background: %WASEL_ACCENT%; border-radius: 12px; box-shadow: 0 12px 22px -12px rgba(%WASEL_ACCENT_RGB%,0.55); }
+  .btn:focus { outline: 3px solid rgba(%WASEL_ACCENT_RGB%,0.4); outline-offset: 2px; }
+  .foot { display: flex; align-items: center; justify-content: center; margin: 20px 0 0; font-size: 13px; font-weight: 600; color: #5c6170; }
+  .foot svg { width: 14px; height: 14px; color: %WASEL_ACCENT%; margin: 0 0 0 6px; }
+  [dir="ltr"] .foot svg { margin: 0 6px 0 0; }
 </style>
 </head>
 <body>
-  <div class="card">
-    <div class="icon">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+  <div class="page">
+    <div class="wrap">
+      <div class="card">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        </div>
+        <h1 data-i18n="title">تم قطع الاتصال</h1>
+        <p class="sub"><span data-i18n="thanks">شكراً لزيارتك</span> %WASEL_NAME%</p>
+        <p class="up"><span data-i18n="uptime">مدة جلستك:</span> <b>$(uptime)</b></p>
+        <a class="btn" href="$(link-login)" data-i18n="again">تسجيل الدخول من جديد</a>
+      </div>
+      <p class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span data-i18n="poweredBy">مشغَّلة عبر منصة واصل</span></p>
     </div>
-    <h1>You are logged out</h1>
-    <p>You have been disconnected from the Wi-Fi network. Uptime: $(uptime)</p>
-    <a class="btn" href="$(link-login)">Log in again</a>
   </div>
+
+<script type="text/javascript">
+var I18N = {
+  ar: { title: "تم قطع الاتصال", thanks: "شكراً لزيارتك", uptime: "مدة جلستك:", again: "تسجيل الدخول من جديد", poweredBy: "مشغَّلة عبر منصة واصل" },
+  en: { title: "You've been disconnected", thanks: "Thanks for visiting", uptime: "Session time:", again: "Log in again", poweredBy: "Powered by Wasel" }
+};
+function getLang() {
+  try { var v = localStorage.getItem('waselLang'); if (v === 'en' || v === 'ar') { return v; } } catch (e) {}
+  return 'ar';
+}
+function applyLang(lang) {
+  var t = I18N[lang] || I18N.ar;
+  document.documentElement.lang = lang;
+  document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+  var nodes = document.querySelectorAll('[data-i18n]');
+  for (var i = 0; i < nodes.length; i++) {
+    var k = nodes[i].getAttribute('data-i18n');
+    if (t[k] != null) { nodes[i].textContent = t[k]; }
+  }
+}
+applyLang(getLang());
+</script>
 </body>
 </html>

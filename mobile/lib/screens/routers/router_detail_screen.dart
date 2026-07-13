@@ -441,7 +441,11 @@ class _HotspotTemplateRow extends ConsumerWidget {
       child: OutlinedButton(
         onPressed: () {
           ref.read(hotspotTemplateNotifierProvider.notifier).reset();
-          context.push('/routers/hotspot-template', extra: router.id as String);
+          context.push('/routers/hotspot-template', extra: {
+            'id': router.id as String,
+            'name': router.name as String,
+            'currentAccent': router.hotspotAccentColor as String?,
+          });
         },
         child: Row(
           children: [

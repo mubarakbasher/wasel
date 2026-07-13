@@ -43,6 +43,7 @@ function toRouterInfo(row: RouterRow): RouterInfo {
       ? new Date(row.hotspot_template_applied_at).toISOString()
       : null,
     hotspotTemplateError: row.hotspot_template_error ?? null,
+    hotspotAccentColor: row.hotspot_accent_color ?? null,
   };
 }
 
@@ -51,6 +52,7 @@ async function persistStatus(
   patch: {
     status: 'pending' | 'applied' | 'failed';
     templateId?: string;
+    accentColor?: string;
     error?: string | null;
     setAppliedAt?: boolean;
   },
@@ -66,6 +68,10 @@ async function persistStatus(
   if (patch.templateId !== undefined) {
     setClauses.push(`hotspot_template_id = $${paramIndex++}`);
     values.push(patch.templateId);
+  }
+  if (patch.accentColor !== undefined) {
+    setClauses.push(`hotspot_accent_color = $${paramIndex++}`);
+    values.push(patch.accentColor);
   }
   if (patch.setAppliedAt) {
     setClauses.push(`hotspot_template_applied_at = NOW()`);
@@ -95,11 +101,17 @@ async function persistStatus(
  * as error responses. A RouterOS-level failure is swallowed and surfaced as
  * { hotspotTemplateStatus: 'failed', hotspotTemplateError: '...' } so the
  * mobile app can show "Failed – Retry" without receiving a 500.
+ *
+ * @param accentColor  Optional preset hex (e.g. '#0f766e'). When provided,
+ *                     persisted in the SAME UPDATE as the pending status so the
+ *                     public serve endpoint sees the new value immediately.
+ *                     When omitted, the stored column is left unchanged.
  */
 export async function applyHotspotTemplate(
   userId: string,
   routerId: string,
   templateId: string,
+  accentColor?: string,
 ): Promise<RouterInfo> {
   // 1. Ownership check
   const ownerCheck = await pool.query<RouterRow>(
@@ -116,10 +128,13 @@ export async function applyHotspotTemplate(
     throw new AppError(400, `Unknown template id: ${templateId}`, 'TEMPLATE_NOT_FOUND');
   }
 
-  // 3. Persist pending immediately so the mobile app shows progress
+  // 3. Persist pending immediately so the mobile app shows progress.
+  //    If accentColor is provided, persist it in the SAME UPDATE so the
+  //    public serve-time lookup sees the new value before any /tool/fetch runs.
   await persistStatus(routerId, {
     status: 'pending',
     templateId,
+    ...(accentColor !== undefined && { accentColor }),
     error: null,
   });
 
@@ -143,10 +158,13 @@ export async function applyHotspotTemplate(
     // NOT the public WAN — the tunnel is encrypted and peer-authenticated, so the
     // pushed login page cannot be tampered with in transit and no router-side CA
     // trust is required.
+    //
+    // ?router=<uuid> is appended so the serve-time substitution picks up the
+    // router's name and accent colour and bakes them into the fetched HTML files.
     const baseUrl = `http://${WG_SERVER_TUNNEL_IP}:${config.PORT}/api/v1/public/hotspot-templates/${templateId}`;
 
     for (const file of template.files) {
-      const url = `${baseUrl}/${file}`;
+      const url = `${baseUrl}/${file}?router=${routerId}`;
       const dstPath = `${HOTSPOT_TEMPLATE_DIR}/${file}`;
 
       logger.info('Fetching hotspot template file onto router', { routerId, url, dstPath });

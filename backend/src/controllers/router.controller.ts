@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../types';
 import * as routerService from '../services/router.service';
 import { runHealthCheck } from '../services/routerHealth.service';
 import { applyHotspotTemplate } from '../services/hotspotTemplate.service';
-import { HOTSPOT_TEMPLATES } from '../hotspot-templates/manifest';
+import { HOTSPOT_TEMPLATES, HOTSPOT_ACCENT_PRESETS } from '../hotspot-templates/manifest';
 import { config } from '../config';
 
 export async function createRouter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -126,6 +126,8 @@ export async function listHotspotTemplates(
       name: t.name,
       description: t.description,
       previewUrl: `${config.PUBLIC_BASE_URL}/api/v1/public/hotspot-templates/${t.id}/preview.png`,
+      defaultAccent: t.defaultAccent,
+      accentPresets: HOTSPOT_ACCENT_PRESETS,
     }));
 
     res.status(200).json({
@@ -145,9 +147,9 @@ export async function setHotspotTemplate(
   try {
     const routerId = req.params.id as string;
     const userId = req.user!.id;
-    const { templateId } = req.body as { templateId: string };
+    const { templateId, accentColor } = req.body as { templateId: string; accentColor?: string };
 
-    const router = await applyHotspotTemplate(userId, routerId, templateId);
+    const router = await applyHotspotTemplate(userId, routerId, templateId, accentColor);
 
     res.status(200).json({
       success: true,

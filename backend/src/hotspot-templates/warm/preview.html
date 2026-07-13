@@ -1,101 +1,68 @@
 <!DOCTYPE html>
-<html>
+<!-- Render-only mock for the picker screenshot (preview.png, 500x920).
+     NEVER pushed to routers — Google Fonts CDN is allowed here only.
+     Souq skin: literal accent #c2410c (rgb 194,65,12).
+     The band bottom + input sit inside y 320-600 (the picker's 16:9 crop). -->
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wi-Fi Login — Preview</title>
+<title>Souq preview</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600;700&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  @keyframes blob { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20px,-16px) scale(1.08); } }
-  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'DM Sans','Cairo',sans-serif; background: #f4ede2; overflow: hidden; }
-  .blob-a { position: absolute; top: -140px; inset-inline-start: -100px; width: 440px; height: 440px; background: radial-gradient(circle at center, rgba(232,160,92,0.35), rgba(232,160,92,0) 66%); animation: blob 10s ease-in-out infinite; pointer-events: none; }
-  .blob-b { position: absolute; bottom: -180px; inset-inline-end: -120px; width: 480px; height: 480px; background: radial-gradient(circle at center, rgba(193,108,74,0.28), rgba(193,108,74,0) 66%); pointer-events: none; }
-  .wrap { position: relative; width: 100%; max-width: 430px; }
-  .card { background: #fffdf9; border: 1px solid #ece2d2; border-radius: 28px; overflow: hidden; box-shadow: 0 30px 70px -32px rgba(120,80,40,0.4), 0 2px 8px rgba(120,80,40,0.05); }
-  .hero { position: relative; background: linear-gradient(150deg,#c1503a,#e08a3c); padding: 30px 38px 26px; overflow: hidden; }
-  .hero-c1 { position: absolute; top: -60px; inset-inline-end: -40px; width: 200px; height: 200px; border-radius: 50%; background: rgba(255,255,255,0.08); pointer-events: none; }
-  .hero-c2 { position: absolute; bottom: -90px; inset-inline-start: -30px; width: 180px; height: 180px; border-radius: 50%; background: rgba(255,255,255,0.06); pointer-events: none; }
-  .lang-row { position: relative; display: flex; justify-content: flex-end; margin-bottom: 14px; }
-  .lang-toggle { display: inline-flex; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; padding: 3px; gap: 2px; }
-  .lang-btn { font-family: 'DM Sans',sans-serif; font-size: 12.5px; font-weight: 700; padding: 6px 15px; border: none; border-radius: 999px; cursor: pointer; background: transparent; color: #fff3e6; }
-  .lang-btn.ar { font-family: 'Cairo',sans-serif; font-size: 13px; }
-  .lang-btn.active { background: rgba(255,255,255,0.92); color: #c1503a; }
-  .brand-head { position: relative; display: flex; align-items: center; gap: 16px; }
-  .brand-logo { flex: none; width: 62px; height: 62px; border-radius: 18px; background: rgba(255,255,255,0.92); display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px -8px rgba(80,30,10,0.5); }
-  .brand-logo svg { width: 36px; height: 36px; color: #c1503a; }
-  .brand-text { display: flex; flex-direction: column; gap: 4px; }
-  .pill { align-self: flex-start; font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #fff3e6; background: rgba(255,255,255,0.18); padding: 3px 10px; border-radius: 999px; }
-  .brand-text h1 { margin: 0; font-family: 'Fraunces',serif; font-size: 26px; font-weight: 600; color: #fffaf3; letter-spacing: -0.01em; }
-  .tag { position: relative; margin: 14px 0 0; font-size: 14px; color: #ffe9d4; font-weight: 400; line-height: 1.5; }
-  .body { padding: 28px 38px 34px; }
-  form { display: flex; flex-direction: column; gap: 13px; }
-  .field { position: relative; display: block; }
-  .field .icon { position: absolute; inset-inline-start: 16px; top: 50%; transform: translateY(-50%); color: #b89a7a; display: flex; pointer-events: none; }
-  .input { width: 100%; height: 54px; padding-block: 0; padding-inline-start: 46px; padding-inline-end: 16px; font-family: inherit; font-size: 16px; font-weight: 600; letter-spacing: 0.06em; color: #3a2c1e; background: #f8f1e7; border: 1.5px solid #ece2d2; border-radius: 14px; outline: none; }
-  .input::placeholder { font-weight: 500; letter-spacing: 0; color: #b89a7a; }
-  .input:focus { border-color: #c1503a; background: #fffdf9; box-shadow: 0 0 0 4px rgba(193,80,58,0.12); }
-  .btn { margin-top: 6px; height: 54px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: inherit; font-size: 15.5px; font-weight: 700; color: #fffaf3; background: linear-gradient(150deg,#c1503a,#e08a3c); border: none; border-radius: 14px; cursor: pointer; box-shadow: 0 14px 26px -12px rgba(193,80,58,0.65); }
-  .btn-label { white-space: nowrap; }
-  .footer-info { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 24px; padding-top: 22px; border-top: 1px solid #f1e8d9; }
-  .footer-info .chip { display: flex; align-items: center; gap: 7px; color: #a08763; font-size: 12.5px; font-weight: 600; }
-  .dot { width: 4px; height: 4px; border-radius: 50%; background: #dccab0; }
-  .foot { text-align: center; margin: 22px 0 0; font-size: 12.5px; color: #a08763; font-weight: 500; }
-  .foot b { font-weight: 700; color: #7d5a3a; }
+  body { margin: 0; width: 500px; height: 920px; overflow: hidden; background: #faf7f2; color: #241f1a; font-family: 'Cairo', system-ui, sans-serif; }
+  .wrap { width: 100%; max-width: 430px; margin: 0 auto; padding: 190px 30px 0; }
+
+  .card { background: #ffffff; border: 1px solid #eee7db; border-radius: 18px; overflow: hidden; box-shadow: 0 18px 40px -24px rgba(36,31,26,0.30); }
+
+  .band { background: #c2410c; padding: 20px 24px 26px; }
+  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+  .lang-toggle { display: inline-flex; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; padding: 3px; }
+  .lang-btn { min-height: 42px; min-width: 52px; padding: 0 16px; font-family: inherit; font-size: 14px; font-weight: 700; border: none; border-radius: 999px; background: transparent; color: #ffffff; }
+  .lang-btn.active { background: #ffffff; color: #c2410c; }
+  .mark { display: block; width: 28px; height: 28px; color: #ffffff; margin: 0 0 10px; }
+  .eyebrow { margin: 0 0 4px; font-size: 16px; font-weight: 700; color: rgba(255,255,255,0.85); }
+  h1 { margin: 0; font-family: 'Cairo', system-ui, sans-serif; font-size: 32px; line-height: 1.3; font-weight: 800; color: #ffffff; word-wrap: break-word; }
+
+  .strip { height: 6px; background: repeating-linear-gradient(45deg, rgba(255,255,255,0.9) 0, rgba(255,255,255,0.9) 6px, transparent 6px, transparent 12px), #c2410c; }
+
+  .card-body { padding: 26px 24px 28px; }
+  .code-label { display: block; font-size: 15px; font-weight: 700; color: #6b6257; margin-bottom: 9px; }
+  .input { display: flex; align-items: center; width: 100%; height: 58px; padding: 0 16px; font-family: 'DM Sans', 'Cairo', sans-serif; font-size: 18px; font-weight: 600; letter-spacing: 0.04em; color: #241f1a; background: #ffffff; border: 1.5px solid #c2410c; border-radius: 12px; box-shadow: 0 0 0 4px rgba(194,65,12,0.16); direction: ltr; }
+  .caret { display: inline-block; width: 2px; height: 24px; background: #c2410c; margin-left: 2px; }
+
+  .btn { margin-top: 18px; height: 58px; width: 100%; display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: 18px; font-weight: 700; color: #ffffff; background: #c2410c; border: none; border-radius: 12px; box-shadow: 0 12px 22px -12px rgba(194,65,12,0.55); }
+
+  .foot { display: flex; align-items: center; justify-content: center; margin: 22px 0 0; font-size: 14px; font-weight: 600; color: #6b6257; }
+  .foot svg { width: 15px; height: 15px; color: #c2410c; margin-left: 6px; }
 </style>
 </head>
 <body>
-  <div class="blob-a"></div>
-  <div class="blob-b"></div>
   <div class="wrap">
     <div class="card">
-      <div class="hero">
-        <div class="hero-c1"></div>
-        <div class="hero-c2"></div>
+      <div class="band">
         <div class="lang-row">
           <div class="lang-toggle">
-            <button type="button" class="lang-btn active">EN</button>
-            <button type="button" class="lang-btn ar">عربي</button>
+            <button type="button" class="lang-btn active">عربي</button>
+            <button type="button" class="lang-btn">EN</button>
           </div>
         </div>
-        <div class="brand-head">
-          <div class="brand-logo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
-          </div>
-          <div class="brand-text">
-            <span class="pill">Wasel</span>
-            <h1>Riverside Café</h1>
-          </div>
-        </div>
-        <p class="tag">Complimentary Wi-Fi for our guests</p>
+        <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+        <p class="eyebrow">أهلاً بك في</p>
+        <h1>مطعم النيل الأزرق</h1>
       </div>
-      <div class="body">
-        <form onsubmit="return false">
-          <label class="field">
-            <span class="icon">
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H4v4"></path><path d="M2 7h20v3a2 2 0 0 0 0 4v3H2v-3a2 2 0 0 0 0-4z"></path><path d="M12 5v14" stroke-dasharray="2 3"></path></svg>
-            </span>
-            <input class="input" type="text" value="48291023" placeholder="Enter access code">
-          </label>
-          <button class="btn" type="submit"><span class="btn-label">Connect to Wi-Fi</span></button>
-        </form>
-        <div class="footer-info">
-          <div class="chip">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5a9e4b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-            <span>Secured</span>
-          </div>
-          <span class="dot"></span>
-          <div class="chip">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c1503a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polyline></svg>
-            <span>High speed</span>
-          </div>
-        </div>
+      <div class="strip"></div>
+      <div class="card-body">
+        <span class="code-label">رمز الدخول</span>
+        <div class="input"><span>Xk4p7Rm2</span><span class="caret"></span></div>
+        <div class="btn">الاتصال بالإنترنت</div>
       </div>
     </div>
-    <p class="foot">Connected via <b>Riverside Café</b> · Need help? Ask our staff</p>
+
+    <p class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span>مشغَّلة عبر منصة واصل</span></p>
   </div>
 </body>
 </html>

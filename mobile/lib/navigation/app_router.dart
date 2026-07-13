@@ -184,8 +184,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/routers/hotspot-template',
         parentNavigatorKey: appNavigatorKey,
         builder: (context, state) {
-          final routerId = state.extra as String? ?? '';
-          return HotspotTemplateScreen(routerId: routerId);
+          final extra = state.extra;
+          if (extra is Map<String, dynamic>) {
+            return HotspotTemplateScreen(
+              routerId: extra['id'] as String? ?? '',
+              routerName: extra['name'] as String? ?? '',
+              currentAccent: extra['currentAccent'] as String?,
+            );
+          }
+          // Backward-compat: older callers that pass a plain String routerId.
+          return HotspotTemplateScreen(routerId: extra as String? ?? '');
         },
       ),
       // Voucher routes

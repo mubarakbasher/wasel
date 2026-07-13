@@ -1,105 +1,132 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wi-Fi Status</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
 <meta http-equiv="refresh" content="60">
+<title>حالة الاتصال</title>
 <style>
-  @font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('plus-jakarta-sans.woff2') format('woff2'); }
   @font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('cairo.woff2') format('woff2'); }
+  @font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('plus-jakarta-sans.woff2') format('woff2'); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  @keyframes floatGlow { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-18px); } }
-  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Plus Jakarta Sans','Cairo',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background: #eceef4; overflow: hidden; }
-  .glow-a { position: absolute; top: -220px; left: 50%; width: 760px; height: 760px; transform: translateX(-50%); background: radial-gradient(circle at center, rgba(99,102,241,0.28), rgba(99,102,241,0) 62%); animation: floatGlow 9s ease-in-out infinite; pointer-events: none; }
-  .glow-b { position: absolute; bottom: -260px; right: -120px; width: 560px; height: 560px; background: radial-gradient(circle at center, rgba(168,148,255,0.22), rgba(168,148,255,0) 64%); pointer-events: none; }
-  .wrap { position: relative; width: 100%; max-width: 430px; }
-  .card { background: #ffffff; border: 1px solid #e7e9f1; border-radius: 28px; padding: 36px 40px 40px; box-shadow: 0 30px 70px -30px rgba(40,42,80,0.35), 0 2px 8px rgba(40,42,80,0.04); }
-  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
-  .lang-toggle { display: inline-flex; background: #f1f2f8; border: 1px solid #e7e9f1; border-radius: 999px; padding: 3px; gap: 2px; }
-  .lang-btn { font-family: 'Plus Jakarta Sans',sans-serif; font-size: 12.5px; font-weight: 700; padding: 7px 16px; border: none; border-radius: 999px; cursor: pointer; transition: all .15s; background: transparent; color: #8b8fa3; }
-  .lang-btn.ar { font-family: 'Cairo',sans-serif; font-size: 13px; }
-  .lang-btn.active { background: #ffffff; color: #4f46e5; box-shadow: 0 1px 3px rgba(40,42,80,0.12); }
-  .stack { display: flex; flex-direction: column; gap: 16px; }
-  .banner { display: flex; align-items: center; gap: 12px; background: #ecfdf3; border: 1px solid #c6f0d4; border-radius: 16px; padding: 14px 16px; }
-  .banner .tick { flex: none; width: 38px; height: 38px; border-radius: 50%; background: #22c55e; display: flex; align-items: center; justify-content: center; }
-  .banner .t1 { font-size: 15px; font-weight: 700; color: #15803d; }
-  .banner .t2 { font-size: 12.5px; font-weight: 500; color: #3f9e63; }
-  .hero { background: linear-gradient(150deg,#4f46e5,#6d63f0); border-radius: 18px; padding: 18px 20px; color: #ffffff; box-shadow: 0 16px 30px -16px rgba(79,70,229,0.7); }
-  .hero .lbl { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.85; }
-  .hero .big { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin-top: 6px; }
-  .rows { display: flex; flex-direction: column; border: 1px solid #eef0f5; border-radius: 16px; overflow: hidden; }
-  .row { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #f1f2f8; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: #f6f5f1; color: #20242f; font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif; }
+  html[lang="en"] body { font-family: 'Plus Jakarta Sans', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  .page { display: flex; min-height: 100vh; min-height: 100dvh; }
+  .wrap { margin: auto; width: 100%; max-width: 400px; padding: 24px 20px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+
+  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .lang-toggle { display: inline-flex; background: #edece6; border: 1px solid #e4e2da; border-radius: 999px; padding: 3px; }
+  .lang-btn { min-height: 44px; min-width: 52px; padding: 0 16px; font-family: inherit; font-size: 14px; font-weight: 700; border: none; border-radius: 999px; cursor: pointer; background: transparent; color: #5c6170; }
+  .lang-btn.active { background: #ffffff; color: #20242f; box-shadow: 0 1px 3px rgba(32,36,47,0.14); }
+
+  .banner { display: flex; align-items: center; margin: 8px 0 20px; }
+  .tick { flex: none; width: 46px; height: 46px; border-radius: 50%; background: rgba(%WASEL_ACCENT_RGB%,0.12); border: 1px solid rgba(%WASEL_ACCENT_RGB%,0.3); display: flex; align-items: center; justify-content: center; }
+  .tick svg { width: 24px; height: 24px; color: %WASEL_ACCENT%; }
+  .banner-text { padding: 0 12px 0 0; }
+  [dir="ltr"] .banner-text { padding: 0 0 0 12px; }
+  .banner .t1 { margin: 0; font-size: 19px; font-weight: 800; color: #20242f; }
+  .banner .t2 { margin: 0; font-size: 13.5px; font-weight: 600; color: #5c6170; word-wrap: break-word; overflow-wrap: break-word; }
+
+  .ticket { position: relative; background: #ffffff; border: 1px solid #e4e2da; border-radius: 18px; box-shadow: 0 18px 40px -24px rgba(32,36,47,0.28); }
+  .t-top { padding: 22px 22px 18px; }
+  .t-bot { padding: 16px 22px 20px; }
+  .perf { position: relative; height: 0; border-top: 2px dashed #ddd9cf; }
+  .perf i { position: absolute; top: -10px; width: 20px; height: 20px; background: #f6f5f1; border: 1px solid #e4e2da; border-radius: 50%; }
+  .perf i.l { left: -11px; }
+  .perf i.r { right: -11px; }
+
+  .time-lbl { margin: 0 0 4px; font-size: 13px; font-weight: 700; color: #5c6170; }
+  .time-big { margin: 0 0 16px; font-family: 'Plus Jakarta Sans', 'Cairo', sans-serif; font-size: 34px; line-height: 1.1; font-weight: 800; color: %WASEL_ACCENT%; direction: ltr; unicode-bidi: embed; text-align: right; }
+  [dir="ltr"] .time-big { text-align: left; }
+
+  .rows { border: 1px solid #eeece5; border-radius: 12px; overflow: hidden; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-bottom: 1px solid #f1efe9; }
   .row:last-child { border-bottom: none; }
-  .row .k { font-size: 13px; font-weight: 500; color: #8b8fa3; }
-  .row .v { font-size: 13.5px; font-weight: 700; color: #1a1c2e; letter-spacing: 0.04em; white-space: nowrap; }
-  .logout-btn { height: 52px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; font-family: inherit; font-size: 15px; font-weight: 700; color: #c0362c; background: #fff1f1; border: 1.5px solid #fbd5d2; border-radius: 14px; cursor: pointer; transition: background .15s; }
-  .logout-btn:hover { background: #ffe4e2; }
+  .row .k { font-size: 13.5px; font-weight: 600; color: #5c6170; }
+  .row .v { font-family: 'Plus Jakarta Sans', 'Cairo', sans-serif; font-size: 14px; font-weight: 700; color: #20242f; direction: ltr; unicode-bidi: embed; white-space: nowrap; }
+
+  .logout-btn { height: 52px; width: 100%; display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: 15.5px; font-weight: 700; color: #b3261e; background: #fdeeed; border: 1.5px solid #f3cfcb; border-radius: 12px; cursor: pointer; }
+  .logout-btn:focus { outline: 3px solid rgba(179,38,30,0.35); outline-offset: 2px; }
   form { margin: 0; }
+
+  .foot { display: flex; align-items: center; justify-content: center; margin: 20px 0 0; font-size: 13px; font-weight: 600; color: #5c6170; }
+  .foot svg { width: 14px; height: 14px; color: %WASEL_ACCENT%; margin: 0 0 0 6px; }
+  [dir="ltr"] .foot svg { margin: 0 6px 0 0; }
 </style>
 </head>
 <body>
-  <div class="glow-a"></div>
-  <div class="glow-b"></div>
-  <div class="wrap">
-    <div class="card">
+  <div class="page">
+    <div class="wrap">
       <div class="lang-row">
         <div class="lang-toggle">
-          <button type="button" id="btn-en" class="lang-btn active" onclick="setLang('en')">EN</button>
-          <button type="button" id="btn-ar" class="lang-btn ar" onclick="setLang('ar')">عربي</button>
+          <button type="button" id="btn-ar" class="lang-btn active" onclick="setLang('ar')">عربي</button>
+          <button type="button" id="btn-en" class="lang-btn" onclick="setLang('en')">EN</button>
         </div>
       </div>
-      <div class="stack">
-        <div class="banner">
-          <span class="tick">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          </span>
-          <div>
-            <div class="t1" data-i18n="connTitle">You're connected</div>
-            <div class="t2" data-i18n="connSub">Enjoy your session</div>
-          </div>
-        </div>
 
-        <div class="hero">
-          <div class="lbl">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            <span data-i18n="lblTimeLeft">Time remaining</span>
-          </div>
-          <div class="big">$(session-time-left)</div>
+      <div class="banner">
+        <span class="tick">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        </span>
+        <div class="banner-text">
+          <p class="t1" data-i18n="connTitle">أنت متصل الآن</p>
+          <p class="t2"><span data-i18n="connVia">عبر شبكة</span> %WASEL_NAME%</p>
         </div>
-
-        <div class="rows">
-          <div class="row"><span class="k" data-i18n="lblVoucher">Voucher</span><span class="v">$(username)</span></div>
-          <div class="row"><span class="k" data-i18n="lblUptime">Uptime</span><span class="v">$(uptime)</span></div>
-          <div class="row"><span class="k" data-i18n="lblDown">Downloaded</span><span class="v">$(bytes-in-nice)</span></div>
-          <div class="row"><span class="k" data-i18n="lblUp">Uploaded</span><span class="v">$(bytes-out-nice)</span></div>
-        </div>
-
-        <form action="$(link-logout)" method="post">
-          <button class="logout-btn" type="submit">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-            <span data-i18n="disconnect">Disconnect</span>
-          </button>
-        </form>
       </div>
+
+      <div class="ticket">
+        <div class="t-top">
+          <p class="time-lbl" data-i18n="lblTimeLeft">الوقت المتبقي</p>
+          <p class="time-big">$(session-time-left)</p>
+          <div class="rows">
+            <div class="row"><span class="k" data-i18n="lblVoucher">الرمز</span><span class="v">$(username)</span></div>
+            <div class="row"><span class="k" data-i18n="lblUptime">مدة الاتصال</span><span class="v">$(uptime)</span></div>
+            <div class="row"><span class="k" data-i18n="lblDown">التنزيل</span><span class="v">$(bytes-in-nice)</span></div>
+            <div class="row"><span class="k" data-i18n="lblUp">الرفع</span><span class="v">$(bytes-out-nice)</span></div>
+          </div>
+        </div>
+        <div class="perf"><i class="l"></i><i class="r"></i></div>
+        <div class="t-bot">
+          <form action="$(link-logout)" method="post">
+            <button class="logout-btn" type="submit" data-i18n="disconnect">قطع الاتصال</button>
+          </form>
+        </div>
+      </div>
+
+      <p class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span data-i18n="poweredBy">مشغَّلة عبر منصة واصل</span></p>
     </div>
   </div>
+
 <script type="text/javascript">
 var I18N = {
-  en: { connTitle: "You're connected", connSub: "Enjoy your session", lblTimeLeft: "Time remaining", lblVoucher: "Voucher", lblUptime: "Uptime", lblDown: "Downloaded", lblUp: "Uploaded", disconnect: "Disconnect" },
-  ar: { connTitle: "أنت متصل الآن", connSub: "استمتع بجلستك", lblTimeLeft: "الوقت المتبقي", lblVoucher: "الرمز", lblUptime: "مدة الاتصال", lblDown: "تم التنزيل", lblUp: "تم الرفع", disconnect: "قطع الاتصال" }
+  ar: { connTitle: "أنت متصل الآن", connVia: "عبر شبكة", lblTimeLeft: "الوقت المتبقي", lblVoucher: "الرمز", lblUptime: "مدة الاتصال", lblDown: "التنزيل", lblUp: "الرفع", disconnect: "قطع الاتصال", poweredBy: "مشغَّلة عبر منصة واصل" },
+  en: { connTitle: "You're connected", connVia: "via", lblTimeLeft: "Time remaining", lblVoucher: "Code", lblUptime: "Uptime", lblDown: "Downloaded", lblUp: "Uploaded", disconnect: "Disconnect", poweredBy: "Powered by Wasel" }
 };
-function setLang(lang) {
-  var t = I18N[lang] || I18N.en;
-  document.documentElement.lang = (lang === 'ar') ? 'ar' : 'en';
+function getLang() {
+  try { var v = localStorage.getItem('waselLang'); if (v === 'en' || v === 'ar') { return v; } } catch (e) {}
+  return 'ar';
+}
+function applyLang(lang) {
+  var t = I18N[lang] || I18N.ar;
+  document.documentElement.lang = lang;
   document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
   var nodes = document.querySelectorAll('[data-i18n]');
-  for (var i = 0; i < nodes.length; i++) { var k = nodes[i].getAttribute('data-i18n'); if (t[k] != null) nodes[i].textContent = t[k]; }
-  document.getElementById('btn-en').classList.toggle('active', lang !== 'ar');
-  document.getElementById('btn-ar').classList.toggle('active', lang === 'ar');
+  for (var i = 0; i < nodes.length; i++) {
+    var k = nodes[i].getAttribute('data-i18n');
+    if (t[k] != null) { nodes[i].textContent = t[k]; }
+  }
+  var ab = document.getElementById('btn-ar');
+  var eb = document.getElementById('btn-en');
+  if (ab) { ab.className = 'lang-btn' + (lang === 'ar' ? ' active' : ''); }
+  if (eb) { eb.className = 'lang-btn' + (lang === 'en' ? ' active' : ''); }
 }
-setLang('en');
+function setLang(lang) {
+  try { localStorage.setItem('waselLang', lang); } catch (e) {}
+  applyLang(lang);
+}
+applyLang(getLang());
 </script>
 </body>
 </html>

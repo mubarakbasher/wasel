@@ -12,6 +12,7 @@ RouterModel _makeRouter({
   String? templateId,
   String? templateStatus,
   String? templateError,
+  String? accentColor,
 }) {
   return RouterModel(
     id: id,
@@ -23,6 +24,7 @@ RouterModel _makeRouter({
     hotspotTemplateId: templateId,
     hotspotTemplateStatus: templateStatus,
     hotspotTemplateError: templateError,
+    hotspotAccentColor: accentColor,
   );
 }
 
@@ -103,6 +105,27 @@ void main() {
       expect(newState.routers[0].hotspotTemplateId, 'clean');
       // r-2 stays untouched
       expect(newState.routers[1].hotspotTemplateId, isNull);
+    });
+  });
+
+  group('RouterModel hotspotAccentColor field', () {
+    test('fromJson reads hotspotAccentColor', () {
+      final json = {
+        'id': 'r-1',
+        'userId': 'u-1',
+        'name': 'Test',
+        'status': 'online',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'updatedAt': '2026-01-01T00:00:00.000Z',
+        'hotspotAccentColor': '#4f46e5',
+      };
+      final router = RouterModel.fromJson(json);
+      expect(router.hotspotAccentColor, '#4f46e5');
+    });
+
+    test('_makeRouter helper propagates accentColor', () {
+      final router = _makeRouter(accentColor: '#be123c');
+      expect(router.hotspotAccentColor, '#be123c');
     });
   });
 

@@ -1,106 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wi-Fi Status</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
 <meta http-equiv="refresh" content="60">
+<title>حالة الاتصال</title>
 <style>
-  @font-face { font-family: 'DM Sans'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('dm-sans.woff2') format('woff2'); }
-  @font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 500 700; font-display: swap; src: url('fraunces.woff2') format('woff2'); }
   @font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('cairo.woff2') format('woff2'); }
+  @font-face { font-family: 'DM Sans'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('dm-sans.woff2') format('woff2'); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  @keyframes blob { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20px,-16px) scale(1.08); } }
-  body { position: relative; min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'DM Sans','Cairo',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background: #f4ede2; overflow: hidden; }
-  .blob-a { position: absolute; top: -140px; inset-inline-start: -100px; width: 440px; height: 440px; background: radial-gradient(circle at center, rgba(232,160,92,0.35), rgba(232,160,92,0) 66%); animation: blob 10s ease-in-out infinite; pointer-events: none; }
-  .blob-b { position: absolute; bottom: -180px; inset-inline-end: -120px; width: 480px; height: 480px; background: radial-gradient(circle at center, rgba(193,108,74,0.28), rgba(193,108,74,0) 66%); pointer-events: none; }
-  .wrap { position: relative; width: 100%; max-width: 430px; }
-  .card { background: #fffdf9; border: 1px solid #ece2d2; border-radius: 28px; padding: 30px 38px 34px; box-shadow: 0 30px 70px -32px rgba(120,80,40,0.4), 0 2px 8px rgba(120,80,40,0.05); }
-  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 16px; }
-  .lang-toggle { display: inline-flex; background: #f3ecdf; border: 1px solid #ece2d2; border-radius: 999px; padding: 3px; gap: 2px; }
-  .lang-btn { font-family: 'DM Sans',sans-serif; font-size: 12.5px; font-weight: 700; padding: 6px 15px; border: none; border-radius: 999px; cursor: pointer; transition: all .15s; background: transparent; color: #a08763; }
-  .lang-btn.ar { font-family: 'Cairo',sans-serif; font-size: 13px; }
-  .lang-btn.active { background: #c1503a; color: #fffaf3; }
-  .stack { display: flex; flex-direction: column; gap: 15px; }
-  .banner { display: flex; align-items: center; gap: 12px; background: #eef7ec; border: 1px solid #cce6c6; border-radius: 16px; padding: 14px 16px; }
-  .banner .tick { flex: none; width: 38px; height: 38px; border-radius: 50%; background: #5a9e4b; display: flex; align-items: center; justify-content: center; }
-  .banner .t1 { font-size: 15px; font-weight: 700; color: #3e7a32; }
-  .banner .t2 { font-size: 12.5px; font-weight: 500; color: #5e9150; }
-  .hero { background: linear-gradient(150deg,#c1503a,#e08a3c); border-radius: 18px; padding: 18px 20px; color: #fffaf3; box-shadow: 0 16px 30px -16px rgba(193,80,58,0.6); }
-  .hero .lbl { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #ffe9d4; }
-  .hero .big { font-family: 'Fraunces',serif; font-size: 32px; font-weight: 600; letter-spacing: -0.01em; margin-top: 6px; }
-  .rows { display: flex; flex-direction: column; border: 1px solid #ece2d2; border-radius: 16px; overflow: hidden; }
-  .row { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #f3ecdf; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: #faf7f2; color: #241f1a; font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif; }
+  html[lang="en"] body { font-family: 'DM Sans', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  .page { display: flex; min-height: 100vh; min-height: 100dvh; }
+  .wrap { margin: auto; width: 100%; max-width: 400px; padding: 24px 20px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+
+  .card { background: #ffffff; border: 1px solid #eee7db; border-radius: 18px; overflow: hidden; box-shadow: 0 18px 40px -24px rgba(36,31,26,0.30); }
+
+  .band { background: %WASEL_ACCENT%; padding: 16px 20px 20px; }
+  .lang-row { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+  .lang-toggle { display: inline-flex; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; padding: 3px; }
+  .lang-btn { min-height: 44px; min-width: 52px; padding: 0 16px; font-family: inherit; font-size: 14px; font-weight: 700; border: none; border-radius: 999px; cursor: pointer; background: transparent; color: #ffffff; }
+  .lang-btn.active { background: #ffffff; color: %WASEL_ACCENT%; }
+
+  .banner { display: flex; align-items: center; }
+  .tick { flex: none; width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.35); display: flex; align-items: center; justify-content: center; }
+  .tick svg { width: 24px; height: 24px; color: #ffffff; }
+  .banner-text { padding: 0 12px 0 0; }
+  [dir="ltr"] .banner-text { padding: 0 0 0 12px; }
+  .banner .t1 { margin: 0; font-size: 19px; font-weight: 800; color: #ffffff; }
+  .banner .t2 { margin: 0; font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif; font-size: 13.5px; font-weight: 700; color: #ffffff; word-wrap: break-word; overflow-wrap: break-word; }
+
+  .strip { height: 6px; background: repeating-linear-gradient(45deg, rgba(255,255,255,0.9) 0, rgba(255,255,255,0.9) 6px, transparent 6px, transparent 12px), %WASEL_ACCENT%; }
+
+  .card-body { padding: 20px 20px 22px; }
+
+  .time-lbl { margin: 0 0 4px; font-size: 13px; font-weight: 700; color: #6b6257; }
+  .time-big { margin: 0 0 16px; font-family: 'DM Sans', 'Cairo', sans-serif; font-size: 34px; line-height: 1.1; font-weight: 800; color: #241f1a; direction: ltr; unicode-bidi: embed; text-align: right; }
+  [dir="ltr"] .time-big { text-align: left; }
+
+  .rows { border: 1px solid #eee7db; border-radius: 12px; overflow: hidden; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-bottom: 1px solid #f2ede4; }
   .row:last-child { border-bottom: none; }
-  .row .k { font-size: 13px; font-weight: 500; color: #a08763; }
-  .row .v { font-size: 13.5px; font-weight: 700; color: #3a2c1e; letter-spacing: 0.04em; white-space: nowrap; }
-  .logout-btn { height: 52px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px; font-family: inherit; font-size: 15px; font-weight: 700; color: #b23b2c; background: #fdeceb; border: 1.5px solid #f5cdc8; border-radius: 14px; cursor: pointer; transition: background .15s; }
-  .logout-btn:hover { background: #fbdedb; }
+  .row .k { font-size: 13.5px; font-weight: 600; color: #6b6257; }
+  .row .v { font-family: 'DM Sans', 'Cairo', sans-serif; font-size: 14px; font-weight: 700; color: #241f1a; direction: ltr; unicode-bidi: embed; white-space: nowrap; }
+
+  .logout-btn { margin-top: 16px; height: 52px; width: 100%; display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: 15.5px; font-weight: 700; color: #b3261e; background: #fdeeed; border: 1.5px solid #f3cfcb; border-radius: 12px; cursor: pointer; }
+  .logout-btn:focus { outline: 3px solid rgba(179,38,30,0.35); outline-offset: 2px; }
   form { margin: 0; }
+
+  .foot { display: flex; align-items: center; justify-content: center; margin: 20px 0 0; font-size: 13px; font-weight: 600; color: #6b6257; }
+  .foot svg { width: 14px; height: 14px; color: %WASEL_ACCENT%; margin: 0 0 0 6px; }
+  [dir="ltr"] .foot svg { margin: 0 6px 0 0; }
 </style>
 </head>
 <body>
-  <div class="blob-a"></div>
-  <div class="blob-b"></div>
-  <div class="wrap">
-    <div class="card">
-      <div class="lang-row">
-        <div class="lang-toggle">
-          <button type="button" id="btn-en" class="lang-btn active" onclick="setLang('en')">EN</button>
-          <button type="button" id="btn-ar" class="lang-btn ar" onclick="setLang('ar')">عربي</button>
-        </div>
-      </div>
-      <div class="stack">
-        <div class="banner">
-          <span class="tick">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          </span>
-          <div>
-            <div class="t1" data-i18n="connTitle">You're connected</div>
-            <div class="t2" data-i18n="connSub">Enjoy your session</div>
+  <div class="page">
+    <div class="wrap">
+      <div class="card">
+        <div class="band">
+          <div class="lang-row">
+            <div class="lang-toggle">
+              <button type="button" id="btn-ar" class="lang-btn active" onclick="setLang('ar')">عربي</button>
+              <button type="button" id="btn-en" class="lang-btn" onclick="setLang('en')">EN</button>
+            </div>
+          </div>
+          <div class="banner">
+            <span class="tick">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </span>
+            <div class="banner-text">
+              <p class="t1" data-i18n="connTitle">أنت متصل الآن</p>
+              <p class="t2"><span data-i18n="connVia">عبر شبكة</span> %WASEL_NAME%</p>
+            </div>
           </div>
         </div>
-
-        <div class="hero">
-          <div class="lbl">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fffaf3" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            <span data-i18n="lblTimeLeft">Time remaining</span>
+        <div class="strip"></div>
+        <div class="card-body">
+          <p class="time-lbl" data-i18n="lblTimeLeft">الوقت المتبقي</p>
+          <p class="time-big">$(session-time-left)</p>
+          <div class="rows">
+            <div class="row"><span class="k" data-i18n="lblVoucher">الرمز</span><span class="v">$(username)</span></div>
+            <div class="row"><span class="k" data-i18n="lblUptime">مدة الاتصال</span><span class="v">$(uptime)</span></div>
+            <div class="row"><span class="k" data-i18n="lblDown">التنزيل</span><span class="v">$(bytes-in-nice)</span></div>
+            <div class="row"><span class="k" data-i18n="lblUp">الرفع</span><span class="v">$(bytes-out-nice)</span></div>
           </div>
-          <div class="big">$(session-time-left)</div>
+          <form action="$(link-logout)" method="post">
+            <button class="logout-btn" type="submit" data-i18n="disconnect">قطع الاتصال</button>
+          </form>
         </div>
-
-        <div class="rows">
-          <div class="row"><span class="k" data-i18n="lblVoucher">Voucher</span><span class="v">$(username)</span></div>
-          <div class="row"><span class="k" data-i18n="lblUptime">Uptime</span><span class="v">$(uptime)</span></div>
-          <div class="row"><span class="k" data-i18n="lblDown">Downloaded</span><span class="v">$(bytes-in-nice)</span></div>
-          <div class="row"><span class="k" data-i18n="lblUp">Uploaded</span><span class="v">$(bytes-out-nice)</span></div>
-        </div>
-
-        <form action="$(link-logout)" method="post">
-          <button class="logout-btn" type="submit">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-            <span data-i18n="disconnect">Disconnect</span>
-          </button>
-        </form>
       </div>
+
+      <p class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span data-i18n="poweredBy">مشغَّلة عبر منصة واصل</span></p>
     </div>
   </div>
+
 <script type="text/javascript">
 var I18N = {
-  en: { connTitle: "You're connected", connSub: "Enjoy your session", lblTimeLeft: "Time remaining", lblVoucher: "Voucher", lblUptime: "Uptime", lblDown: "Downloaded", lblUp: "Uploaded", disconnect: "Disconnect" },
-  ar: { connTitle: "أنت متصل الآن", connSub: "استمتع بجلستك", lblTimeLeft: "الوقت المتبقي", lblVoucher: "الرمز", lblUptime: "مدة الاتصال", lblDown: "تم التنزيل", lblUp: "تم الرفع", disconnect: "قطع الاتصال" }
+  ar: { connTitle: "أنت متصل الآن", connVia: "عبر شبكة", lblTimeLeft: "الوقت المتبقي", lblVoucher: "الرمز", lblUptime: "مدة الاتصال", lblDown: "التنزيل", lblUp: "الرفع", disconnect: "قطع الاتصال", poweredBy: "مشغَّلة عبر منصة واصل" },
+  en: { connTitle: "You're connected", connVia: "via", lblTimeLeft: "Time remaining", lblVoucher: "Code", lblUptime: "Uptime", lblDown: "Downloaded", lblUp: "Uploaded", disconnect: "Disconnect", poweredBy: "Powered by Wasel" }
 };
-function setLang(lang) {
-  var t = I18N[lang] || I18N.en;
-  document.documentElement.lang = (lang === 'ar') ? 'ar' : 'en';
+function getLang() {
+  try { var v = localStorage.getItem('waselLang'); if (v === 'en' || v === 'ar') { return v; } } catch (e) {}
+  return 'ar';
+}
+function applyLang(lang) {
+  var t = I18N[lang] || I18N.ar;
+  document.documentElement.lang = lang;
   document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
   var nodes = document.querySelectorAll('[data-i18n]');
-  for (var i = 0; i < nodes.length; i++) { var k = nodes[i].getAttribute('data-i18n'); if (t[k] != null) nodes[i].textContent = t[k]; }
-  document.getElementById('btn-en').classList.toggle('active', lang !== 'ar');
-  document.getElementById('btn-ar').classList.toggle('active', lang === 'ar');
+  for (var i = 0; i < nodes.length; i++) {
+    var k = nodes[i].getAttribute('data-i18n');
+    if (t[k] != null) { nodes[i].textContent = t[k]; }
+  }
+  var ab = document.getElementById('btn-ar');
+  var eb = document.getElementById('btn-en');
+  if (ab) { ab.className = 'lang-btn' + (lang === 'ar' ? ' active' : ''); }
+  if (eb) { eb.className = 'lang-btn' + (lang === 'en' ? ' active' : ''); }
 }
-setLang('en');
+function setLang(lang) {
+  try { localStorage.setItem('waselLang', lang); } catch (e) {}
+  applyLang(lang);
+}
+applyLang(getLang());
 </script>
 </body>
 </html>

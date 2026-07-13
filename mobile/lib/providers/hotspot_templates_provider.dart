@@ -52,15 +52,19 @@ class HotspotTemplateNotifier extends Notifier<HotspotApplyState> {
 
   Future<RouterModel?> applyTemplate(
     String routerId,
-    String templateId,
-  ) async {
+    String templateId, {
+    String? accentColor,
+  }) async {
     state = state.copyWith(
       status: HotspotApplyStatus.applying,
       clearError: true,
     );
     try {
-      final updated =
-          await RouterService().setHotspotTemplate(routerId, templateId);
+      final updated = await RouterService().setHotspotTemplate(
+        routerId,
+        templateId,
+        accentColor: accentColor,
+      );
 
       // Propagate the updated router into the shared routers provider so the
       // detail screen subtitle and any other consumer stays in sync without a

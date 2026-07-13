@@ -16,6 +16,7 @@ class RouterModel {
   final String? hotspotTemplateId;
   final String? hotspotTemplateStatus; // pending | applied | failed
   final String? hotspotTemplateError;
+  final String? hotspotAccentColor;
 
   const RouterModel({
     required this.id,
@@ -34,6 +35,7 @@ class RouterModel {
     this.hotspotTemplateId,
     this.hotspotTemplateStatus,
     this.hotspotTemplateError,
+    this.hotspotAccentColor,
   });
 
   bool get isOnline => status == 'online';
@@ -60,6 +62,48 @@ class RouterModel {
       hotspotTemplateId: json['hotspotTemplateId'] as String?,
       hotspotTemplateStatus: json['hotspotTemplateStatus'] as String?,
       hotspotTemplateError: json['hotspotTemplateError'] as String?,
+      hotspotAccentColor: json['hotspotAccentColor'] as String?,
+    );
+  }
+
+  RouterModel copyWith({
+    String? id,
+    String? userId,
+    String? name,
+    String? model,
+    String? rosVersion,
+    String? apiUser,
+    String? wgPublicKey,
+    String? tunnelIp,
+    String? nasIdentifier,
+    String? status,
+    DateTime? lastSeen,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? hotspotTemplateId,
+    String? hotspotTemplateStatus,
+    String? hotspotTemplateError,
+    String? hotspotAccentColor,
+  }) {
+    return RouterModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      name: name ?? this.name,
+      model: model ?? this.model,
+      rosVersion: rosVersion ?? this.rosVersion,
+      apiUser: apiUser ?? this.apiUser,
+      wgPublicKey: wgPublicKey ?? this.wgPublicKey,
+      tunnelIp: tunnelIp ?? this.tunnelIp,
+      nasIdentifier: nasIdentifier ?? this.nasIdentifier,
+      status: status ?? this.status,
+      lastSeen: lastSeen ?? this.lastSeen,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      hotspotTemplateId: hotspotTemplateId ?? this.hotspotTemplateId,
+      hotspotTemplateStatus:
+          hotspotTemplateStatus ?? this.hotspotTemplateStatus,
+      hotspotTemplateError: hotspotTemplateError ?? this.hotspotTemplateError,
+      hotspotAccentColor: hotspotAccentColor ?? this.hotspotAccentColor,
     );
   }
 
@@ -81,6 +125,7 @@ class RouterModel {
       'hotspotTemplateId': hotspotTemplateId,
       'hotspotTemplateStatus': hotspotTemplateStatus,
       'hotspotTemplateError': hotspotTemplateError,
+      'hotspotAccentColor': hotspotAccentColor,
     };
   }
 }

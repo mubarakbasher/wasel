@@ -1,23 +1,33 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Connecting…</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
 <meta http-equiv="refresh" content="2; url=$(link-redirect)">
 <meta http-equiv="pragma" content="no-cache">
 <meta http-equiv="expires" content="-1">
+<title>تم الاتصال</title>
 <style>
+  @font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('cairo.woff2') format('woff2'); }
   @font-face { font-family: 'Space Grotesk'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('space-grotesk.woff2') format('woff2'); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px; font-family: 'Space Grotesk',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background: #070912; }
-  .card { width: 100%; max-width: 430px; background: rgba(18,22,38,0.72); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); border: 1px solid rgba(120,140,220,0.18); border-radius: 26px; padding: 44px 40px; text-align: center; box-shadow: 0 40px 90px -30px rgba(0,0,0,0.8); }
-  .spinner { width: 44px; height: 44px; border: 4px solid rgba(120,140,220,0.2); border-top-color: #38bdf8; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 22px; }
-  h1 { margin: 0 0 8px; font-size: 21px; font-weight: 700; color: #f1f4ff; }
-  p { margin: 0; font-size: 14px; color: #8b93b5; font-weight: 400; }
-  a { color: #7dd3fc; font-weight: 600; text-decoration: none; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: #0f1420; color: #eef1f8; font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif; }
+  html[lang="en"] body { font-family: 'Space Grotesk', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  .bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+  .glow { position: absolute; top: 0; left: 0; right: 0; height: 60%; background: radial-gradient(circle at 50% 30%, rgba(%WASEL_ACCENT_RGB%,0.16), rgba(%WASEL_ACCENT_RGB%,0) 60%); }
+  .arcs { position: absolute; width: 520px; height: 520px; bottom: -190px; right: -170px; color: rgba(255,255,255,0.05); }
+  [dir="ltr"] .arcs { right: auto; left: -170px; }
+  .page { position: relative; z-index: 1; display: flex; min-height: 100vh; min-height: 100dvh; }
+  .wrap { margin: auto; width: 100%; max-width: 400px; padding: 24px 20px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .card { background: #1a2130; border: 1px solid #2a3347; border-radius: 18px; padding: 34px 24px; text-align: center; box-shadow: 0 24px 48px -28px rgba(0,0,0,0.65); }
+  .icon { width: 60px; height: 60px; border-radius: 50%; background: %WASEL_ACCENT%; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; box-shadow: 0 10px 24px -10px rgba(%WASEL_ACCENT_RGB%,0.7); }
+  .icon svg { width: 28px; height: 28px; color: #ffffff; }
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 800; color: #eef1f8; }
+  .sub { margin: 0 0 8px; font-size: 14.5px; font-weight: 600; color: #9aa3b8; word-wrap: break-word; overflow-wrap: break-word; }
+  p.go { margin: 0; font-size: 13.5px; font-weight: 600; color: #9aa3b8; line-height: 1.6; }
+  a { color: #eef1f8; font-weight: 700; text-decoration: underline; }
 </style>
 <script language="JavaScript">
 <!--
@@ -31,10 +41,43 @@ $(endif)
 </script>
 </head>
 <body onload="startRedirect()">
-  <div class="card">
-    <div class="spinner"></div>
-    <h1>You're connected</h1>
-    <p>Taking you online… If nothing happens, <a href="$(link-redirect)">tap here to continue</a>.</p>
+  <div class="bg" aria-hidden="true">
+    <div class="glow"></div>
+    <svg class="arcs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
   </div>
+  <div class="page">
+    <div class="wrap">
+      <div class="card">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        </div>
+        <h1 data-i18n="title">تم الاتصال بنجاح</h1>
+        <p class="sub"><span data-i18n="via">أنت الآن متصل بشبكة</span> %WASEL_NAME%</p>
+        <p class="go"><span data-i18n="taking">جارٍ نقلك إلى الإنترنت…</span> <a href="$(link-redirect)" data-i18n="tap">اضغط هنا إذا لم يحدث شيء</a></p>
+      </div>
+    </div>
+  </div>
+
+<script type="text/javascript">
+var I18N = {
+  ar: { title: "تم الاتصال بنجاح", via: "أنت الآن متصل بشبكة", taking: "جارٍ نقلك إلى الإنترنت…", tap: "اضغط هنا إذا لم يحدث شيء" },
+  en: { title: "You're connected", via: "You're now on", taking: "Taking you online…", tap: "Tap here if nothing happens" }
+};
+function getLang() {
+  try { var v = localStorage.getItem('waselLang'); if (v === 'en' || v === 'ar') { return v; } } catch (e) {}
+  return 'ar';
+}
+function applyLang(lang) {
+  var t = I18N[lang] || I18N.ar;
+  document.documentElement.lang = lang;
+  document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+  var nodes = document.querySelectorAll('[data-i18n]');
+  for (var i = 0; i < nodes.length; i++) {
+    var k = nodes[i].getAttribute('data-i18n');
+    if (t[k] != null) { nodes[i].textContent = t[k]; }
+  }
+}
+applyLang(getLang());
+</script>
 </body>
 </html>

@@ -805,6 +805,11 @@ class AppLocalizations {
     'routers.hotspotTemplate.status.pending': 'Applying...',
     'routers.hotspotTemplate.status.applied': 'Applied',
     'routers.hotspotTemplate.status.failed': 'Failed',
+    'routers.hotspotTemplate.accentColor': 'Accent color',
+    'routers.hotspotTemplate.guestsSee': 'Guests will see:',
+    'routers.hotspotTemplate.renameCaption':
+        'Renaming the router requires re-applying the design.',
+    'routers.hotspotTemplate.applyDesign': 'Apply design',
 
     // ── Common extra ─────────────────────────────────────────────────────────
     'common.notAvailable': 'N/A',
@@ -1554,6 +1559,11 @@ class AppLocalizations {
     'routers.hotspotTemplate.status.pending': 'جارٍ التطبيق...',
     'routers.hotspotTemplate.status.applied': 'تم التطبيق',
     'routers.hotspotTemplate.status.failed': 'فشل',
+    'routers.hotspotTemplate.accentColor': 'لون التمييز',
+    'routers.hotspotTemplate.guestsSee': 'سيرى الضيوف:',
+    'routers.hotspotTemplate.renameCaption':
+        'إعادة تسمية الراوتر تتطلب إعادة تطبيق التصميم.',
+    'routers.hotspotTemplate.applyDesign': 'تطبيق التصميم',
 
     // ── Common extra ─────────────────────────────────────────────────────────
     'common.notAvailable': 'غير متاح',

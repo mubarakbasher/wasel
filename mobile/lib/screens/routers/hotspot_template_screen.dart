@@ -12,8 +12,15 @@ import '../../widgets/widgets.dart';
 
 class HotspotTemplateScreen extends ConsumerWidget {
   final String routerId;
+  final String routerName;
+  final String? currentAccent;
 
-  const HotspotTemplateScreen({super.key, required this.routerId});
+  const HotspotTemplateScreen({
+    super.key,
+    required this.routerId,
+    this.routerName = '',
+    this.currentAccent,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -44,6 +51,8 @@ class HotspotTemplateScreen extends ConsumerWidget {
         ),
         data: (templates) => _TemplateList(
           routerId: routerId,
+          routerName: routerName,
+          currentAccent: currentAccent,
           templates: templates,
           selectedTemplateId: router?.hotspotTemplateId,
           applyState: applyState,
@@ -59,16 +68,29 @@ class HotspotTemplateScreen extends ConsumerWidget {
 
 class _TemplateList extends ConsumerWidget {
   final String routerId;
+  final String routerName;
+  final String? currentAccent;
   final List<HotspotTemplate> templates;
   final String? selectedTemplateId;
   final HotspotApplyState applyState;
 
   const _TemplateList({
     required this.routerId,
+    required this.routerName,
+    required this.currentAccent,
     required this.templates,
     required this.selectedTemplateId,
     required this.applyState,
   });
+
+  String _resolveInitialAccent(HotspotTemplate template) {
+    final current = currentAccent;
+    if (current != null &&
+        template.accentPresets.any((p) => p.hex == current)) {
+      return current;
+    }
+    return template.defaultAccent;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -95,12 +117,256 @@ class _TemplateList extends ConsumerWidget {
             isApplying: applyState.isApplying,
             onTap: applyState.isApplying
                 ? null
-                : () => ref
-                    .read(hotspotTemplateNotifierProvider.notifier)
-                    .applyTemplate(routerId, t.id),
+                : () => _showAccentPickerSheet(
+                      context,
+                      ref,
+                      template: t,
+                      initialAccent: _resolveInitialAccent(t),
+                    ),
           ),
         ),
       ],
+    );
+  }
+
+  void _showAccentPickerSheet(
+    BuildContext context,
+    WidgetRef ref, {
+    required HotspotTemplate template,
+    required String initialAccent,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppSpacing.radiusXl),
+        ),
+      ),
+      builder: (_) => _AccentPickerSheet(
+        template: template,
+        routerName: routerName,
+        initialAccent: initialAccent,
+        onApply: (hex) {
+          ref
+              .read(hotspotTemplateNotifierProvider.notifier)
+              .applyTemplate(routerId, template.id, accentColor: hex);
+        },
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Accent picker bottom sheet
+// ---------------------------------------------------------------------------
+
+class _AccentPickerSheet extends StatefulWidget {
+  final HotspotTemplate template;
+  final String routerName;
+  final String initialAccent;
+  final void Function(String accentColor) onApply;
+
+  const _AccentPickerSheet({
+    required this.template,
+    required this.routerName,
+    required this.initialAccent,
+    required this.onApply,
+  });
+
+  @override
+  State<_AccentPickerSheet> createState() => _AccentPickerSheetState();
+}
+
+class _AccentPickerSheetState extends State<_AccentPickerSheet> {
+  late String _selectedHex;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedHex = widget.initialAccent;
+  }
+
+  Color _parseHex(String hex) {
+    final value = int.parse(hex.replaceAll('#', ''), radix: 16);
+    return Color(0xFF000000 | value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final presets = widget.template.accentPresets;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.lg,
+          AppSpacing.xl,
+          AppSpacing.xl,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                ),
+              ),
+            ),
+            // Template name
+            Text(widget.template.name, style: AppTypography.title2),
+            const SizedBox(height: AppSpacing.sm),
+            // "Guests will see: <router name>"
+            if (widget.routerName.isNotEmpty) ...[
+              RichText(
+                text: TextSpan(
+                  style: AppTypography.subhead
+                      .copyWith(color: AppColors.textSecondary),
+                  children: [
+                    TextSpan(
+                        text:
+                            '${context.tr('routers.hotspotTemplate.guestsSee')} '),
+                    TextSpan(
+                      text: widget.routerName,
+                      style: AppTypography.subhead.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+            ],
+            // Rename caption
+            Text(
+              context.tr('routers.hotspotTemplate.renameCaption'),
+              style: AppTypography.caption1,
+            ),
+            if (presets.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                context.tr('routers.hotspotTemplate.accentColor'),
+                style: AppTypography.callout,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              _SwatchRow(
+                presets: presets,
+                selectedHex: _selectedHex,
+                parseHex: _parseHex,
+                onSelect: (hex) => setState(() => _selectedHex = hex),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.xl),
+            // Apply button
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onApply(_selectedHex);
+              },
+              child: Text(context.tr('routers.hotspotTemplate.applyDesign')),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            // Cancel button
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(context.tr('common.cancel')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Swatch row — extracted to keep _AccentPickerSheetState.build short
+// ---------------------------------------------------------------------------
+
+class _SwatchRow extends StatelessWidget {
+  final List<AccentPreset> presets;
+  final String selectedHex;
+  final Color Function(String) parseHex;
+  final void Function(String) onSelect;
+
+  const _SwatchRow({
+    required this.presets,
+    required this.selectedHex,
+    required this.parseHex,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppSpacing.md,
+      runSpacing: AppSpacing.md,
+      children: presets
+          .map((p) => _Swatch(
+                preset: p,
+                isSelected: p.hex == selectedHex,
+                color: parseHex(p.hex),
+                onTap: () => onSelect(p.hex),
+              ))
+          .toList(),
+    );
+  }
+}
+
+class _Swatch extends StatelessWidget {
+  final AccentPreset preset;
+  final bool isSelected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _Swatch({
+    required this.preset,
+    required this.isSelected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: Directionality.of(context) == TextDirection.rtl
+          ? preset.nameAr
+          : preset.nameEn,
+      selected: isSelected,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+            border: isSelected
+                ? Border.all(color: Colors.white, width: 3)
+                : null,
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.5),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    )
+                  ]
+                : null,
+          ),
+          child: isSelected
+              ? const Icon(Icons.check, color: Colors.white, size: 20)
+              : null,
+        ),
+      ),
     );
   }
 }
