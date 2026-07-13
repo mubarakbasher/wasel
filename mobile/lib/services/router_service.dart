@@ -222,9 +222,26 @@ class RouterService {
   Future<List<HotspotTemplate>> getHotspotTemplates() async {
     final response = await _api.dio.get('/routers/hotspot-templates');
     final data = response.data['data'] as List;
-    return data
-        .map((e) => HotspotTemplate.fromJson(e as Map<String, dynamic>))
-        .toList();
+
+    // Build the preview image URL from the SAME base the app is already talking
+    // to (the base that just served this list), rather than the backend-embedded
+    // absolute `previewUrl`. The backend derives that from PUBLIC_BASE_URL — a
+    // router/public-facing value that defaults to http://localhost:3000 and can
+    // point at a host the phone can't reach (localhost, or a domain whose TLS
+    // isn't up on staging) — so Image.network would silently fall back to the
+    // placeholder. Deriving it here guarantees the preview loads from wherever
+    // the API itself is reachable.
+    final base = _api.dio.options.baseUrl.replaceAll(RegExp(r'/+$'), '');
+    return data.map((e) {
+      final json = e as Map<String, dynamic>;
+      final id = json['id'] as String;
+      return HotspotTemplate(
+        id: id,
+        name: json['name'] as String,
+        description: json['description'] as String,
+        previewUrl: '$base/public/hotspot-templates/$id/preview.png',
+      );
+    }).toList();
   }
 
   Future<RouterModel> setHotspotTemplate(
