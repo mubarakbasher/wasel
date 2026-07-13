@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../models/hotspot_template.dart';
 import '../models/router_model.dart';
 import 'api_client.dart';
@@ -248,9 +250,20 @@ class RouterService {
     String routerId,
     String templateId,
   ) async {
+    // Applying a template is a slow RouterOS operation — the backend connects
+    // over the tunnel and fetches every template file onto the router before it
+    // responds (10-20s in practice, more on a cold/retrying connection). The
+    // default 15s receiveTimeout expires mid-apply, so the app would throw a
+    // timeout and never record the result (leaving the design un-selected even
+    // when the backend succeeds). Give this one call a generous budget so the
+    // app waits for the real outcome (applied, or the actual RouterOS error).
     final response = await _api.dio.put(
       '/routers/$routerId/hotspot-template',
       data: {'templateId': templateId},
+      options: Options(
+        receiveTimeout: const Duration(seconds: 90),
+        sendTimeout: const Duration(seconds: 90),
+      ),
     );
     return RouterModel.fromJson(response.data['data'] as Map<String, dynamic>);
   }
