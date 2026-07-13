@@ -264,7 +264,7 @@ export async function getActiveHotspotUsers(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (activeUsers || []).map((entry: any) => ({
-      id: entry['.id'] || '',
+      id: entry.id ?? entry['.id'] ?? '',
       username: entry.user || '',
       address: entry.address || '',
       macAddress: entry['mac-address'] || '',
@@ -312,7 +312,7 @@ export async function disconnectHotspotUser(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const activeSessions = await (api as any).menu('/ip/hotspot/active').get();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const session = (activeSessions || []).find((s: any) => s['.id'] === sessionId);
+    const session = (activeSessions || []).find((s: any) => (s.id ?? s['.id']) === sessionId);
 
     if (!session) {
       throw new AppError(404, 'Hotspot session not found', 'SESSION_NOT_FOUND');
@@ -424,7 +424,7 @@ export async function listHotspotServers(api: any): Promise<HotspotServer[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const entries = (await (api as any).menu('/ip/hotspot').get()) as Array<Record<string, unknown>>;
   return entries.map((e) => ({
-    id: String(e['.id'] ?? ''),
+    id: String(e.id ?? e['.id'] ?? ''),
     name: String(e.name ?? ''),
     interface: String(e.interface ?? ''),
     profile: String(e.profile ?? ''),
@@ -442,7 +442,7 @@ export async function listHotspotProfiles(api: any): Promise<HotspotProfile[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const entries = (await (api as any).menu('/ip/hotspot/profile').get()) as Array<Record<string, unknown>>;
   return entries.map((e) => ({
-    id: String(e['.id'] ?? ''),
+    id: String(e.id ?? e['.id'] ?? ''),
     name: String(e.name ?? ''),
     useRadius: String(e['use-radius'] ?? 'false').toLowerCase() === 'yes' ||
                String(e['use-radius'] ?? 'false').toLowerCase() === 'true',
@@ -493,7 +493,7 @@ export async function ensureHotspotRadiusSettings(
         const targetNames = new Set(opts.serverProfileNames.map((n) => n.toLowerCase()));
         for (const profile of hsProfiles) {
           if (targetNames.has(String(profile.name ?? '').toLowerCase())) {
-            const profileId = String(profile['.id'] ?? '');
+            const profileId = String(profile.id ?? profile['.id'] ?? '');
             if (profileId) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               await (api as any).menu('/ip/hotspot/profile').where('.id', profileId).update(updatePayload);
@@ -509,7 +509,7 @@ export async function ensureHotspotRadiusSettings(
         const profile =
           hsProfiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ??
           hsProfiles[0];
-        const profileId = String(profile['.id'] ?? '');
+        const profileId = String(profile.id ?? profile['.id'] ?? '');
         if (profileId) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (api as any).menu('/ip/hotspot/profile').where('.id', profileId).update(updatePayload);
@@ -531,7 +531,7 @@ export async function ensureHotspotRadiusSettings(
       const userProfile =
         userProfiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ??
         userProfiles[0];
-      const userProfileId = String(userProfile['.id'] ?? '');
+      const userProfileId = String(userProfile.id ?? userProfile['.id'] ?? '');
       if (userProfileId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (api as any).menu('/ip/hotspot/user/profile').where('.id', userProfileId).update({

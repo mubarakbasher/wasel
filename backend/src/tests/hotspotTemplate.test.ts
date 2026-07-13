@@ -424,6 +424,90 @@ describe('PUT /api/v1/routers/:id/hotspot-template — service status transition
     }
   });
 
+  it('themes the profile the hotspot server uses (hsprof1), not default, reading the dot-stripped id', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] }); // ownership
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...MOCK_ROUTER_ROW, hotspot_template_status: 'pending' }] }); // pending
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        ...MOCK_ROUTER_ROW,
+        hotspot_template_id: 'clean',
+        hotspot_template_status: 'applied',
+        hotspot_template_applied_at: now,
+        hotspot_template_error: null,
+      }],
+    }); // applied
+
+    // routeros-client strips the leading dot from returned keys, so real rows
+    // expose `id` (no dot). Mirror that here — a mock returning `.id` would hide
+    // the exact bug this guards against.
+    const profileUpdates: Array<{ id: unknown; payload: Record<string, unknown> }> = [];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api: any = {
+      menu: vi.fn((path: string) => {
+        if (path === '/tool') {
+          return { exec: vi.fn().mockResolvedValue([{ status: 'finished' }]) };
+        }
+        if (path === '/ip/hotspot') {
+          // One server running on the hsprof1 profile (like `/ip hotspot print`).
+          return {
+            get: vi.fn().mockResolvedValue([
+              { id: '*1', name: 'hotspot1', profile: 'hsprof1', interface: 'wifi1' },
+            ]),
+          };
+        }
+        if (path === '/ip/hotspot/profile') {
+          let capturedId: unknown;
+          const chain: Record<string, unknown> = {
+            get: vi.fn().mockResolvedValue([
+              { id: '*0', name: 'default' },
+              { id: '*2', name: 'hsprof1' },
+            ]),
+          };
+          chain.where = vi.fn((_key: string, value: unknown) => {
+            capturedId = value;
+            return chain;
+          });
+          chain.update = vi.fn(async (payload: Record<string, unknown>) => {
+            profileUpdates.push({ id: capturedId, payload });
+          });
+          return chain;
+        }
+        // ensureHotspotRadiusSettings is module-mocked; nothing else is hit.
+        return {
+          get: vi.fn().mockResolvedValue([]),
+          where: vi.fn().mockReturnThis(),
+          update: vi.fn(),
+          exec: vi.fn().mockResolvedValue([]),
+        };
+      }),
+    };
+
+    vi.mocked(connectToRouter).mockResolvedValueOnce({
+      client: { disconnect: vi.fn().mockResolvedValue(undefined) } as unknown as import('routeros-client').RouterOSClient,
+      api,
+    });
+
+    const res = await request(app)
+      .put(`/api/v1/routers/${TEST_ROUTER_ID}/hotspot-template`)
+      .set(authHeader())
+      .send({ templateId: 'clean' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.hotspotTemplateStatus).toBe('applied');
+
+    // html-directory must be set on hsprof1 (id *2), never default (*0).
+    const dirUpdates = profileUpdates.filter(
+      (u) => u.payload && u.payload['html-directory'] !== undefined,
+    );
+    expect(dirUpdates.length).toBeGreaterThan(0);
+    for (const u of dirUpdates) {
+      expect(u.id).toBe('*2');
+      expect(u.payload['html-directory']).toBe(HOTSPOT_TEMPLATE_DIR);
+    }
+  });
+
   it('returns status=failed + error when /tool/fetch returns status=failed, does not throw 500', async () => {
     mockSubscriptionQuery(mockQuery);
 

@@ -181,32 +181,60 @@ export async function applyHotspotTemplate(
       }
     }
 
-    // 6. Find the default (or first) hotspot profile and set html-directory
+    // 6. Point the hotspot's html-directory at the uploaded template.
+    //
+    // Theme the profile(s) the RUNNING hotspot servers actually use, NOT the
+    // built-in "default" profile: `/ip hotspot setup` runs the server on a
+    // generated profile (typically "hsprof1"), so theming "default" drops the
+    // files but never changes the live login page. Query /ip/hotspot for the
+    // servers and collect their profile names — that list is also the accurate
+    // "is a hotspot configured?" signal, since every RouterOS device carries a
+    // "default" profile even with no hotspot (so an empty *profile* list never
+    // fires, but an empty *server* list does).
+    //
+    // NOTE ON .id: routeros-client strips the leading dot from returned keys
+    // (treatMikrotikProperties → replace(/^\./,"")), so a fetched row exposes
+    // `id`, not `.id`. Read `id ?? ['.id']` for safety. The `.where('.id', …)`
+    // query arg is the on-the-wire field name and is unaffected — it stays dotted.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const servers = (await (api as any).menu('/ip/hotspot').get()) as Array<Record<string, unknown>>;
+
+    if (!servers || servers.length === 0) {
+      throw new Error('No hotspot configured on this router');
+    }
+
+    const serverProfileNames = [
+      ...new Set(servers.map((s) => String(s.profile ?? '')).filter((n) => n.length > 0)),
+    ];
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const profiles = (await (api as any).menu('/ip/hotspot/profile').get()) as Array<Record<string, unknown>>;
 
-    if (!profiles || profiles.length === 0) {
+    // Target the profiles the servers use; if none resolve (e.g. a server row
+    // with an empty profile field), fall back to default-or-first so the apply
+    // still themes something rather than silently no-op'ing.
+    let targetProfiles = profiles.filter((p) => serverProfileNames.includes(String(p.name ?? '')));
+    if (targetProfiles.length === 0) {
+      const fallback =
+        profiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ?? profiles[0];
+      targetProfiles = fallback ? [fallback] : [];
+    }
+    if (targetProfiles.length === 0) {
       throw new Error('No hotspot configured on this router');
     }
 
-    // Prefer a profile named "default", otherwise use the first one
-    const profile =
-      profiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ?? profiles[0];
-    const profileId = String(profile['.id'] ?? '');
-
-    if (!profileId) {
-      throw new Error('No hotspot configured on this router');
+    for (const profile of targetProfiles) {
+      const profileId = String((profile.id ?? profile['.id']) ?? '');
+      if (!profileId) continue;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (api as any).menu('/ip/hotspot/profile').where('.id', profileId).update({
+        'html-directory': HOTSPOT_TEMPLATE_DIR,
+      });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (api as any).menu('/ip/hotspot/profile').where('.id', profileId).update({
-      'html-directory': HOTSPOT_TEMPLATE_DIR,
-    });
-
-    // 6b. Best-effort: ensure RADIUS accounting + MAC-cookie are enabled on the
-    //     hotspot profile. Piggy-backs on the template re-apply action so operators
-    //     don't need a separate remediation step. Never throws.
-    await ensureHotspotRadiusSettings(api);
+    // 6b. Best-effort: ensure RADIUS accounting + MAC-cookie on the SAME server
+    //     profiles we just themed (not "default"). Never throws.
+    await ensureHotspotRadiusSettings(api, { serverProfileNames });
 
     logger.info('Hotspot template applied successfully', { routerId, templateId });
 
