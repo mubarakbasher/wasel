@@ -2,6 +2,7 @@ class Subscription {
   final String id;
   final String planTier; // starter, professional, enterprise
   final String planName;
+  final String? planNameAr;
   final String status; // active, expired, cancelled, pending, pending_change
   final int voucherQuota;
   final int vouchersUsed;
@@ -15,6 +16,7 @@ class Subscription {
     required this.id,
     required this.planTier,
     required this.planName,
+    this.planNameAr,
     required this.status,
     required this.voucherQuota,
     this.vouchersUsed = 0,
@@ -30,6 +32,7 @@ class Subscription {
       id: json['id'] as String,
       planTier: json['planTier'] as String,
       planName: json['planName'] as String,
+      planNameAr: json['planNameAr'] as String?,
       status: json['status'] as String,
       voucherQuota: json['voucherQuota'] as int,
       vouchersUsed: json['vouchersUsed'] as int? ?? 0,
@@ -46,6 +49,7 @@ class Subscription {
       'id': id,
       'planTier': planTier,
       'planName': planName,
+      if (planNameAr != null) 'planNameAr': planNameAr,
       'status': status,
       'voucherQuota': voucherQuota,
       'vouchersUsed': vouchersUsed,

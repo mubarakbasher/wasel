@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../i18n/app_localizations.dart';
+import '../i18n/plan_format.dart';
 import '../i18n/status_format.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/notifications_provider.dart';
@@ -183,6 +184,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     final planName = sub['planName'] as String? ?? 'Unknown';
+    final planNameAr = sub['planNameAr'] as String?;
     final status = (sub['status'] as String?) ?? 'unknown';
     final vouchersUsed = sub['vouchersUsed'] as int? ?? 0;
     final voucherQuota = sub['voucherQuota'] as int? ?? 1;
@@ -209,7 +211,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(planName, style: AppTypography.title2),
+              Text(
+                pickPlanName(context, name: planName, nameAr: planNameAr),
+                style: AppTypography.title2,
+              ),
               StatusBadge(
                 label: trStatus(context, 'subscription', status),
                 color: statusBadgeColor,

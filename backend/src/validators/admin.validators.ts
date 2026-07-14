@@ -86,6 +86,7 @@ export const planIdParamSchema = z.object({
 export const createPlanBodySchema = z.object({
   tier: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, 'Tier must be lowercase alphanumeric with underscores'),
   name: z.string().min(1).max(100),
+  name_ar: z.string().max(100).optional().nullable(),
   price: z.coerce.number().min(0),
   currency: z.string().length(3).default('SDG'),
   max_routers: z.coerce.number().int().min(1),
@@ -109,6 +110,7 @@ export const createRouterForUserBodySchema = z.object({
 export const updatePlanBodySchema = z.object({
   tier: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, 'Tier must be lowercase alphanumeric with underscores').optional(),
   name: z.string().min(1).max(100).optional(),
+  name_ar: z.string().max(100).optional().nullable(),
   price: z.coerce.number().min(0).optional(),
   currency: z.string().length(3).optional(),
   max_routers: z.coerce.number().int().min(1).optional(),

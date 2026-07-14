@@ -57,5 +57,32 @@ void main() {
       expect(sub.daysRemaining, 0);
       expect(sub.maxRouters, 0);
     });
+
+    // ── planNameAr localization field ─────────────────────────────────────────
+
+    test('fromJson parses planNameAr when present', () {
+      final sub = Subscription.fromJson({...validJson, 'planNameAr': 'ستارتر'});
+      expect(sub.planNameAr, 'ستارتر');
+    });
+
+    test('fromJson sets planNameAr to null when absent', () {
+      final sub = Subscription.fromJson(validJson);
+      expect(sub.planNameAr, isNull);
+    });
+
+    test('fromJson sets planNameAr to null when explicitly null in JSON', () {
+      final sub = Subscription.fromJson({...validJson, 'planNameAr': null});
+      expect(sub.planNameAr, isNull);
+    });
+
+    test('toJson includes planNameAr when set', () {
+      final sub = Subscription.fromJson({...validJson, 'planNameAr': 'ستارتر'});
+      expect(sub.toJson()['planNameAr'], 'ستارتر');
+    });
+
+    test('toJson omits planNameAr when null', () {
+      final sub = Subscription.fromJson(validJson);
+      expect(sub.toJson().containsKey('planNameAr'), isFalse);
+    });
   });
 }

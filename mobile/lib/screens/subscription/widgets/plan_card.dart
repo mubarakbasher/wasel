@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../i18n/app_localizations.dart';
+import '../../../i18n/plan_format.dart';
 import '../../../models/plan.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_spacing.dart';
@@ -75,7 +76,11 @@ class PlanCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(plan.name, style: AppTypography.title2),
+                      Text(
+                        pickPlanName(context,
+                            name: plan.name, nameAr: plan.nameAr),
+                        style: AppTypography.title2,
+                      ),
                       if (isCurrentPlan)
                         StatusBadge(
                           label: context.tr('subscription.currentPlanLabel'),
@@ -174,7 +179,11 @@ class PlanCard extends StatelessWidget {
                                             'subscription.changePending')
                                         : context.tr(
                                             'subscription.selectPlan',
-                                            [plan.name]),
+                                            [
+                                              pickPlanName(context,
+                                                  name: plan.name,
+                                                  nameAr: plan.nameAr)
+                                            ]),
                                   ),
                           ),
                   ),

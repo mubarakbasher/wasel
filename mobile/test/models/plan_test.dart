@@ -38,5 +38,22 @@ void main() {
       expect(
           Plan.fromJson({...validJson, 'price': 12}).priceLabel('SDG'), 'SDG 12');
     });
+
+    // ── nameAr localization field ─────────────────────────────────────────────
+
+    test('fromJson parses nameAr when present', () {
+      final plan = Plan.fromJson({...validJson, 'nameAr': 'ستارتر'});
+      expect(plan.nameAr, 'ستارتر');
+    });
+
+    test('fromJson sets nameAr to null when absent', () {
+      final plan = Plan.fromJson(validJson);
+      expect(plan.nameAr, isNull);
+    });
+
+    test('fromJson sets nameAr to null when explicitly null in JSON', () {
+      final plan = Plan.fromJson({...validJson, 'nameAr': null});
+      expect(plan.nameAr, isNull);
+    });
   });
 }

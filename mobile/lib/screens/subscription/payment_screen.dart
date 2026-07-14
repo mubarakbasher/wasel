@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/plan_format.dart';
 import '../../models/bank_info.dart';
 import '../../providers/subscription_provider.dart';
 import '../../services/subscription_service.dart';
@@ -400,8 +401,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
           title: Text(context.tr('payment.stepBankDetails')),
           isActive: _currentStep >= 0,
           state: _currentStep > 0 ? StepState.complete : StepState.indexed,
-          content:
-              _buildBankDetails(sub?.planName, request, state.bankInfo),
+          content: _buildBankDetails(
+            sub != null
+                ? pickPlanName(context,
+                    name: sub.planName, nameAr: sub.planNameAr)
+                : null,
+            request,
+            state.bankInfo,
+          ),
         ),
         Step(
           title: Text(context.tr('payment.stepUploadReceipt')),

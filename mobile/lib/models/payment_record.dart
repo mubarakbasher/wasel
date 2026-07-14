@@ -2,6 +2,7 @@ class PaymentRecord {
   final String id;
   final String planTier;
   final String planName;
+  final String? planNameAr;
   final double amount;
   final String currency;
   final String? referenceCode;
@@ -15,6 +16,7 @@ class PaymentRecord {
     required this.id,
     required this.planTier,
     required this.planName,
+    this.planNameAr,
     required this.amount,
     required this.currency,
     required this.referenceCode,
@@ -29,6 +31,7 @@ class PaymentRecord {
         id: json['id'] as String,
         planTier: json['planTier'] as String,
         planName: json['planName'] as String? ?? json['planTier'] as String,
+        planNameAr: json['planNameAr'] as String?,
         amount: (json['amount'] as num).toDouble(),
         currency: json['currency'] as String,
         referenceCode: json['referenceCode'] as String?,

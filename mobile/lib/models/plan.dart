@@ -1,6 +1,7 @@
 class Plan {
   final String tier;
   final String name;
+  final String? nameAr;
   final double price;
   final String currency;
   final int maxRouters;
@@ -13,6 +14,7 @@ class Plan {
   const Plan({
     required this.tier,
     required this.name,
+    this.nameAr,
     required this.price,
     required this.currency,
     required this.maxRouters,
@@ -27,6 +29,7 @@ class Plan {
     return Plan(
       tier: json['tier'] as String,
       name: json['name'] as String,
+      nameAr: json['nameAr'] as String?,
       price: (json['price'] as num).toDouble(),
       currency: json['currency'] as String,
       maxRouters: json['maxRouters'] as int,

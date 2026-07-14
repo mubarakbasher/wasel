@@ -7,6 +7,7 @@ import '../services/secure_window.dart';
 import 'package:go_router/go_router.dart';
 
 import '../i18n/app_localizations.dart';
+import '../i18n/plan_format.dart';
 import '../providers/auth_provider.dart';
 import '../providers/locale_provider.dart';
 import '../providers/subscription_provider.dart';
@@ -134,7 +135,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 icon: Icons.card_membership,
                 title: context.tr('settings.subscriptionSection'),
                 subtitle: sub != null
-                    ? '${sub.planName} — ${sub.status.toUpperCase()}'
+                    ? '${pickPlanName(context, name: sub.planName, nameAr: sub.planNameAr)} — ${sub.status.toUpperCase()}'
                     : context.tr('settings.noActiveSubscription'),
                 trailing: sub != null && sub.isActive
                     ? StatusBadge(

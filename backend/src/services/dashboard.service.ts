@@ -14,6 +14,7 @@ export interface DashboardData {
   subscription: {
     planTier: string;
     planName: string;
+    planNameAr: string | null;
     status: string;
     vouchersUsed: number;
     voucherQuota: number;
@@ -129,6 +130,7 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
     ? {
         planTier: subscription.planTier,
         planName: subscription.planName,
+        planNameAr: subscription.planNameAr,
         status: subscription.status,
         vouchersUsed: subscription.vouchersUsed,
         voucherQuota: subscription.voucherQuota,

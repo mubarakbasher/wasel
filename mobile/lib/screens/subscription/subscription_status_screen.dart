@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/plan_format.dart';
 import '../../i18n/status_format.dart';
 import '../../models/plan.dart';
 import '../../models/subscription.dart';
@@ -137,7 +138,11 @@ class _SubscriptionStatusScreenState
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(sub.planName, style: AppTypography.title1),
+                Text(
+                  pickPlanName(context,
+                      name: sub.planName, nameAr: sub.planNameAr),
+                  style: AppTypography.title1,
+                ),
                 StatusBadge(
                   label: trStatus(context, 'subscription', sub.status.toString()),
                   color: statusColor,
@@ -194,8 +199,11 @@ class _SubscriptionStatusScreenState
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     Text(
-                      context.tr('subscription.upgradePending',
-                          [pendingChange.planName]),
+                      context.tr('subscription.upgradePending', [
+                        pickPlanName(context,
+                            name: pendingChange.planName,
+                            nameAr: pendingChange.planNameAr)
+                      ]),
                       style: AppTypography.footnote
                           .copyWith(color: AppColors.textSecondary),
                     ),
@@ -344,23 +352,26 @@ class _SubscriptionStatusScreenState
         ? context.tr('subscription.month1')
         : context.tr('subscription.monthsN', [duration.toString()]);
 
+    final localizedPlanName =
+        pickPlanName(context, name: plan.name, nameAr: plan.nameAr);
+
     String action;
     if (hasActiveSub) {
       final tierOrder = ['starter', 'professional', 'enterprise'];
       final currentIndex = tierOrder.indexOf(state.subscription!.planTier);
       final newIndex = tierOrder.indexOf(plan.tier);
       action = newIndex > currentIndex
-          ? context.tr('subscription.upgradeTo', [plan.name])
-          : context.tr('subscription.downgradeTo', [plan.name]);
+          ? context.tr('subscription.upgradeTo', [localizedPlanName])
+          : context.tr('subscription.downgradeTo', [localizedPlanName]);
     } else {
-      action = context.tr('subscription.subscribeTo', [plan.name]);
+      action = context.tr('subscription.subscribeTo', [localizedPlanName]);
     }
 
     final confirmed = await showConfirmDialog(
       context,
       title: action,
       message: context.tr('subscription.confirmBody',
-          [plan.name, durationLabel, totalPrice]),
+          [localizedPlanName, durationLabel, totalPrice]),
       confirmLabel: context.tr('common.continue_'),
       cancelLabel: context.tr('common.cancel'),
     );

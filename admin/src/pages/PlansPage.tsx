@@ -12,6 +12,7 @@ interface Plan {
   id: string;
   tier: string;
   name: string;
+  name_ar: string | null;
   price: string;
   currency: string;
   max_routers: number;
@@ -27,6 +28,7 @@ interface Plan {
 const emptyForm = {
   tier: '',
   name: '',
+  name_ar: '',
   price: '',
   currency: 'SDG',
   max_routers: '1',
@@ -93,6 +95,7 @@ export default function PlansPage() {
     return {
       tier: f.tier,
       name: f.name,
+      name_ar: f.name_ar || undefined,
       price: Number(f.price),
       currency: f.currency,
       max_routers: Number(f.max_routers),
@@ -109,6 +112,7 @@ export default function PlansPage() {
     return {
       tier: plan.tier,
       name: plan.name,
+      name_ar: plan.name_ar ?? '',
       price: String(parseFloat(plan.price)),
       currency: plan.currency,
       max_routers: String(plan.max_routers),
@@ -143,6 +147,7 @@ export default function PlansPage() {
       render: (row) => (
         <div>
           <p className="font-medium text-slate-900">{row.name}</p>
+          {row.name_ar && <p className="text-xs text-slate-500" dir="rtl">{row.name_ar}</p>}
           <p className="text-xs text-slate-500">{row.tier}</p>
         </div>
       ),
@@ -305,6 +310,17 @@ export default function PlansPage() {
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="e.g. Starter"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Arabic name (الاسم بالعربية)</label>
+                  <input
+                    type="text"
+                    dir="rtl"
+                    value={form.name_ar}
+                    onChange={(e) => setForm({ ...form, name_ar: e.target.value })}
+                    placeholder="مثال: المبتدئ"
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>

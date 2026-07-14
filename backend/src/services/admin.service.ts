@@ -451,6 +451,7 @@ interface PlanRow {
   id: string;
   tier: string;
   name: string;
+  name_ar: string | null;
   price: string;
   currency: string;
   max_routers: number;
@@ -480,6 +481,7 @@ export async function getPlans(): Promise<PlanRow[]> {
 export async function createPlan(data: {
   tier: string;
   name: string;
+  name_ar?: string | null;
   price: number;
   currency?: string;
   max_routers: number;
@@ -491,8 +493,8 @@ export async function createPlan(data: {
   is_active?: boolean;
 }): Promise<PlanRow> {
   const result = await pool.query<PlanRow>(
-    `INSERT INTO plans (tier, name, price, currency, max_routers, monthly_vouchers, session_monitoring, dashboard, features, allowed_durations, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO plans (tier, name, price, currency, max_routers, monthly_vouchers, session_monitoring, dashboard, features, allowed_durations, is_active, name_ar)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       data.tier,
@@ -506,6 +508,7 @@ export async function createPlan(data: {
       JSON.stringify(data.features ?? []),
       JSON.stringify(data.allowed_durations ?? [1]),
       data.is_active ?? true,
+      data.name_ar ?? null,
     ],
   );
 
@@ -524,7 +527,7 @@ export async function updatePlan(
   const params: unknown[] = [];
   let paramIndex = 1;
 
-  const fields = ['tier', 'name', 'price', 'currency', 'max_routers', 'monthly_vouchers', 'session_monitoring', 'dashboard', 'is_active'];
+  const fields = ['tier', 'name', 'name_ar', 'price', 'currency', 'max_routers', 'monthly_vouchers', 'session_monitoring', 'dashboard', 'is_active'];
   for (const field of fields) {
     if (data[field] !== undefined) {
       setClauses.push(`${field} = $${paramIndex++}`);

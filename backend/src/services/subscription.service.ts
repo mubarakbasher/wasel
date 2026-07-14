@@ -9,6 +9,7 @@ import * as emailService from './email.service';
 export interface PlanDefinition {
   tier: string;
   name: string;
+  nameAr: string | null;
   price: number;
   currency: string;
   maxRouters: number;
@@ -23,6 +24,7 @@ interface PlanRow {
   id: string;
   tier: string;
   name: string;
+  name_ar: string | null;
   price: string;
   currency: string;
   max_routers: number;
@@ -40,6 +42,7 @@ function toPlanDefinition(row: PlanRow): PlanDefinition {
   return {
     tier: row.tier,
     name: row.name,
+    nameAr: row.name_ar ?? null,
     price: parseFloat(row.price),
     currency: row.currency,
     maxRouters: row.max_routers,
@@ -96,6 +99,7 @@ export interface SubscriptionInfo {
   id: string;
   planTier: string;
   planName: string;
+  planNameAr: string | null;
   status: string;
   startDate: string;
   endDate: string;
@@ -128,6 +132,7 @@ async function toSubscriptionInfo(row: SubscriptionRow): Promise<SubscriptionInf
     id: row.id,
     planTier: row.plan_tier,
     planName: plan ? plan.name : row.plan_tier,
+    planNameAr: plan ? plan.nameAr : null,
     status: row.status,
     startDate: new Date(row.start_date).toISOString(),
     endDate: endDate.toISOString(),
@@ -568,6 +573,7 @@ export interface UserPayment {
   id: string;
   planTier: string;
   planName: string;
+  planNameAr: string | null;
   amount: number;
   currency: string;
   referenceCode: string | null;
@@ -594,10 +600,11 @@ export async function getUserPayments(userId: string): Promise<UserPayment[]> {
     reviewed_at: Date | null;
     created_at: Date;
     plan_name: string | null;
+    plan_name_ar: string | null;
   }>(
     `SELECT p.id, p.plan_tier, p.amount, p.currency, p.reference_code,
             p.receipt_url, p.status, p.rejection_reason, p.reviewed_at, p.created_at,
-            pl.name AS plan_name
+            pl.name AS plan_name, pl.name_ar AS plan_name_ar
      FROM payments p
      LEFT JOIN plans pl ON pl.tier = p.plan_tier
      WHERE p.user_id = $1
@@ -610,6 +617,7 @@ export async function getUserPayments(userId: string): Promise<UserPayment[]> {
     id: row.id,
     planTier: row.plan_tier,
     planName: row.plan_name ?? row.plan_tier,
+    planNameAr: row.plan_name_ar ?? null,
     amount: parseFloat(row.amount),
     currency: row.currency,
     referenceCode: row.reference_code,
