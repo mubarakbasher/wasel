@@ -1,4 +1,6 @@
+import { lookup } from 'dns/promises';
 import { config } from '../config';
+import logger from '../config/logger';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,7 +100,48 @@ export function generateSafeServerConfig(peers: Array<ServerPeerInput>): string 
 // ---------------------------------------------------------------------------
 
 /**
+ * Best-effort DNS check for the configured WG_SERVER_ENDPOINT host.
+ *
+ * If the host is a DNS name and does not resolve (typo, missing record, etc.)
+ * this logs a WARN so the operator sees it in the boot log. It never throws
+ * or blocks startup — a transient DNS outage must not prevent the API from
+ * coming up. A bare IPv4/IPv6 literal simply resolves to itself.
+ *
+ * Called from server bootstrap alongside the other startup log lines.
+ */
+export async function verifyServerEndpointResolves(): Promise<void> {
+  const raw = config.WG_SERVER_ENDPOINT;
+  const { host } = parseEndpoint(raw);
+
+  try {
+    const result = await lookup(host);
+    logger.info('WG_SERVER_ENDPOINT resolves', {
+      host,
+      address: result.address,
+      family: result.family,
+    });
+  } catch (err) {
+    logger.warn(
+      'WG_SERVER_ENDPOINT DNS lookup failed — typo or missing record? (non-fatal, boot continues)',
+      {
+        host,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+  }
+}
+
+/**
  * Parse a "host:port" endpoint string into its components.
+ *
+ * Handles three shapes:
+ *   1. Bracketed IPv6:  "[2001:db8::1]:51820" → host "2001:db8::1", port "51820"
+ *   2. host:port:       "wg.wa-sel.com:51820"  → host "wg.wa-sel.com", port "51820"
+ *   3. host only:       "76.13.59.23"          → host "76.13.59.23", port "51820"
+ *
+ * The host is returned verbatim and passed straight into the RouterOS
+ * `endpoint-address=` field, so DNS hostnames (recommended) work identically
+ * to raw IPs — no IP-only assumption anywhere in this function.
  */
 function parseEndpoint(endpoint: string): { host: string; port: string } {
   // Handle IPv6 in brackets, e.g. [::1]:51820

@@ -192,7 +192,7 @@ CORS_ORIGIN=https://api.wa-sel.cloud
 # WireGuard — staging VPS public IP, staging keypair
 WG_SERVER_PRIVATE_KEY=qPJsQbKdhVoPH5tH0hqq+e1cvyTwHtBYXXNq/pMoE3g=
 WG_SERVER_PUBLIC_KEY=TKEiDLLaS4Grhp/EMZ341LfEEOrk7o/9gdaAgtzrXA8=
-WG_SERVER_ENDPOINT=<STAGING_VPS_IP>             # staging VPS IP, not prod
+WG_SERVER_ENDPOINT=wg.wa-sel.cloud              # DNS hostname (preferred); IP works but locks the fleet to it
 WG_SERVER_PORT=51820
 
 # SMTP — reuse your provider or point at MailHog for smoke testing

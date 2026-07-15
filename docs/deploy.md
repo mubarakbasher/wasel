@@ -131,9 +131,13 @@ ENCRYPTION_KEY=<RUN: openssl rand -hex 32>
 CORS_ORIGIN=https://wa-sel.com,https://api.wa-sel.com
 
 # WireGuard — ENDPOINT is hostname/IP only (no port)
+# STRONGLY prefer a DNS hostname (e.g. wg.wa-sel.com) over a raw IP.
+# Every router stores this string in its peer's endpoint-address field, so a
+# raw IP means the whole fleet has to be edited by hand if the VPS ever moves.
+# With a DNS hostname, one DNS record change repoints every router at once.
 WG_SERVER_PRIVATE_KEY=<from step 1.2>
 WG_SERVER_PUBLIC_KEY=<from step 1.2>
-WG_SERVER_ENDPOINT=76.13.59.23
+WG_SERVER_ENDPOINT=wg.wa-sel.com
 WG_SERVER_PORT=51820
 
 # SMTP — use Gmail App Password or any SMTP provider

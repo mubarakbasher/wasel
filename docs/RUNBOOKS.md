@@ -2,6 +2,8 @@
 
 Operator-only procedures. Everything here requires production access.
 
+> **Crash / outage / "what happened?"** → see [`OBSERVABILITY.md`](./OBSERVABILITY.md) — alert setup (Sentry, Uptime Kuma, WhatsApp) and the step-by-step incident runbook.
+
 ## 1. Secret rotation + git history purge (URGENT — first-time)
 
 The original `docker-compose.yml` contained plaintext Postgres and Redis passwords and was committed to git (visible since commit `e1b31e9`). The file has since been refactored to read from a compose env-file, but the old values are still in git history. Until rotated, any clone/fork/GitHub cache exposes those credentials.

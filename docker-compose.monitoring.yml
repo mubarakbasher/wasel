@@ -1,0 +1,62 @@
+# Wasel monitoring stack — Uptime Kuma (alerting) + Dozzle (log viewer).
+#
+# Deliberately a SEPARATE compose project from the app stack: if the app stack
+# is broken or being redeployed, monitoring keeps running and keeps alerting.
+#
+#   docker compose -f docker-compose.monitoring.yml up -d
+#
+# Both UIs bind to localhost only. Access from your machine via SSH tunnel:
+#   ssh -L 3001:127.0.0.1:3001 -L 9999:127.0.0.1:9999 root@<vps>
+#   → Uptime Kuma: http://localhost:3001   Dozzle: http://localhost:9999
+# (Optionally expose behind nginx + basic auth later — see docs/OBSERVABILITY.md.)
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  # Uptime / health monitoring + WhatsApp alerting (via CallMeBot notification).
+  # Monitors to configure in the UI (see docs/OBSERVABILITY.md §Setup):
+  #   - HTTP  https://wa-sel.com and https://api.wa-sel.com/api/v1/health
+  #   - HTTP  http://host.docker.internal:3000/api/v1/health (backend, direct)
+  #   - Docker container monitors for backend/postgres/redis/freeradius/wireguard
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    ports:
+      - '127.0.0.1:3001:3001'
+    volumes:
+      - uptime_kuma_data:/app/data
+      # Read-only Docker socket so Kuma's "Docker Container" monitor type can
+      # alert when any app-stack container dies or turns unhealthy.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    extra_hosts:
+      # The app stack runs with network_mode: host; this lets Kuma reach those
+      # services as http://host.docker.internal:<port> from its bridge network.
+      - 'host.docker.internal:host-gateway'
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 0.5
+
+  # Live, searchable web UI over every container's logs (reads the same
+  # json-file logs as `docker logs` — no agents, no extra storage).
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    ports:
+      - '127.0.0.1:9999:8080'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Read-only: no start/stop/restart buttons in the UI.
+      DOZZLE_ENABLE_ACTIONS: 'false'
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.25
+
+volumes:
+  uptime_kuma_data:

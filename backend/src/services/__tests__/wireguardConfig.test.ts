@@ -87,6 +87,27 @@ describe('generateMikrotikConfig', () => {
     // 10.10.0.2 -> network 10.10.0.0
     expect(output).toContain('network=10.10.0.0');
   });
+
+  it('passes a DNS hostname through verbatim as endpoint-address (no IP assumption)', () => {
+    // Regression guard: parseEndpoint must not do anything IP-specific — a
+    // hostname like wg.wa-sel.com must land in RouterOS's endpoint-address
+    // field exactly as written so a DNS repoint moves the whole fleet.
+    const output = generateMikrotikConfig({
+      ...BASE_PARAMS,
+      serverEndpoint: 'wg.wa-sel.com:51820',
+    });
+    expect(output).toContain('endpoint-address=wg.wa-sel.com');
+    expect(output).toContain('endpoint-port=51820');
+  });
+
+  it('accepts a hostname without an explicit port (defaults port to 51820)', () => {
+    const output = generateMikrotikConfig({
+      ...BASE_PARAMS,
+      serverEndpoint: 'wg.wa-sel.com',
+    });
+    expect(output).toContain('endpoint-address=wg.wa-sel.com');
+    expect(output).toContain('endpoint-port=51820');
+  });
 });
 
 describe('generateSetupSteps', () => {

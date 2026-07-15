@@ -1,3 +1,5 @@
+// Sentry must initialize before the rest of the app loads (import order matters).
+import { Sentry } from './config/sentry';
 import app from './app';
 import { config } from './config';
 import logger from './config/logger';
@@ -14,6 +16,7 @@ import { startUsageLimitEnforcementJob } from './jobs/usageLimitEnforcement';
 import { startStaleSessionReaperJob } from './jobs/staleSessionReaper';
 import { startMonitoring } from './services/wireguardMonitor';
 import { syncPeersFromDatabase } from './services/wireguardPeer';
+import { verifyServerEndpointResolves } from './services/wireguardConfig';
 import { runMigrations } from './migrations/runner';
 
 // ── Crash handlers ────────────────────────────────────────────────────────────
@@ -24,14 +27,17 @@ process.on('uncaughtException', (err: Error) => {
     error: err.message,
     stack: err.stack,
   });
-  process.exit(1);
+  Sentry.captureException(err);
+  // Give Sentry up to 2 s to deliver the event, then exit either way.
+  void Sentry.flush(2000).finally(() => process.exit(1));
 });
 
 process.on('unhandledRejection', (reason: unknown) => {
   logger.error('Unhandled promise rejection — exiting', {
     reason: reason instanceof Error ? reason.message : String(reason),
   });
-  process.exit(1);
+  Sentry.captureException(reason);
+  void Sentry.flush(2000).finally(() => process.exit(1));
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
@@ -89,6 +95,11 @@ async function startServer(): Promise<void> {
     // Test Redis connection
     await redis.ping();
     logger.info('Redis ping successful');
+
+    // Best-effort DNS check for WG_SERVER_ENDPOINT so a typo'd hostname
+    // is surfaced in the boot log. Never throws — bare IPs resolve to
+    // themselves, DNS outages are logged as WARN.
+    await verifyServerEndpointResolves();
 
     // Restore WireGuard peers before monitoring starts
     try {
