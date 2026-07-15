@@ -204,7 +204,8 @@ void main() {
 
     // The indigo swatch widget should now carry selected=true Semantics.
     final semantics = tester.getSemantics(indigoFinder);
-    expect(// ignore: deprecated_member_use
+    expect(
+        // ignore: deprecated_member_use
         semantics.hasFlag(SemanticsFlag.isSelected), isTrue);
   });
 
@@ -272,7 +273,8 @@ void main() {
 
     // Indigo swatch should be pre-selected.
     final semantics = tester.getSemantics(find.bySemanticsLabel('Indigo'));
-    expect(// ignore: deprecated_member_use
+    expect(
+        // ignore: deprecated_member_use
         semantics.hasFlag(SemanticsFlag.isSelected), isTrue);
   });
 
@@ -290,7 +292,8 @@ void main() {
 
     // Teal swatch (defaultAccent #0f766e) should be pre-selected.
     final semantics = tester.getSemantics(find.bySemanticsLabel('Teal'));
-    expect(// ignore: deprecated_member_use
+    expect(
+        // ignore: deprecated_member_use
         semantics.hasFlag(SemanticsFlag.isSelected), isTrue);
   });
 }
