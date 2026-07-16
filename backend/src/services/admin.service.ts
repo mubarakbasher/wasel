@@ -10,6 +10,12 @@ import {
   sendPaymentApproved,
   sendPaymentRejected,
 } from './email.service';
+import {
+  batchToVoucherInfo,
+  buildVoucherStatusConditions,
+  VoucherInfo,
+  VoucherMetaRow,
+} from './voucher.service';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -1269,4 +1275,184 @@ export async function getStatsTimeseries(
   logger.info('Admin fetched stats timeseries', { days });
 
   return { days, series };
+}
+
+// ----- Platform-wide voucher management -----
+
+/**
+ * voucher_meta row extended with the owner + router display columns pulled in
+ * by the getAllVouchers JOIN. Assignable to VoucherMetaRow, so it feeds the
+ * shared batchToVoucherInfo enrichment path unchanged.
+ */
+interface VoucherJoinRow extends VoucherMetaRow {
+  owner_name: string;
+  owner_email: string;
+  router_name: string;
+}
+
+/**
+ * A platform-wide voucher list item: the operator VoucherInfo shape (so the
+ * derived status + all voucher_meta fields match the operator list verbatim)
+ * plus `code` (the RADIUS username) and the resolved owner/router display refs.
+ */
+export interface AdminVoucherListItem extends VoucherInfo {
+  code: string;
+  owner: { id: string; name: string; email: string };
+  router: { id: string; name: string };
+}
+
+/**
+ * Platform-wide (unscoped) voucher list for the admin panel.
+ *
+ * Reuses the operator derived-status SQL fragments (buildVoucherStatusConditions)
+ * and the operator enrichment path (batchToVoucherInfo) so status/usage values
+ * are identical to what the owning operator sees. Search is an ILIKE across the
+ * voucher code, owner name, owner email, and router name; every filter is a
+ * bound parameter.
+ */
+export async function getAllVouchers(
+  page: number,
+  limit: number,
+  filters: { search?: string; status?: string; routerId?: string; userId?: string },
+): Promise<{ vouchers: AdminVoucherListItem[]; total: number; page: number; limit: number }> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let paramIndex = 1;
+
+  // Derived-status fragments carry no bound parameters (pure SQL literals), so
+  // they can be appended without touching paramIndex.
+  if (filters.status) {
+    conditions.push(...buildVoucherStatusConditions(filters.status));
+  }
+
+  if (filters.routerId) {
+    conditions.push(`vm.router_id = $${paramIndex++}`);
+    params.push(filters.routerId);
+  }
+
+  if (filters.userId) {
+    conditions.push(`vm.user_id = $${paramIndex++}`);
+    params.push(filters.userId);
+  }
+
+  if (filters.search) {
+    conditions.push(
+      `(vm.radius_username ILIKE $${paramIndex} OR u.name ILIKE $${paramIndex} OR u.email ILIKE $${paramIndex} OR r.name ILIKE $${paramIndex})`,
+    );
+    params.push(`%${filters.search}%`);
+    paramIndex++;
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const offset = (page - 1) * limit;
+
+  const [dataResult, countResult] = await Promise.all([
+    pool.query<VoucherJoinRow>(
+      `SELECT vm.*, u.name AS owner_name, u.email AS owner_email, r.name AS router_name
+       FROM voucher_meta vm
+       JOIN users u ON vm.user_id = u.id
+       JOIN routers r ON vm.router_id = r.id
+       ${whereClause}
+       ORDER BY vm.created_at DESC
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset],
+    ),
+    pool.query<{ count: string }>(
+      `SELECT COUNT(*) AS count
+       FROM voucher_meta vm
+       JOIN users u ON vm.user_id = u.id
+       JOIN routers r ON vm.router_id = r.id
+       ${whereClause}`,
+      params,
+    ),
+  ]);
+
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  // Enrich through the shared operator path (derived status, usage, profile name).
+  const rows = dataResult.rows;
+  const infos = await batchToVoucherInfo(rows);
+  const vouchers: AdminVoucherListItem[] = infos.map((info, i) => {
+    const row = rows[i];
+    return {
+      ...info,
+      code: info.username,
+      owner: { id: row.user_id, name: row.owner_name, email: row.owner_email },
+      router: { id: row.router_id, name: row.router_name },
+    };
+  });
+
+  logger.info('Admin fetched vouchers', {
+    page,
+    limit,
+    search: filters.search,
+    status: filters.status,
+    routerId: filters.routerId,
+    userId: filters.userId,
+    total,
+  });
+
+  return { vouchers, total, page, limit };
+}
+
+/**
+ * Resolve the owner (user) + router that a voucher belongs to. Admin voucher
+ * mutations reuse the owner-scoped operator services, so they resolve the
+ * (userId, routerId) pair from the voucher first — same pattern as
+ * createRouterForUser. Throws 404 VOUCHER_NOT_FOUND when the voucher is unknown.
+ */
+export async function resolveVoucherOwner(
+  voucherId: string,
+): Promise<{ userId: string; routerId: string }> {
+  const result = await pool.query<{ user_id: string; router_id: string }>(
+    `SELECT user_id, router_id FROM voucher_meta WHERE id = $1`,
+    [voucherId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'Voucher not found', 'VOUCHER_NOT_FOUND');
+  }
+
+  return { userId: result.rows[0].user_id, routerId: result.rows[0].router_id };
+}
+
+/**
+ * Resolve owner + router for a voucher, including the display names/email the
+ * admin detail view attaches to the operator voucher object. Throws 404
+ * VOUCHER_NOT_FOUND when the voucher is unknown.
+ */
+export async function getVoucherContext(voucherId: string): Promise<{
+  userId: string;
+  routerId: string;
+  owner: { id: string; name: string; email: string };
+  router: { id: string; name: string };
+}> {
+  const result = await pool.query<{
+    user_id: string;
+    router_id: string;
+    owner_name: string;
+    owner_email: string;
+    router_name: string;
+  }>(
+    `SELECT vm.user_id, vm.router_id,
+            u.name AS owner_name, u.email AS owner_email,
+            r.name AS router_name
+     FROM voucher_meta vm
+     JOIN users u ON vm.user_id = u.id
+     JOIN routers r ON vm.router_id = r.id
+     WHERE vm.id = $1`,
+    [voucherId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'Voucher not found', 'VOUCHER_NOT_FOUND');
+  }
+
+  const row = result.rows[0];
+  return {
+    userId: row.user_id,
+    routerId: row.router_id,
+    owner: { id: row.user_id, name: row.owner_name, email: row.owner_email },
+    router: { id: row.router_id, name: row.router_name },
+  };
 }

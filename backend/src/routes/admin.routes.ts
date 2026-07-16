@@ -66,6 +66,16 @@ router.get(
 );
 router.get('/audit-logs', validate({ query: validators.listAuditLogsQuerySchema }), adminController.listAuditLogs);
 
+// Platform-wide vouchers
+router.get('/vouchers', validate({ query: validators.listVouchersQuerySchema }), adminController.listVouchers);
+router.get('/vouchers/:id', validate({ params: validators.voucherIdParamSchema }), adminController.getVoucherDetail);
+router.put(
+  '/vouchers/:id',
+  validate({ params: validators.voucherIdParamSchema, body: validators.updateVoucherStatusBodySchema }),
+  adminController.updateVoucher,
+);
+router.delete('/vouchers/:id', validate({ params: validators.voucherIdParamSchema }), adminController.deleteVoucher);
+
 // Settings — bank details
 router.get('/settings/bank', settingsController.getBankSettings);
 router.put(

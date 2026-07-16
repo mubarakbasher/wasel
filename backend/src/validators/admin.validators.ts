@@ -123,6 +123,26 @@ export const updatePlanBodySchema = z.object({
 }).refine(data => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
 // ---------------------------------------------------------------------------
+// Platform-wide vouchers
+// ---------------------------------------------------------------------------
+
+export const listVouchersQuerySchema = z.object({
+  ...paginationSchema,
+  search: z.string().max(100).optional(),
+  status: z.enum(['active', 'used', 'unused', 'expired', 'disabled']).optional(),
+  routerId: z.string().uuid('Invalid router ID').optional(),
+  userId: z.string().uuid('Invalid user ID').optional(),
+});
+
+export const voucherIdParamSchema = z.object({
+  id: z.string().uuid('Invalid voucher ID'),
+});
+
+export const updateVoucherStatusBodySchema = z.object({
+  status: z.enum(['active', 'disabled']),
+});
+
+// ---------------------------------------------------------------------------
 // Email log
 // ---------------------------------------------------------------------------
 

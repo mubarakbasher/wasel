@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from '../types';
 import * as adminService from '../services/admin.service';
 import * as auditService from '../services/audit.service';
 import * as routerService from '../services/router.service';
+import * as voucherService from '../services/voucher.service';
 import * as emailLogService from '../services/emailLog.service';
 import * as emailTemplateService from '../services/emailTemplate.service';
 import * as emailService from '../services/email.service';
@@ -333,6 +334,81 @@ export async function getRouterSetupGuide(req: AuthenticatedRequest, res: Respon
       ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
     res.status(200).json({ success: true, data: guide });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Platform-wide vouchers
+// ---------------------------------------------------------------------------
+
+export async function listVouchers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { page, limit, search, status, routerId, userId } = req.query as Record<string, string>;
+    const result = await adminService.getAllVouchers(
+      Number(page) || 1,
+      Number(limit) || 20,
+      { search, status, routerId, userId },
+    );
+    res.status(200).json({
+      success: true,
+      data: result.vouchers,
+      meta: { page: result.page, limit: result.limit, total: result.total },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getVoucherDetail(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const context = await adminService.getVoucherContext(id);
+    const voucher = await voucherService.getVoucherById(context.userId, context.routerId, id);
+    res.status(200).json({
+      success: true,
+      data: { ...voucher, owner: context.owner, router: context.router },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateVoucher(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { status } = req.body as { status: 'active' | 'disabled' };
+    const { userId, routerId } = await adminService.resolveVoucherOwner(id);
+    const voucher = await voucherService.updateVoucher(userId, routerId, id, { status });
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'voucher.update',
+      targetEntity: 'voucher',
+      targetId: id,
+      details: redact({ status, ownerId: userId }),
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: voucher });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteVoucher(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { userId, routerId } = await adminService.resolveVoucherOwner(id);
+    await voucherService.deleteVoucher(userId, routerId, id);
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'voucher.delete',
+      targetEntity: 'voucher',
+      targetId: id,
+      details: redact({ ownerId: userId, routerId }),
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(200).json({ success: true, data: { message: 'Voucher deleted successfully' } });
   } catch (error) {
     next(error);
   }

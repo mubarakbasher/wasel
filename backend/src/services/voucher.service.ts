@@ -341,8 +341,12 @@ function assembleVoucherInfo(
  *   1. radcheck (batch)
  *   2. radacct  (batch GROUP BY)
  *   3. radius_profiles (batch, only when group_profile is set)
+ *
+ * Exported so the platform-wide admin voucher list (admin.service.ts) shares the
+ * IDENTICAL derived-status / usage computation as the operator list — there is a
+ * single enrichment path, so the two lists can never drift.
  */
-async function batchToVoucherInfo(rows: VoucherMetaRow[]): Promise<VoucherInfo[]> {
+export async function batchToVoucherInfo(rows: VoucherMetaRow[]): Promise<VoucherInfo[]> {
   if (rows.length === 0) return [];
 
   const usernames = rows.map((r) => r.radius_username);
@@ -648,6 +652,53 @@ export async function createVouchers(
 }
 
 /**
+ * Build the derived-status WHERE fragments for a voucher query.
+ *
+ * These are pure SQL string literals with NO bound parameters. They reference
+ * the `vm` (voucher_meta) alias plus correlated radcheck/radacct EXISTS
+ * subqueries, so they are alias-portable: both the operator-scoped list
+ * (buildFilterConditions below) and the platform-wide admin list
+ * (admin.service.getAllVouchers) reuse them verbatim, guaranteeing IDENTICAL
+ * derived-status semantics.
+ *
+ * Supported statuses: active | used | unused | expired | disabled. Any other
+ * value yields no fragments (preserves the prior no-op fall-through behavior).
+ */
+export function buildVoucherStatusConditions(status: string): string[] {
+  if (status === 'disabled') {
+    return [`vm.status = 'disabled'`];
+  }
+  if (status === 'expired') {
+    return [
+      `vm.status != 'disabled'`,
+      `EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`,
+    ];
+  }
+  if (status === 'active') {
+    return [
+      `vm.status != 'disabled'`,
+      `EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username AND ra.acctstoptime IS NULL)`,
+    ];
+  }
+  if (status === 'used') {
+    return [
+      `vm.status != 'disabled'`,
+      `NOT EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`,
+      `NOT EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username AND ra.acctstoptime IS NULL)`,
+      `EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username)`,
+    ];
+  }
+  if (status === 'unused') {
+    return [
+      `vm.status != 'disabled'`,
+      `NOT EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username)`,
+      `NOT EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`,
+    ];
+  }
+  return [];
+}
+
+/**
  * Build WHERE-clause conditions for voucher queries.
  * Shared between getVouchersByRouter and bulkDeleteVouchers.
  */
@@ -661,24 +712,7 @@ function buildFilterConditions(
   let paramIndex = 3;
 
   if (options.status) {
-    if (options.status === 'disabled') {
-      conditions.push(`vm.status = 'disabled'`);
-    } else if (options.status === 'expired') {
-      conditions.push(`vm.status != 'disabled'`);
-      conditions.push(`EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`);
-    } else if (options.status === 'active') {
-      conditions.push(`vm.status != 'disabled'`);
-      conditions.push(`EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username AND ra.acctstoptime IS NULL)`);
-    } else if (options.status === 'used') {
-      conditions.push(`vm.status != 'disabled'`);
-      conditions.push(`NOT EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`);
-      conditions.push(`NOT EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username AND ra.acctstoptime IS NULL)`);
-      conditions.push(`EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username)`);
-    } else if (options.status === 'unused') {
-      conditions.push(`vm.status != 'disabled'`);
-      conditions.push(`NOT EXISTS (SELECT 1 FROM radacct ra WHERE ra.username = vm.radius_username)`);
-      conditions.push(`NOT EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username AND rc.attribute = 'Expiration' AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') < NOW())`);
-    }
+    conditions.push(...buildVoucherStatusConditions(options.status));
   }
 
   if (options.limitType) {

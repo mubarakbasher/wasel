@@ -10,6 +10,7 @@ import {
   Mail,
   FileText,
   Settings,
+  Ticket,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -30,6 +31,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Subscriptions', path: '/subscriptions', icon: CreditCard },
   { label: 'Plans', path: '/plans', icon: Package },
   { label: 'Payments', path: '/payments', icon: Banknote },
+  { label: 'Vouchers', path: '/vouchers', icon: Ticket },
   { label: 'Messages', path: '/messages', icon: MessageCircle },
   { label: 'Routers', path: '/routers', icon: Router },
   { label: 'Audit Logs', path: '/audit-logs', icon: ScrollText },
