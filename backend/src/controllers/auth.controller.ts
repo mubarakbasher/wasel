@@ -119,7 +119,13 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
   try {
     const { email, password } = req.body;
     const result = await authService.login(email, password);
-    if (isAdminClient(req)) {
+    // Cookie mode on LOGIN requires BOTH the admin client header AND an admin
+    // user. A non-admin who logs in through the admin SPA (which then rejects
+    // them client-side) must NOT get a live 7-day HttpOnly refresh cookie +
+    // Redis key orphaned in the browser — they get the legacy body pair, and
+    // the SPA slice revokes that body token. Refresh/logout keep cookie-only
+    // semantics (possession of the cookie is the credential there).
+    if (isAdminClient(req) && result.user.role === 'admin') {
       // Admin SPA: refresh token travels only in the HttpOnly cookie.
       setRefreshCookie(res, result.tokens.refreshToken);
       res.status(200).json({

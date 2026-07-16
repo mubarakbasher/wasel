@@ -980,6 +980,17 @@ export async function deleteVoucher(
     // Remove voucher_meta
     await client.query('DELETE FROM voucher_meta WHERE id = $1', [voucherId]);
 
+    // Decrement vouchers_used on the active subscription, mirroring
+    // bulkDeleteVouchers exactly (GREATEST guard, active-status/user predicate).
+    // Without this a single delete permanently over-counts quota for finite-tier
+    // operators, causing false QUOTA_EXCEEDED until renewal. The -1 "unlimited"
+    // sentinel needs no special-case: the GREATEST floor keeps it harmless.
+    await client.query(
+      `UPDATE subscriptions SET vouchers_used = GREATEST(vouchers_used - $1, 0)
+       WHERE user_id = $2 AND status = 'active'`,
+      [1, userId],
+    );
+
     await client.query('COMMIT');
 
     // Send CoA Disconnect-Request (fire-and-forget, non-fatal)

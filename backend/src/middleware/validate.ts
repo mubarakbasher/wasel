@@ -36,8 +36,18 @@ export function validate(schemas: ValidationSchemas) {
       }
       if (schemas.query) {
         const parsed = schemas.query.parse(req.query) as Record<string, unknown>;
-        Object.keys(parsed).forEach((key) => {
-          (req.query as Record<string, unknown>)[key] = parsed[key];
+        // Express 5 exposes `req.query` as a lazily re-parsed getter, so mutating
+        // it per-key does NOT persist to the controller — the parsed/coerced/
+        // transformed values (e.g. date-only → day-boundary timestamps) would be
+        // silently discarded. Shadow the getter with an own-property carrying the
+        // parsed values merged over the raw query (merge preserves any keys the
+        // schema doesn't cover) so downstream handlers see the validated shape.
+        const merged = { ...(req.query as Record<string, unknown>), ...parsed };
+        Object.defineProperty(req, 'query', {
+          value: merged,
+          configurable: true,
+          enumerable: true,
+          writable: true,
         });
       }
       if (schemas.params) {

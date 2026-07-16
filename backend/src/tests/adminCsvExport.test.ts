@@ -330,3 +330,97 @@ describe('GET /api/v1/admin/audit-logs/export', () => {
     expect(details.filters).toMatchObject({ action: 'login', targetEntity: 'user' });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Audit-log date filters — date-only <input type="date"> vs full ISO datetime
+// (Fix 1: `.datetime()` alone 400'd on YYYY-MM-DD; both list + export widen it)
+// ---------------------------------------------------------------------------
+
+/** Any query over audit_logs (data or count) carrying bound params. */
+function findAuditParamsCall(): [string, unknown[]] | undefined {
+  return mockQuery.mock.calls.find(
+    (c) =>
+      typeof c[0] === 'string' &&
+      (c[0] as string).includes('FROM audit_logs') &&
+      Array.isArray(c[1]),
+  ) as [string, unknown[]] | undefined;
+}
+
+describe('GET /api/v1/admin/audit-logs/export — date filters', () => {
+  it('widens a single-day date-only from==to range to an inclusive day boundary', async () => {
+    queueList([AUDIT_ROW], 1);
+
+    const res = await request(app)
+      .get('/api/v1/admin/audit-logs/export?from=2026-07-01&to=2026-07-01')
+      .set(adminAuth());
+
+    expect(res.status).toBe(200);
+    const dataCall = findRowCapCall();
+    expect(dataCall).toBeDefined();
+    // from → start of day, to → end of day, so a same-day range is inclusive.
+    expect(dataCall![1]).toContain('2026-07-01T00:00:00.000Z');
+    expect(dataCall![1]).toContain('2026-07-01T23:59:59.999Z');
+  });
+
+  it('passes a full ISO datetime through unchanged', async () => {
+    queueList([], 0);
+
+    await request(app)
+      .get('/api/v1/admin/audit-logs/export?from=2026-07-01T08:30:00.000Z')
+      .set(adminAuth());
+
+    const dataCall = findRowCapCall();
+    expect(dataCall![1]).toContain('2026-07-01T08:30:00.000Z');
+  });
+
+  it('rejects a garbage date string with 400 VALIDATION_ERROR', async () => {
+    const res = await request(app)
+      .get('/api/v1/admin/audit-logs/export?from=not-a-date')
+      .set(adminAuth());
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('GET /api/v1/admin/audit-logs — date filters (list)', () => {
+  it('widens date-only from/to and forwards the transformed values as bound params', async () => {
+    queueList([AUDIT_ROW], 1);
+
+    const res = await request(app)
+      .get('/api/v1/admin/audit-logs?from=2026-07-01&to=2026-07-15')
+      .set(adminAuth());
+
+    expect(res.status).toBe(200);
+    const dataCall = findAuditParamsCall();
+    expect(dataCall).toBeDefined();
+    expect(dataCall![1]).toContain('2026-07-01T00:00:00.000Z');
+    expect(dataCall![1]).toContain('2026-07-15T23:59:59.999Z');
+  });
+
+  it('rejects a garbage date string with 400 VALIDATION_ERROR', async () => {
+    const res = await request(app)
+      .get('/api/v1/admin/audit-logs?to=13/07/2026')
+      .set(adminAuth());
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Users status filter — 'suspended' must map to is_active = false
+// (Fix 5: getUsers only handled 'active'/'inactive', so 'suspended' was a no-op)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/v1/admin/users/export — suspended status filter', () => {
+  it('maps status=suspended to the is_active = false predicate', async () => {
+    queueList([], 0);
+
+    await request(app).get('/api/v1/admin/users/export?status=suspended').set(adminAuth());
+
+    const dataCall = findRowCapCall();
+    expect(dataCall).toBeDefined();
+    expect(dataCall![0]).toContain('is_active = false');
+  });
+});

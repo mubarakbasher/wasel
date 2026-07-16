@@ -437,6 +437,7 @@ describe('DELETE /api/v1/admin/vouchers/:id', () => {
       .mockResolvedValueOnce(undefined) // DELETE radreply
       .mockResolvedValueOnce(undefined) // DELETE radusergroup
       .mockResolvedValueOnce(undefined) // DELETE voucher_meta
+      .mockResolvedValueOnce(undefined) // UPDATE subscriptions vouchers_used
       .mockResolvedValueOnce(undefined); // COMMIT
 
     // sendCoaDisconnect router lookup → empty → early return
@@ -456,6 +457,10 @@ describe('DELETE /api/v1/admin/vouchers/:id', () => {
     expect(clientSql.some((q) => q.includes('DELETE FROM radreply'))).toBe(true);
     expect(clientSql.some((q) => q.includes('DELETE FROM radusergroup'))).toBe(true);
     expect(clientSql.some((q) => q.includes('DELETE FROM voucher_meta'))).toBe(true);
+    // Quota-accounting fix: the admin delete path decrements vouchers_used too.
+    expect(
+      clientSql.some((q) => q.includes('UPDATE subscriptions') && q.includes('GREATEST(vouchers_used - ')),
+    ).toBe(true);
 
     const auditCall = mockQuery.mock.calls.find(
       (c) => typeof c[0] === 'string' && (c[0] as string).includes('audit_logs'),

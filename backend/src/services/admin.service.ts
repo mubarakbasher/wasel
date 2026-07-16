@@ -138,7 +138,10 @@ export async function getUsers(
 
   if (status === 'active') {
     conditions.push(`is_active = true`);
-  } else if (status === 'inactive') {
+  } else if (status === 'inactive' || status === 'suspended') {
+    // The validator/UI use 'suspended'; keep the legacy 'inactive' alias too.
+    // Both map to is_active = false — without 'suspended' the filter was a no-op
+    // (list AND users CSV export silently returned everyone).
     conditions.push(`is_active = false`);
   }
 
@@ -923,7 +926,7 @@ export async function getRouters(
 
   const total = parseInt(countResult.rows[0].count, 10);
 
-  logger.info('Admin fetched routers', { page, limit, status, search, total });
+  logger.info('Admin fetched routers', { page, limit, status, hasSearch: Boolean(search), total });
 
   return { routers: dataResult.rows, total, page, limit };
 }
@@ -1447,7 +1450,9 @@ export async function getAllVouchers(
   logger.info('Admin fetched vouchers', {
     page,
     limit,
-    search: filters.search,
+    // Never log the raw search term: admins paste full voucher codes (== the
+    // credential for numeric vouchers) into search. Log presence only.
+    hasSearch: Boolean(filters.search),
     status: filters.status,
     routerId: filters.routerId,
     userId: filters.userId,

@@ -1,7 +1,7 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
 import { getAccessToken, storeAuth, clearAuth, getStoredUser } from './auth';
 
-const apiBaseUrl = import.meta.env.VITE_API_URL || '/api/v1';
+export const apiBaseUrl = import.meta.env.VITE_API_URL || '/api/v1';
 
 // withCredentials: send the HttpOnly refresh cookie on cross-origin API calls.
 // X-Client: 'admin' tells the backend to issue/rotate the cookie for this SPA.

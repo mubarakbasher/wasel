@@ -1,11 +1,13 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import axios from 'axios';
 
 // Mock the axios wrapper so no real HTTP happens and we control login outcomes.
 vi.mock('../../lib/api', () => ({
   default: { post: vi.fn(), get: vi.fn() },
+  apiBaseUrl: '/api/v1',
 }));
 
 import api from '../../lib/api';
@@ -27,6 +29,10 @@ function renderLogin() {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("surfaces the backend's message on a wrong-password 401", async () => {
@@ -80,6 +86,42 @@ describe('LoginPage', () => {
       email: 'admin@wasel.app',
       password: 'correct-horse',
     });
+  });
+
+  it('revokes the legacy token pair and persists nothing on a non-admin login', async () => {
+    const user = userEvent.setup();
+    // A non-admin can't get the HttpOnly cookie treatment, so the backend
+    // falls back to the legacy body pair — that refresh token must be
+    // revoked, not left alive server-side for 7 days.
+    mockPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          accessToken: 'access-xyz',
+          refreshToken: 'refresh-xyz',
+          user: { id: 'u2', name: 'Operator', email: 'op@wasel.app', role: 'operator' },
+        },
+      },
+    });
+    const logoutSpy = vi.spyOn(axios, 'post').mockResolvedValueOnce({ data: {} });
+
+    renderLogin();
+
+    await user.type(screen.getByLabelText('Email'), 'op@wasel.app');
+    await user.type(screen.getByLabelText('Password'), 'whatever');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(
+      await screen.findByText('Access denied. Admin privileges required.'),
+    ).toBeInTheDocument();
+
+    // Fired via bare axios (no access token exists yet to route through the
+    // `api` instance), carrying the just-issued refresh token from the body.
+    expect(logoutSpy).toHaveBeenCalledWith('/api/v1/auth/logout', { refreshToken: 'refresh-xyz' });
+
+    // Nothing from this rejected session is persisted.
+    expect(localStorage.getItem('accessToken')).toBeNull();
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+    expect(localStorage.getItem('user')).toBeNull();
   });
 
   it('shows a generic message when the error has no backend envelope', async () => {

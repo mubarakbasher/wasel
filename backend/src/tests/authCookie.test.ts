@@ -21,6 +21,8 @@ const loginBody = { email: 'test@example.com', password: 'Password1' };
 // Hashed once in beforeAll (low cost: compare only cares about the embedded
 // cost factor, and prod cost 12 would slow the suite for no extra coverage).
 let activeUserRow: Record<string, unknown>;
+// Same identity but role: 'admin' — login cookie mode requires an admin user.
+let adminUserRow: Record<string, unknown>;
 
 beforeAll(async () => {
   const passwordHash = await bcrypt.hash(loginBody.password, 4);
@@ -35,6 +37,7 @@ beforeAll(async () => {
     locked_until: null,
     role: 'user',
   };
+  adminUserRow = { ...activeUserRow, role: 'admin' };
 });
 
 // ---------------------------------------------------------------------------
@@ -73,7 +76,7 @@ const SEVEN_DAYS_SECONDS = 7 * 24 * 60 * 60;
 
 describe('POST /api/v1/auth/login — X-Client: admin cookie mode', () => {
   it('sets the wasel_rt HttpOnly cookie and omits refreshToken from the body', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [activeUserRow] });
+    mockQuery.mockResolvedValueOnce({ rows: [adminUserRow] });
 
     const res = await request(app)
       .post('/api/v1/auth/login')
@@ -98,7 +101,7 @@ describe('POST /api/v1/auth/login — X-Client: admin cookie mode', () => {
   });
 
   it('matches the header value case-insensitively and trimmed', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [activeUserRow] });
+    mockQuery.mockResolvedValueOnce({ rows: [adminUserRow] });
 
     const res = await request(app)
       .post('/api/v1/auth/login')
@@ -108,6 +111,24 @@ describe('POST /api/v1/auth/login — X-Client: admin cookie mode', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.refreshToken).toBeUndefined();
     expect(waselCookie(res)).toBeDefined();
+  });
+
+  it('a NON-admin login through the admin client gets NO cookie and the body pair', async () => {
+    // Role gate: X-Client: admin alone is not enough — a non-admin user who
+    // authenticates via the admin SPA must not be handed a live HttpOnly
+    // refresh cookie the SPA can't reach to revoke. They get the legacy body
+    // tokens (which the SPA slice discards) and zero Set-Cookie.
+    mockQuery.mockResolvedValueOnce({ rows: [activeUserRow] }); // role: 'user'
+
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .set('X-Client', 'admin')
+      .send(loginBody);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.accessToken).toBeDefined();
+    expect(res.body.data.refreshToken).toBeDefined();
+    expect(setCookies(res)).toHaveLength(0);
   });
 });
 

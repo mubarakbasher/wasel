@@ -28,8 +28,10 @@ const CRLF = '\r\n';
 const BOM = '﻿';
 
 // Characters that, as the first char of a *string* cell, could be interpreted
-// as the start of a formula by a spreadsheet application.
-const FORMULA_TRIGGERS = new Set(['=', '+', '-', '@']);
+// as the start of a formula by a spreadsheet application. Per the OWASP CSV-
+// injection guidance this includes tab (0x09) and carriage return (0x0D)
+// alongside the usual `=`, `+`, `-`, `@`.
+const FORMULA_TRIGGERS = new Set(['=', '+', '-', '@', '\t', '\r']);
 
 /**
  * Serialize an arbitrary cell value to its raw text plus whether the
@@ -67,8 +69,9 @@ function escapeCell(value: unknown): string {
   }
 
   // RFC-4180: a field containing a quote, comma, CR, or LF must be quoted, and
-  // embedded quotes are doubled.
-  if (/["\r\n,]/.test(cell)) {
+  // embedded quotes are doubled. Tab is added so a tab-triggered formula guard
+  // still round-trips as a single quoted cell rather than leaking a raw tab.
+  if (/["\r\n,\t]/.test(cell)) {
     cell = `"${cell.replace(/"/g, '""')}"`;
   }
 

@@ -70,13 +70,33 @@ export const listRoutersQuerySchema = z.object({
   search: z.string().max(100).optional(),
 });
 
+// Audit-log date filters accept EITHER a full ISO-8601 datetime (passed through
+// unchanged) OR a date-only `YYYY-MM-DD` value from an <input type="date"> in
+// the admin UI. Date-only values are widened to the day boundary so the service
+// SQL (`created_at >= from` / `created_at <= to`) does what the operator meant
+// and a single-day `from == to` range stays inclusive: `from` → start of day
+// (00:00:00.000Z), `to` → end of day (23:59:59.999Z). Garbage still rejects.
+// Both the list schema and the derived CSV-export schema benefit (fix at source).
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function auditDateFilter(boundary: 'start' | 'end') {
+  return z
+    .union([z.string().date(), z.string().datetime()])
+    .transform((value) =>
+      DATE_ONLY_RE.test(value)
+        ? `${value}T${boundary === 'end' ? '23:59:59.999' : '00:00:00.000'}Z`
+        : value,
+    )
+    .optional();
+}
+
 export const listAuditLogsQuerySchema = z.object({
   ...paginationSchema,
   adminId: z.string().uuid().optional(),
   action: z.string().max(100).optional(),
   targetEntity: z.string().max(50).optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  from: auditDateFilter('start'),
+  to: auditDateFilter('end'),
 });
 
 // ---------------------------------------------------------------------------

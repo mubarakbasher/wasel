@@ -72,6 +72,23 @@ describe('toCsv', () => {
       expect(body(csv)).toBe(`"'=1+2,3",x${CRLF}`);
     });
 
+    // OWASP lists tab (0x09) and CR (0x0D) as Excel cell-start formula triggers.
+    it('prefixes AND quotes a string starting with a tab (0x09)', () => {
+      const csv = twoCol([{ a: '\tSUM(A1)', b: 'x' }]);
+      // guard adds a leading quote, then the tab forces RFC-4180 quoting.
+      expect(body(csv)).toBe(`"'\tSUM(A1)",x${CRLF}`);
+    });
+
+    it('prefixes AND quotes a string starting with a carriage return (0x0D)', () => {
+      const csv = twoCol([{ a: '\r=1+1', b: 'x' }]);
+      expect(body(csv)).toBe(`"'\r=1+1",x${CRLF}`);
+    });
+
+    it('quotes a cell with an embedded (non-leading) tab so it never leaks raw', () => {
+      const csv = twoCol([{ a: 'a\tb', b: 'x' }]);
+      expect(body(csv)).toBe(`"a\tb",x${CRLF}`);
+    });
+
     it('does not guard negative NUMBERS (numeric cells are exempt)', () => {
       const csv = twoCol([{ a: -5, b: 0 }]);
       expect(body(csv)).toBe(`-5,0${CRLF}`);

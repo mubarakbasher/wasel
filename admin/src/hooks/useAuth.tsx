@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import axios from 'axios';
 import { type User, getStoredUser, storeAuth, clearAuth, isAuthenticated } from '../lib/auth';
-import api from '../lib/api';
+import api, { apiBaseUrl } from '../lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -16,9 +17,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const { data: resp } = await api.post('/auth/login', { email, password });
-    const { accessToken, user: userData } = resp.data;
+    const { accessToken, refreshToken, user: userData } = resp.data;
 
     if (userData.role !== 'admin') {
+      // Non-admin sign-in: the backend can't yet know this is a rejected admin
+      // session, so it issues the legacy body token pair (no HttpOnly cookie)
+      // instead. That refresh token would otherwise live server-side for 7
+      // days even though we deny the session client-side right below — revoke
+      // it best-effort before throwing. Use a bare axios call (not the `api`
+      // instance): there's no access token in storage yet to attach, and this
+      // must never touch localStorage or the refresh-retry machinery.
+      try {
+        await axios.post(`${apiBaseUrl}/auth/logout`, { refreshToken });
+      } catch {
+        // ignore — the thrown error below is what the caller sees regardless
+      }
       throw new Error('Access denied. Admin privileges required.');
     }
 

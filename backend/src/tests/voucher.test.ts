@@ -432,6 +432,7 @@ describe('DELETE /api/v1/routers/:id/vouchers/:vid', () => {
       .mockResolvedValueOnce(undefined) // DELETE radreply
       .mockResolvedValueOnce(undefined) // DELETE radusergroup
       .mockResolvedValueOnce(undefined) // DELETE voucher_meta
+      .mockResolvedValueOnce(undefined) // UPDATE subscriptions vouchers_used
       .mockResolvedValueOnce(undefined); // COMMIT
 
     // sendCoaDisconnect → SELECT router → returns router (so we reach radacct lookup)
@@ -447,6 +448,19 @@ describe('DELETE /api/v1/routers/:id/vouchers/:vid', () => {
     expect(res.body.success).toBe(true);
     // No active session → sendDisconnectRequest must not have been called
     expect(mockSendDisconnectRequest).not.toHaveBeenCalled();
+
+    // Quota-accounting fix: the single delete decrements vouchers_used in-txn
+    // (GREATEST-guarded, active subscription), mirroring bulkDeleteVouchers.
+    const clientSql = mockClientQuery.mock.calls.map((c) => String(c[0]));
+    const decrement = clientSql.find((q) =>
+      q.includes('UPDATE subscriptions') && q.includes('GREATEST(vouchers_used - '),
+    );
+    expect(decrement).toBeDefined();
+    // Decrement runs inside the transaction, before COMMIT.
+    const decrementIdx = clientSql.findIndex((q) => q.includes('UPDATE subscriptions'));
+    const commitIdx = clientSql.findIndex((q) => q.includes('COMMIT'));
+    expect(decrementIdx).toBeGreaterThan(-1);
+    expect(decrementIdx).toBeLessThan(commitIdx);
   });
 });
 
@@ -464,6 +478,7 @@ describe('DELETE voucher — F1 CoA security regression', () => {
       .mockResolvedValueOnce(undefined) // DELETE radreply
       .mockResolvedValueOnce(undefined) // DELETE radusergroup
       .mockResolvedValueOnce(undefined) // DELETE voucher_meta
+      .mockResolvedValueOnce(undefined) // UPDATE subscriptions vouchers_used
       .mockResolvedValueOnce(undefined); // COMMIT
 
     // sendCoaDisconnect: router lookup
@@ -501,6 +516,7 @@ describe('DELETE voucher — F1 CoA security regression', () => {
       .mockResolvedValueOnce(undefined) // DELETE radreply
       .mockResolvedValueOnce(undefined) // DELETE radusergroup
       .mockResolvedValueOnce(undefined) // DELETE voucher_meta
+      .mockResolvedValueOnce(undefined) // UPDATE subscriptions vouchers_used
       .mockResolvedValueOnce(undefined); // COMMIT
 
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2', radius_secret_enc: 'enc' }] });
