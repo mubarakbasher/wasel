@@ -135,7 +135,7 @@ class PlanCard extends StatelessWidget {
                   const SizedBox(height: AppSpacing.lg),
                   const Divider(height: 1),
                   const SizedBox(height: AppSpacing.lg),
-                  ...plan.features.map(
+                  ...buildPlanFeatures(context, plan).map(
                     (feature) => Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                       child: Row(

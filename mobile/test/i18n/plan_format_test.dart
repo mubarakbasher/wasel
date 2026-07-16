@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wasel/i18n/app_localizations.dart';
 import 'package:wasel/i18n/plan_format.dart';
+import 'package:wasel/models/plan.dart';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,6 +41,66 @@ Future<T> _resolve<T>(
   await tester.pumpAndSettle();
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Plan fixtures used by buildPlanFeatures tests
+// ---------------------------------------------------------------------------
+
+const _starterPlan = Plan(
+  tier: 'starter',
+  name: 'Starter',
+  nameAr: 'المبتدئة',
+  price: 10,
+  currency: 'SDG',
+  maxRouters: 1,
+  monthlyVouchers: 500,
+  sessionMonitoring: 'Active only',
+  dashboard: 'Basic stats',
+  features: [],
+  allowedDurations: [1],
+);
+
+const _largePlan = Plan(
+  tier: 'enterprise',
+  name: 'Enterprise',
+  nameAr: 'المؤسسات',
+  price: 100,
+  currency: 'SDG',
+  maxRouters: 10,
+  monthlyVouchers: 2000,
+  sessionMonitoring: 'Full + export',
+  dashboard: 'Full analytics + reports',
+  features: [],
+  allowedDurations: [1, 3, 6],
+);
+
+const _unlimitedPlan = Plan(
+  tier: 'enterprise',
+  name: 'Enterprise',
+  nameAr: 'المؤسسات',
+  price: 100,
+  currency: 'SDG',
+  maxRouters: 1,
+  monthlyVouchers: -1,
+  sessionMonitoring: 'Active only',
+  dashboard: 'Basic stats',
+  features: [],
+  allowedDurations: [1],
+);
+
+const _unknownCapPlan = Plan(
+  tier: 'starter',
+  name: 'Starter',
+  nameAr: null,
+  price: 10,
+  currency: 'SDG',
+  maxRouters: 1,
+  monthlyVouchers: 500,
+  sessionMonitoring: 'Something custom',
+  dashboard: '',
+  features: [],
+  allowedDurations: [1],
+);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -93,6 +154,75 @@ void main() {
         });
         expect(result, 'Professional');
       });
+    });
+  });
+
+  group('buildPlanFeatures', () {
+    testWidgets('EN starter plan produces correct bullet list', (t) async {
+      final result = await _resolve<List<String>>(t, const Locale('en'), (c) {
+        return buildPlanFeatures(c, _starterPlan);
+      });
+      expect(result, [
+        '1 Router',
+        '500 Vouchers/month',
+        'Active session monitoring',
+        'Basic dashboard',
+      ]);
+    });
+
+    testWidgets('AR starter plan produces correct localized bullet list',
+        (t) async {
+      final result = await _resolve<List<String>>(t, const Locale('ar'), (c) {
+        return buildPlanFeatures(c, _starterPlan);
+      });
+      expect(result, [
+        'راوتر واحد',
+        '500 كرت/شهر',
+        'مراقبة الجلسات النشطة',
+        'لوحة تحكم أساسية',
+      ]);
+    });
+
+    testWidgets('EN plural plan with grouping produces correct first two entries',
+        (t) async {
+      final result = await _resolve<List<String>>(t, const Locale('en'), (c) {
+        return buildPlanFeatures(c, _largePlan);
+      });
+      expect(result[0], '10 Routers');
+      expect(result[1], '2,000 Vouchers/month');
+    });
+
+    testWidgets('AR plural plan with grouping produces correct first two entries',
+        (t) async {
+      final result = await _resolve<List<String>>(t, const Locale('ar'), (c) {
+        return buildPlanFeatures(c, _largePlan);
+      });
+      expect(result[0], '10 راوترات');
+      expect(result[1], '2,000 كرت/شهر');
+    });
+
+    testWidgets('EN unlimited vouchers renders unlimited label', (t) async {
+      final result = await _resolve<List<String>>(t, const Locale('en'), (c) {
+        return buildPlanFeatures(c, _unlimitedPlan);
+      });
+      expect(result[1], 'Unlimited Vouchers');
+    });
+
+    testWidgets('AR unlimited vouchers renders unlimited label', (t) async {
+      final result = await _resolve<List<String>>(t, const Locale('ar'), (c) {
+        return buildPlanFeatures(c, _unlimitedPlan);
+      });
+      expect(result[1], 'كروت غير محدودة');
+    });
+
+    testWidgets(
+        'unknown sessionMonitoring falls back to raw text; empty dashboard is skipped',
+        (t) async {
+      final result = await _resolve<List<String>>(t, const Locale('en'), (c) {
+        return buildPlanFeatures(c, _unknownCapPlan);
+      });
+      expect(result.length, 3);
+      expect(result[2], 'Something custom');
     });
   });
 }
