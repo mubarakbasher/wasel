@@ -73,12 +73,21 @@ interface PaymentRow {
 
 interface RouterRow {
   id: string;
-  name: string;
-  status: string;
   user_id: string;
-  tunnel_ip: string | null;
+  name: string;
+  model: string | null;
+  ros_version: string | null;
+  status: string;
   last_seen: string | null;
+  last_health_check_at: string | null;
+  tunnel_ip: string | null;
+  hotspot_template_id: string | null;
+  hotspot_template_status: string | null;
+  hotspot_template_applied_at: string | null;
+  hotspot_template_error: string | null;
+  hotspot_accent_color: string | null;
   created_at: string;
+  updated_at: string;
   owner_name: string;
   owner_email: string;
 }
@@ -882,8 +891,18 @@ export async function getRouters(
   const offset = (page - 1) * limit;
 
   const [dataResult, countResult] = await Promise.all([
-    pool.query(
-      `SELECT r.*, u.name AS owner_name, u.email AS owner_email
+    // Explicit column list — never `r.*`: the routers row carries encrypted
+    // credential/secret columns (api_pass_enc, radius_secret_enc,
+    // wg_private_key_enc, wg_preshared_key_enc) that must never reach the admin
+    // client. Only non-sensitive display + action columns are projected here.
+    pool.query<RouterRow>(
+      `SELECT
+         r.id, r.user_id, r.name, r.model, r.ros_version, r.status,
+         r.last_seen, r.last_health_check_at, r.tunnel_ip,
+         r.hotspot_template_id, r.hotspot_template_status,
+         r.hotspot_template_applied_at, r.hotspot_template_error,
+         r.hotspot_accent_color, r.created_at, r.updated_at,
+         u.name AS owner_name, u.email AS owner_email
        FROM routers r
        JOIN users u ON r.user_id = u.id
        ${whereClause}
@@ -905,6 +924,47 @@ export async function getRouters(
   logger.info('Admin fetched routers', { page, limit, status, search, total });
 
   return { routers: dataResult.rows, total, page, limit };
+}
+
+/**
+ * Metadata an admin router action needs before delegating to the owner-scoped
+ * operator services (applyHotspotTemplate / deleteRouter). Resolves the owner id
+ * so those services pass their ownership check, the stored hotspot template id
+ * (reprovision default), and the display name (delete audit record).
+ */
+export interface RouterAdminMeta {
+  userId: string;
+  name: string;
+  hotspotTemplateId: string | null;
+}
+
+/**
+ * Resolve owner id + name + stored hotspot template for a router. Admin router
+ * actions reuse the owner-scoped operator services, so they resolve the ownerId
+ * from the router first — same pattern as resolveVoucherOwner. Throws 404
+ * ROUTER_NOT_FOUND (the code applyHotspotTemplate / deleteRouter already use)
+ * when the router is unknown.
+ */
+export async function getRouterAdminMeta(routerId: string): Promise<RouterAdminMeta> {
+  const result = await pool.query<{
+    user_id: string;
+    name: string;
+    hotspot_template_id: string | null;
+  }>(
+    `SELECT user_id, name, hotspot_template_id FROM routers WHERE id = $1`,
+    [routerId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, 'Router not found', 'ROUTER_NOT_FOUND');
+  }
+
+  const row = result.rows[0];
+  return {
+    userId: row.user_id,
+    name: row.name,
+    hotspotTemplateId: row.hotspot_template_id,
+  };
 }
 
 /**

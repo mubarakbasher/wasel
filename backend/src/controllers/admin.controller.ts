@@ -13,6 +13,8 @@ import {
   getRadminSocketPath,
   showFreeradiusClients,
 } from '../services/freeradius.service';
+import { applyHotspotTemplate } from '../services/hotspotTemplate.service';
+import { AppError } from '../middleware/errorHandler';
 import { redact } from '../utils/redact';
 
 export async function listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -334,6 +336,77 @@ export async function getRouterSetupGuide(req: AuthenticatedRequest, res: Respon
       ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
     res.status(200).json({ success: true, data: guide });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /admin/routers/:id/reprovision
+ *
+ * Re-push a hotspot login-page template to a router on the owner's behalf.
+ * templateId defaults to the router's stored hotspot_template_id; if neither is
+ * supplied nor stored → 400 NO_TEMPLATE. Mirrors the operator setHotspotTemplate
+ * response ({ data: RouterInfo }) verbatim — including the 200 with
+ * data.hotspotTemplateStatus === 'failed' passthrough when the device apply
+ * failed (applyHotspotTemplate swallows RouterOS errors rather than throwing).
+ */
+export async function reprovisionRouter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const routerId = req.params.id as string;
+    const { templateId: bodyTemplateId } = req.body as { templateId?: string };
+
+    const meta = await adminService.getRouterAdminMeta(routerId);
+    const templateId = bodyTemplateId ?? meta.hotspotTemplateId;
+    if (!templateId) {
+      throw new AppError(
+        400,
+        'No template provided and router has no stored hotspot template',
+        'NO_TEMPLATE',
+      );
+    }
+
+    const router = await applyHotspotTemplate(meta.userId, routerId, templateId);
+
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'router.reprovision',
+      targetEntity: 'router',
+      targetId: routerId,
+      details: redact({ templateId, ownerId: meta.userId }),
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+
+    res.status(200).json({ success: true, data: router });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * DELETE /admin/routers/:id
+ *
+ * Delete a router on the owner's behalf via the operator cascade (purges RADIUS
+ * creds, NAS row, tunnel subnet, WireGuard peer). Name is snapshotted before the
+ * delete for the audit record.
+ */
+export async function deleteRouter(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const routerId = req.params.id as string;
+
+    const meta = await adminService.getRouterAdminMeta(routerId);
+    await routerService.deleteRouter(meta.userId, routerId);
+
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'router.delete',
+      targetEntity: 'router',
+      targetId: routerId,
+      details: redact({ ownerId: meta.userId, name: meta.name }),
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+
+    res.status(200).json({ success: true, data: { message: 'Router deleted successfully' } });
   } catch (error) {
     next(error);
   }

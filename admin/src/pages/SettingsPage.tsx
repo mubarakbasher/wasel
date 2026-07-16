@@ -68,6 +68,19 @@ interface SystemStatus {
   process: ProcessStatus;
 }
 
+interface FreeradiusStatus {
+  socket: {
+    path: string;
+    exists: boolean;
+    readable: boolean;
+    writable: boolean;
+  };
+  clients: {
+    raw: string;
+    lineCount: number;
+  };
+}
+
 function extractErr(err: unknown, fallback = 'Request failed'): string {
   const e = err as { response?: { data?: { error?: { message?: string } } } };
   return e.response?.data?.error?.message ?? fallback;
@@ -721,6 +734,15 @@ function DeleteAdminModal({
 // ---------------------------------------------------------------------------
 
 function SystemStatusTab() {
+  return (
+    <div className="space-y-6">
+      <CoreStatusGrid />
+      <FreeradiusCard />
+    </div>
+  );
+}
+
+function CoreStatusGrid() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-system-status'],
     queryFn: async () => {
@@ -798,6 +820,93 @@ function SystemStatusTab() {
         value={`${data.process.memoryMb} MB`}
         tone="neutral"
       />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FreeRADIUS
+// ---------------------------------------------------------------------------
+
+function FreeradiusCard() {
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['admin-freeradius-status'],
+    queryFn: async () => {
+      const { data: res } = await api.get('/admin/freeradius/status');
+      return res.data as FreeradiusStatus;
+    },
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading) {
+    return <div className="text-gray-500">Loading FreeRADIUS status...</div>;
+  }
+  if (isError || !data) {
+    return (
+      <ErrorPanel
+        message={error instanceof Error ? error.message : undefined}
+        onRetry={() => refetch()}
+      />
+    );
+  }
+
+  // The control socket must exist and be both readable and writable for the
+  // backend's radmin probes to reach FreeRADIUS.
+  const healthy = data.socket.exists && data.socket.readable && data.socket.writable;
+  const rawOutput = data.clients.raw?.trim()
+    ? data.clients.raw
+    : 'No output — radmin returned nothing (socket unreachable, or no NAS clients cached yet).';
+
+  return (
+    <div
+      className={`rounded-lg border p-4 ${
+        healthy ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            FreeRADIUS
+          </div>
+          <div
+            className={`mt-1 inline-flex items-center gap-1.5 text-lg font-semibold ${
+              healthy ? 'text-green-800' : 'text-red-800'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${healthy ? 'bg-green-500' : 'bg-red-500'}`}
+            />
+            {healthy ? 'Healthy' : 'Unhealthy'}
+          </div>
+        </div>
+        <div className="text-right text-xs text-gray-600">
+          <div>
+            <span className="font-medium">{data.clients.lineCount}</span> cached client
+            {data.clients.lineCount === 1 ? '' : 's'}
+          </div>
+          <div className="mt-0.5">
+            socket: {data.socket.exists ? 'present' : 'missing'}
+            {data.socket.exists &&
+              `, ${data.socket.readable ? 'r' : '-'}${data.socket.writable ? 'w' : '-'}`}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2 text-xs text-gray-500">
+        Control socket:{' '}
+        <code className="bg-white/70 px-1 py-0.5 rounded break-all">{data.socket.path}</code>
+      </div>
+
+      <details className="mt-3 rounded-lg border border-black/5 bg-white/60">
+        <summary className="px-3 py-2 text-sm font-medium text-gray-700 cursor-pointer hover:bg-black/5 rounded-lg">
+          Raw radmin output
+        </summary>
+        <div className="p-3">
+          <pre className="text-xs bg-slate-900 text-slate-100 rounded p-3 overflow-x-auto whitespace-pre-wrap break-all">
+            {rawOutput}
+          </pre>
+        </div>
+      </details>
     </div>
   );
 }

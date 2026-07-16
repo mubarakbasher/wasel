@@ -64,6 +64,16 @@ router.get(
   validate({ params: validators.routerIdParamSchema }),
   adminController.getRouterSetupGuide,
 );
+router.post(
+  '/routers/:id/reprovision',
+  validate({ params: validators.routerIdParamSchema, body: validators.reprovisionRouterBodySchema }),
+  adminController.reprovisionRouter,
+);
+router.delete(
+  '/routers/:id',
+  validate({ params: validators.routerIdParamSchema }),
+  adminController.deleteRouter,
+);
 router.get('/audit-logs', validate({ query: validators.listAuditLogsQuerySchema }), adminController.listAuditLogs);
 
 // Platform-wide vouchers

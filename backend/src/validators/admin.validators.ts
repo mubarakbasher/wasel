@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { HOTSPOT_TEMPLATES } from '../hotspot-templates/manifest';
 
 // Shared pagination
 const paginationSchema = {
@@ -96,6 +97,21 @@ export const createPlanBodySchema = z.object({
   features: z.array(z.string()).default([]),
   allowed_durations: z.array(z.coerce.number().int().min(1).max(12)).min(1).default([1]),
   is_active: z.boolean().default(true),
+});
+
+// Reuse the manifest as the single source of truth for valid template ids —
+// same enum shape as the operator setHotspotTemplateSchema (router.validators.ts).
+const hotspotTemplateIds = HOTSPOT_TEMPLATES.map((t) => t.id) as [string, ...string[]];
+
+// Reprovision body: templateId is OPTIONAL. When omitted, the controller falls
+// back to the router's stored hotspot_template_id (400 NO_TEMPLATE if neither
+// is present). When provided, it must be a known template id.
+export const reprovisionRouterBodySchema = z.object({
+  templateId: z
+    .enum(hotspotTemplateIds, {
+      message: `templateId must be one of: ${hotspotTemplateIds.join(', ')}`,
+    })
+    .optional(),
 });
 
 export const createRouterForUserBodySchema = z.object({

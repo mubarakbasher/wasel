@@ -1,11 +1,17 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Search, FileText, RefreshCw, Trash2 } from 'lucide-react';
 import api from '../lib/api';
 import { formatDateTime } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
+import Button from '../components/ui/Button';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import DropdownMenu from '../components/ui/DropdownMenu';
+import SetupGuideView from '../components/SetupGuideView';
+import { useToast } from '../hooks/useToast';
 
 interface Router {
   id: string;
@@ -15,11 +21,19 @@ interface Router {
   status: string;
   last_seen: string;
   tunnel_ip: string;
+  hotspot_template_id: string | null;
   created_at: string;
   [key: string]: unknown;
 }
 
+type ConfirmType = 'reprovision' | 'delete';
+
 const STATUS_OPTIONS = ['all', 'online', 'offline', 'degraded'] as const;
+
+function extractErr(err: unknown, fallback = 'Request failed'): string {
+  const e = err as { response?: { data?: { error?: { message?: string } } } };
+  return e.response?.data?.error?.message ?? fallback;
+}
 
 function relativeTime(dateStr: string): string {
   const now = Date.now();
@@ -35,10 +49,17 @@ function relativeTime(dateStr: string): string {
 }
 
 export default function RoutersPage() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [setupRouterId, setSetupRouterId] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: ConfirmType;
+    router: Router;
+  } | null>(null);
 
   // Simple debounce via timeout ref
   const handleSearchChange = (value: string) => {
@@ -60,6 +81,44 @@ export default function RoutersPage() {
       return res;
     },
   });
+
+  const reprovisionMutation = useMutation({
+    mutationFn: async (routerId: string) => {
+      const { data: res } = await api.post(`/admin/routers/${routerId}/reprovision`, {});
+      return res.data as { hotspotTemplateStatus?: string };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['routers'] });
+      setConfirmAction(null);
+      if (result?.hotspotTemplateStatus === 'failed') {
+        toast.error('Reprovisioned, but the hotspot template failed to re-apply on the router.');
+      } else {
+        toast.success('Router reprovisioned.');
+      }
+    },
+    onError: (err: unknown) => toast.error(extractErr(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (routerId: string) => {
+      await api.delete(`/admin/routers/${routerId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['routers'] });
+      setConfirmAction(null);
+      toast.success('Router deleted.');
+    },
+    onError: (err: unknown) => toast.error(extractErr(err)),
+  });
+
+  const handleConfirm = () => {
+    if (!confirmAction) return;
+    if (confirmAction.type === 'delete') {
+      deleteMutation.mutate(confirmAction.router.id);
+    } else {
+      reprovisionMutation.mutate(confirmAction.router.id);
+    }
+  };
 
   const routers: Router[] = data?.data ?? [];
   const total: number = data?.meta?.total ?? 0;
@@ -120,7 +179,38 @@ export default function RoutersPage() {
       header: 'Created',
       render: (row) => formatDateTime(row.created_at),
     },
+    {
+      key: 'actions',
+      header: '',
+      render: (row) => (
+        <div className="flex justify-end">
+          <DropdownMenu
+            ariaLabel={`Actions for ${row.name}`}
+            items={[
+              {
+                label: 'View setup guide',
+                icon: <FileText className="w-4 h-4" />,
+                onClick: () => setSetupRouterId(row.id),
+              },
+              {
+                label: 'Reprovision',
+                icon: <RefreshCw className="w-4 h-4" />,
+                onClick: () => setConfirmAction({ type: 'reprovision', router: row }),
+              },
+              {
+                label: 'Delete',
+                icon: <Trash2 className="w-4 h-4" />,
+                danger: true,
+                onClick: () => setConfirmAction({ type: 'delete', router: row }),
+              },
+            ]}
+          />
+        </div>
+      ),
+    },
   ];
+
+  const confirmIsDelete = confirmAction?.type === 'delete';
 
   return (
     <div>
@@ -172,6 +262,45 @@ export default function RoutersPage() {
           />
         </div>
       )}
+
+      {/* Setup guide */}
+      <Modal
+        open={!!setupRouterId}
+        onClose={() => setSetupRouterId(null)}
+        title="Router setup guide"
+        size="lg"
+        footer={<Button onClick={() => setSetupRouterId(null)}>Done</Button>}
+      >
+        {setupRouterId && <SetupGuideView routerId={setupRouterId} />}
+      </Modal>
+
+      {/* Reprovision / delete confirm */}
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmIsDelete ? 'Delete router' : 'Reprovision router'}
+        message={
+          confirmAction && (
+            confirmIsDelete ? (
+              <>
+                Delete <span className="font-medium">{confirmAction.router.name}</span>? This
+                destroys the router, its WireGuard tunnel and its RADIUS registration. Any vouchers
+                on this router will stop authenticating. This cannot be undone.
+              </>
+            ) : (
+              <>
+                Re-apply the hotspot login template to{' '}
+                <span className="font-medium">{confirmAction.router.name}</span> over WireGuard? The
+                router must be online for the template to apply.
+              </>
+            )
+          )
+        }
+        confirmLabel={confirmIsDelete ? 'Delete' : 'Reprovision'}
+        variant={confirmIsDelete ? 'danger' : 'primary'}
+        loading={reprovisionMutation.isPending || deleteMutation.isPending}
+        onConfirm={handleConfirm}
+        onClose={() => setConfirmAction(null)}
+      />
     </div>
   );
 }
