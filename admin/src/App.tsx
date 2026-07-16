@@ -16,6 +16,7 @@ import AuditLogsPage from './pages/AuditLogsPage';
 import PlansPage from './pages/PlansPage';
 import MessagesPage from './pages/MessagesPage';
 import ConversationPage from './pages/ConversationPage';
+import AnnouncementsPage from './pages/AnnouncementsPage';
 import EmailLogPage from './pages/EmailLogPage';
 import EmailTemplatesPage from './pages/EmailTemplatesPage';
 import SettingsPage from './pages/SettingsPage';
@@ -75,6 +76,7 @@ export default function App() {
                   <Route path="/vouchers" element={<VouchersPage />} />
                   <Route path="/messages" element={<MessagesPage />} />
                   <Route path="/messages/:userId" element={<ConversationPage />} />
+                  <Route path="/announcements" element={<AnnouncementsPage />} />
                   <Route path="/routers" element={<RoutersPage />} />
                   <Route path="/audit-logs" element={<AuditLogsPage />} />
                   <Route path="/email-log" element={<EmailLogPage />} />

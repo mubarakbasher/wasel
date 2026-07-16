@@ -113,6 +113,18 @@ router.delete(
   adminController.deleteAdmin,
 );
 
+// Announcements (broadcast)
+router.get(
+  '/announcements',
+  validate({ query: validators.listAnnouncementsQuerySchema }),
+  adminController.listAnnouncements,
+);
+router.post(
+  '/announcements',
+  validate({ body: validators.createAnnouncementBodySchema }),
+  adminController.createAnnouncement,
+);
+
 // System status
 router.get('/system-status', adminController.getSystemStatus);
 

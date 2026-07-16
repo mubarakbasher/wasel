@@ -3,6 +3,7 @@ import { constants as fsConstants } from 'fs';
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import * as adminService from '../services/admin.service';
+import * as announcementService from '../services/announcement.service';
 import * as auditService from '../services/audit.service';
 import * as routerService from '../services/router.service';
 import * as voucherService from '../services/voucher.service';
@@ -609,6 +610,53 @@ export async function getStatsTimeseries(
     const { days } = req.query as Record<string, string>;
     const result = await adminService.getStatsTimeseries(Number(days) || 30);
     res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Announcements (broadcast)
+// ---------------------------------------------------------------------------
+
+export async function createAnnouncement(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { titleEn, titleAr, bodyEn, bodyAr } = req.body as {
+      titleEn: string;
+      titleAr: string;
+      bodyEn: string;
+      bodyAr: string;
+    };
+    const result = await announcementService.createAnnouncement({
+      adminId: req.user!.id,
+      titleEn,
+      titleAr,
+      bodyEn,
+      bodyAr,
+    });
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'announcement.send',
+      targetEntity: 'announcement',
+      targetId: result.id,
+      details: redact({ titleEn, titleAr, recipientCount: result.recipientCount }),
+      ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
+    });
+    res.status(201).json({ success: true, data: { id: result.id, recipientCount: result.recipientCount } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listAnnouncements(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { page, limit } = req.query as Record<string, string>;
+    const result = await announcementService.listAnnouncements(Number(page) || 1, Number(limit) || 20);
+    res.status(200).json({
+      success: true,
+      data: result.items,
+      meta: { page: result.page, limit: result.limit, total: result.total },
+    });
   } catch (error) {
     next(error);
   }

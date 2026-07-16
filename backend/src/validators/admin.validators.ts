@@ -205,3 +205,20 @@ export const testEmailBodySchema = z.object({
 export const statsTimeseriesQuerySchema = z.object({
   days: z.coerce.number().int().min(7).max(365).default(30),
 });
+
+// ---------------------------------------------------------------------------
+// Announcements (broadcast)
+// ---------------------------------------------------------------------------
+
+// Titles/bodies are trimmed then length-checked so leading/trailing whitespace
+// can't smuggle past the min(1) non-blank guard or inflate the max length.
+export const createAnnouncementBodySchema = z.object({
+  titleEn: z.string().trim().min(1, 'titleEn is required').max(200, 'titleEn must be at most 200 characters'),
+  titleAr: z.string().trim().min(1, 'titleAr is required').max(200, 'titleAr must be at most 200 characters'),
+  bodyEn: z.string().trim().min(1, 'bodyEn is required').max(2000, 'bodyEn must be at most 2000 characters'),
+  bodyAr: z.string().trim().min(1, 'bodyAr is required').max(2000, 'bodyAr must be at most 2000 characters'),
+});
+
+export const listAnnouncementsQuerySchema = z.object({
+  ...paginationSchema,
+});

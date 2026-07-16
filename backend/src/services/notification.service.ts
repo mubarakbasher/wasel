@@ -47,6 +47,70 @@ export function getFcmInitError(): string | null {
 // Dedup categories (prevent repeated notifications for same event within 24h)
 const DEDUP_CATEGORIES = ['subscription_expiring', 'subscription_expired', 'voucher_quota_low'];
 
+// FCM caps a single multicast at 500 tokens.
+const FCM_MULTICAST_CHUNK = 500;
+
+/**
+ * Fan a single notification out to many device tokens via FCM multicast.
+ *
+ * Reusable batch helper for broadcast-style features (e.g. announcements) that
+ * already know the localized title/body and the recipient token list. Chunks
+ * the tokens at the 500/multicast FCM limit, aggregates success/failure counts,
+ * and prunes stale (unregistered) tokens as a side effect.
+ *
+ * No-ops cleanly (returns zero counts) when FCM is not configured or the token
+ * list is empty, so dev/test paths never touch the network. Never throws — a
+ * failed chunk is logged and counted as failures for the whole chunk so callers
+ * can fire-and-forget safely.
+ */
+export async function sendMulticast(
+  tokens: string[],
+  notification: { title: string; body: string },
+  data: Record<string, string>,
+): Promise<{ successCount: number; failureCount: number }> {
+  if (!fcmAvailable || tokens.length === 0) {
+    return { successCount: 0, failureCount: 0 };
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
+
+  for (let i = 0; i < tokens.length; i += FCM_MULTICAST_CHUNK) {
+    const chunk = tokens.slice(i, i + FCM_MULTICAST_CHUNK);
+    const message: admin.messaging.MulticastMessage = {
+      tokens: chunk,
+      notification,
+      data,
+      android: { priority: 'high' as const },
+      apns: { payload: { aps: { sound: 'default' } } },
+    };
+
+    try {
+      const response = await admin.messaging().sendEachForMulticast(message);
+      successCount += response.successCount;
+      failureCount += response.failureCount;
+
+      response.responses.forEach((resp: admin.messaging.SendResponse, idx: number) => {
+        if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
+          deviceTokenService
+            .removeStaleTokens(chunk[idx])
+            .catch((err) =>
+              logger.warn('Failed to remove stale device token', {
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+        }
+      });
+    } catch (err) {
+      // Treat an entire failed chunk as failures; keep going with the rest.
+      failureCount += chunk.length;
+      logger.error('Multicast push chunk failed', { error: err, chunkSize: chunk.length });
+    }
+  }
+
+  return { successCount, failureCount };
+}
+
 /**
  * Look up the stored language preference for a user.
  * Returns 'en' if the row is missing or the value is not a recognised locale.
