@@ -6,6 +6,7 @@ import { formatDate } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
+import ExportCsvButton from '../components/ExportCsvButton';
 import Button from '../components/ui/Button';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -278,6 +279,11 @@ export default function SubscriptionsPage() {
           <option value="expired">Expired</option>
           <option value="cancelled">Cancelled</option>
         </select>
+        <ExportCsvButton
+          path="/admin/subscriptions/export"
+          params={{ status: status || undefined }}
+          label="Export CSV"
+        />
       </div>
 
       {isError ? (

@@ -5,6 +5,7 @@ import api from '../lib/api';
 import { formatDateTime } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import ErrorPanel from '../components/ErrorPanel';
+import ExportCsvButton from '../components/ExportCsvButton';
 
 interface AuditLog {
   id: string;
@@ -204,6 +205,17 @@ export default function AuditLogsPage() {
             className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
+
+        <ExportCsvButton
+          path="/admin/audit-logs/export"
+          params={{
+            action: debouncedAction || undefined,
+            targetEntity: targetEntity !== 'all' ? targetEntity : undefined,
+            from: fromDate || undefined,
+            to: toDate || undefined,
+          }}
+          label="Export CSV"
+        />
       </div>
 
       {isError ? (

@@ -27,6 +27,9 @@ router.use(authenticate, requireAdmin);
 
 // Users
 router.get('/users', validate({ query: validators.listUsersQuerySchema }), adminController.listUsers);
+// NOTE: /users/export MUST precede /users/:id — otherwise Express matches the
+// literal path against the :id route and the uuid param validator 400s "export".
+router.get('/users/export', validate({ query: validators.exportUsersQuerySchema }), adminController.exportUsers);
 router.get('/users/:id', validate({ params: validators.userIdParamSchema }), adminController.getUserDetail);
 router.put('/users/:id', validate({ params: validators.userIdParamSchema, body: validators.updateUserBodySchema }), adminController.updateUser);
 router.delete('/users/:id', validate({ params: validators.userIdParamSchema }), adminController.deleteUser);
@@ -38,6 +41,8 @@ router.post(
 
 // Subscriptions
 router.get('/subscriptions', validate({ query: validators.listSubscriptionsQuerySchema }), adminController.listSubscriptions);
+// /subscriptions/export before the :id param routes (defensive — GET vs PUT/DELETE).
+router.get('/subscriptions/export', validate({ query: validators.exportSubscriptionsQuerySchema }), adminController.exportSubscriptions);
 router.put('/subscriptions/:id', validate({ params: validators.subscriptionIdParamSchema, body: validators.updateSubscriptionBodySchema }), adminController.updateSubscription);
 router.delete('/subscriptions/:id', validate({ params: validators.subscriptionIdParamSchema }), adminController.deleteSubscription);
 
@@ -49,6 +54,8 @@ router.delete('/plans/:id', validate({ params: validators.planIdParamSchema }), 
 
 // Payments
 router.get('/payments', validate({ query: validators.listPaymentsQuerySchema }), adminController.listPayments);
+// /payments/export before the :id param route (defensive — GET vs PUT).
+router.get('/payments/export', validate({ query: validators.exportPaymentsQuerySchema }), adminController.exportPayments);
 router.put('/payments/:id', validate({ params: validators.paymentIdParamSchema, body: validators.reviewPaymentBodySchema }), adminController.reviewPayment);
 
 // Stats & Read-only
@@ -75,6 +82,7 @@ router.delete(
   adminController.deleteRouter,
 );
 router.get('/audit-logs', validate({ query: validators.listAuditLogsQuerySchema }), adminController.listAuditLogs);
+router.get('/audit-logs/export', validate({ query: validators.exportAuditLogsQuerySchema }), adminController.exportAuditLogs);
 
 // Platform-wide vouchers
 router.get('/vouchers', validate({ query: validators.listVouchersQuerySchema }), adminController.listVouchers);

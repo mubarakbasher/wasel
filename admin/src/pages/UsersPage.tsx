@@ -7,6 +7,7 @@ import { formatDate } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
+import ExportCsvButton from '../components/ExportCsvButton';
 import Button from '../components/ui/Button';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -217,6 +218,11 @@ export default function UsersPage() {
           <option value="active">Active</option>
           <option value="suspended">Suspended</option>
         </select>
+        <ExportCsvButton
+          path="/admin/users/export"
+          params={{ search: search || undefined, status: status || undefined }}
+          label="Export CSV"
+        />
       </div>
 
       {isError ? (

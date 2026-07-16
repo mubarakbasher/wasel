@@ -48,6 +48,7 @@ interface SubscriptionRow {
   start_date: string | null;
   end_date: string | null;
   voucher_quota: number;
+  vouchers_used: number;
   created_at: string;
   user_name: string;
   user_email: string;
@@ -102,6 +103,7 @@ interface AuditLogRow {
   ip_address: string | null;
   created_at: string;
   admin_name: string | null;
+  admin_email: string | null;
 }
 
 interface AdminStats {

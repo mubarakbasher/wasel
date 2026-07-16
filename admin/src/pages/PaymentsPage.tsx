@@ -6,6 +6,7 @@ import { formatDateTime } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
+import ExportCsvButton from '../components/ExportCsvButton';
 import Button from '../components/ui/Button';
 import Modal from '../components/Modal';
 import { useToast } from '../hooks/useToast';
@@ -219,23 +220,30 @@ export default function PaymentsPage() {
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Payment Verification</h1>
 
       {/* Status filter tabs */}
-      <div className="flex gap-1 mb-6 border-b">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setStatusFilter(tab);
-              setPage(1);
-            }}
-            className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
-              statusFilter === tab
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-3 mb-6 border-b">
+        <div className="flex gap-1">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setStatusFilter(tab);
+                setPage(1);
+              }}
+              className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+                statusFilter === tab
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        <ExportCsvButton
+          path="/admin/payments/export"
+          params={{ status: statusFilter !== 'all' ? statusFilter : undefined }}
+          label="Export CSV"
+        />
       </div>
 
       {isError ? (

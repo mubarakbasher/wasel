@@ -79,6 +79,20 @@ export const listAuditLogsQuerySchema = z.object({
   to: z.string().datetime().optional(),
 });
 
+// ---------------------------------------------------------------------------
+// CSV exports — the list query schemas MINUS pagination. Exports stream the
+// full (row-capped) result set, so page/limit are meaningless here; every other
+// filter is shared verbatim with the corresponding list endpoint.
+// ---------------------------------------------------------------------------
+
+export const exportUsersQuerySchema = listUsersQuerySchema.omit({ page: true, limit: true });
+export const exportSubscriptionsQuerySchema = listSubscriptionsQuerySchema.omit({
+  page: true,
+  limit: true,
+});
+export const exportPaymentsQuerySchema = listPaymentsQuerySchema.omit({ page: true, limit: true });
+export const exportAuditLogsQuerySchema = listAuditLogsQuerySchema.omit({ page: true, limit: true });
+
 // Plans
 export const planIdParamSchema = z.object({
   id: z.string().uuid('Invalid plan ID'),

@@ -17,6 +17,7 @@ import {
 import { applyHotspotTemplate } from '../services/hotspotTemplate.service';
 import { AppError } from '../middleware/errorHandler';
 import { redact } from '../utils/redact';
+import { toCsv } from '../utils/csv';
 
 export async function listUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -27,6 +28,148 @@ export async function listUsers(req: AuthenticatedRequest, res: Response, next: 
       data: result.users,
       meta: { page: result.page, limit: result.limit, total: result.total },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CSV exports
+// ---------------------------------------------------------------------------
+
+// Hard row cap for every export. Reuses the existing paginated list services
+// with a single large page rather than adding streaming/unbounded SQL, so a
+// runaway export can never pull an unbounded result set into memory.
+const EXPORT_ROW_CAP = 10000;
+
+function clientIp(req: AuthenticatedRequest): string {
+  return Array.isArray(req.ip) ? req.ip[0] : req.ip || '';
+}
+
+/**
+ * Send a generated CSV as a downloadable attachment. Content-Type is set before
+ * res.send so Express does not fall back to text/html, and the filename encodes
+ * the resource + UTC date (wasel-<resource>-YYYY-MM-DD.csv).
+ */
+function sendCsv(res: Response, resource: string, csv: string): void {
+  const date = new Date().toISOString().slice(0, 10);
+  res.status(200);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="wasel-${resource}-${date}.csv"`);
+  res.send(csv);
+}
+
+export async function exportUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { search, status } = req.query as Record<string, string>;
+    const { users } = await adminService.getUsers(1, EXPORT_ROW_CAP, search, status);
+    const csv = toCsv(users, [
+      { header: 'ID', value: (u) => u.id },
+      { header: 'Name', value: (u) => u.name },
+      { header: 'Email', value: (u) => u.email },
+      { header: 'Business Name', value: (u) => u.business_name },
+      { header: 'Verified', value: (u) => u.is_verified },
+      { header: 'Active', value: (u) => u.is_active },
+      { header: 'Created At', value: (u) => u.created_at },
+    ]);
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'users.export_csv',
+      targetEntity: 'users',
+      targetId: 'export',
+      details: redact({ filters: { search, status }, rowCount: users.length }),
+      ipAddress: clientIp(req),
+    });
+    sendCsv(res, 'users', csv);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function exportSubscriptions(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { status, userId } = req.query as Record<string, string>;
+    const { subscriptions } = await adminService.getSubscriptions(1, EXPORT_ROW_CAP, status, userId);
+    const csv = toCsv(subscriptions, [
+      { header: 'ID', value: (s) => s.id },
+      { header: 'User Name', value: (s) => s.user_name },
+      { header: 'User Email', value: (s) => s.user_email },
+      { header: 'Plan Tier', value: (s) => s.plan_tier },
+      { header: 'Status', value: (s) => s.status },
+      { header: 'Start Date', value: (s) => s.start_date },
+      { header: 'End Date', value: (s) => s.end_date },
+      { header: 'Vouchers Used', value: (s) => s.vouchers_used },
+      { header: 'Voucher Quota', value: (s) => s.voucher_quota },
+    ]);
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'subscriptions.export_csv',
+      targetEntity: 'subscriptions',
+      targetId: 'export',
+      details: redact({ filters: { status, userId }, rowCount: subscriptions.length }),
+      ipAddress: clientIp(req),
+    });
+    sendCsv(res, 'subscriptions', csv);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function exportPayments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { status } = req.query as Record<string, string>;
+    const { payments } = await adminService.getPayments(1, EXPORT_ROW_CAP, status);
+    const csv = toCsv(payments, [
+      { header: 'ID', value: (p) => p.id },
+      { header: 'User Name', value: (p) => p.user_name },
+      { header: 'User Email', value: (p) => p.user_email },
+      { header: 'Plan', value: (p) => p.plan_name ?? p.plan_tier },
+      { header: 'Amount', value: (p) => p.amount },
+      { header: 'Currency', value: (p) => p.currency },
+      { header: 'Reference Code', value: (p) => p.reference_code },
+      { header: 'Status', value: (p) => p.status },
+      { header: 'Rejection Reason', value: (p) => p.rejection_reason },
+      { header: 'Created At', value: (p) => p.created_at },
+    ]);
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'payments.export_csv',
+      targetEntity: 'payments',
+      targetId: 'export',
+      details: redact({ filters: { status }, rowCount: payments.length }),
+      ipAddress: clientIp(req),
+    });
+    sendCsv(res, 'payments', csv);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function exportAuditLogs(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { adminId, action, targetEntity, from, to } = req.query as Record<string, string>;
+    const { logs } = await adminService.getAuditLogs(
+      1, EXPORT_ROW_CAP, adminId, action, targetEntity, from, to,
+    );
+    const csv = toCsv(logs, [
+      { header: 'Created At', value: (l) => l.created_at },
+      { header: 'Admin Name', value: (l) => l.admin_name },
+      { header: 'Admin Email', value: (l) => l.admin_email },
+      { header: 'Action', value: (l) => l.action },
+      { header: 'Target Entity', value: (l) => l.target_entity },
+      { header: 'Target ID', value: (l) => l.target_id },
+      { header: 'IP Address', value: (l) => l.ip_address },
+      { header: 'Details', value: (l) => l.details },
+    ]);
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'audit_logs.export_csv',
+      targetEntity: 'audit_logs',
+      targetId: 'export',
+      details: redact({ filters: { adminId, action, targetEntity, from, to }, rowCount: logs.length }),
+      ipAddress: clientIp(req),
+    });
+    sendCsv(res, 'audit-logs', csv);
   } catch (error) {
     next(error);
   }
