@@ -25,7 +25,21 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+// refreshToken in the BODY is optional on refresh/logout: the admin SPA sends
+// it via the HttpOnly `wasel_rt` cookie instead. A provided-but-invalid value
+// (empty string, wrong type) still fails validation exactly as before; the
+// controller re-checks against `requiredRefreshTokenSchema` when neither the
+// body nor the cookie carries a token, so the missing-token error response is
+// byte-identical to the legacy body-only behavior.
 export const refreshSchema = z.object({
+  refreshToken: z.string().min(1, 'Refresh token is required').optional(),
+});
+
+/**
+ * Strict variant used by the auth controller to reproduce the exact legacy
+ * VALIDATION_ERROR when no refresh token can be resolved from body or cookie.
+ */
+export const requiredRefreshTokenSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
@@ -49,7 +63,7 @@ export const resendVerificationSchema = z.object({
 });
 
 export const logoutSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
+  refreshToken: z.string().min(1, 'Refresh token is required').optional(),
 });
 
 export const updateProfileSchema = z.object({

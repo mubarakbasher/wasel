@@ -1,4 +1,5 @@
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
 import hpp from 'hpp';
@@ -32,6 +33,10 @@ app.use(
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Cookie parsing — the admin SPA carries its refresh token in the HttpOnly
+// `wasel_rt` cookie (Path=/api/v1/auth), so only the auth routes ever see it.
+app.use(cookieParser());
 
 // Prevent HTTP parameter pollution
 app.use(hpp());

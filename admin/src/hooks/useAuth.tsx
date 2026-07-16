@@ -16,17 +16,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const { data: resp } = await api.post('/auth/login', { email, password });
-    const { accessToken, refreshToken, user: userData } = resp.data;
+    const { accessToken, user: userData } = resp.data;
 
     if (userData.role !== 'admin') {
       throw new Error('Access denied. Admin privileges required.');
     }
 
-    storeAuth(accessToken, refreshToken, userData);
+    // No refresh token in the body — the backend set it as an HttpOnly cookie.
+    storeAuth(accessToken, userData);
     setUser(userData);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Best-effort server-side revocation + cookie clear; never block local
+    // teardown on it (network/500/expired session must still log the user out).
+    try {
+      await api.post('/auth/logout', {});
+    } catch {
+      // ignore — always clear local state below
+    }
     clearAuth();
     setUser(null);
     window.location.href = '/login';

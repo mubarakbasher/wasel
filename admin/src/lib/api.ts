@@ -1,9 +1,15 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
-import { getAccessToken, getRefreshToken, storeAuth, clearAuth, getStoredUser } from './auth';
+import { getAccessToken, storeAuth, clearAuth, getStoredUser } from './auth';
 
 const apiBaseUrl = import.meta.env.VITE_API_URL || '/api/v1';
 
-const api = axios.create({ baseURL: apiBaseUrl });
+// withCredentials: send the HttpOnly refresh cookie on cross-origin API calls.
+// X-Client: 'admin' tells the backend to issue/rotate the cookie for this SPA.
+const api = axios.create({
+  baseURL: apiBaseUrl,
+  withCredentials: true,
+  headers: { 'X-Client': 'admin' },
+});
 
 /**
  * Derive the allowlisted API host from the configured base URL.
@@ -69,9 +75,10 @@ api.interceptors.request.use((config) => {
 //     retried, bail out (clear tokens + redirect to login).
 //   - If another refresh is in flight, queue this request's retry behind a
 //     promise so it picks up the new token once the single refresh resolves.
-//   - Otherwise, kick off POST /auth/refresh. On success: persist the new
-//     token pair, drain the queue, retry the original request once. On
-//     failure: reject the queue, clear tokens, redirect to /login.
+//   - Otherwise, kick off POST /auth/refresh (empty body — the refresh token
+//     rides in the HttpOnly cookie). On success: persist the new access token,
+//     drain the queue, retry the original request once. On failure: reject the
+//     queue, clear tokens, redirect to /login.
 //
 // The refresh request uses a bare axios instance so it cannot trigger the
 // interceptor recursively, but we also guard by URL just in case.
@@ -105,7 +112,7 @@ function isLoginCall(config: AxiosRequestConfig | undefined): boolean {
  * anonymous request doesn't produce a misleading "session expired" notice.
  */
 function forceLogout(): void {
-  const hadSession = !!getAccessToken() || !!getRefreshToken();
+  const hadSession = !!getAccessToken();
   clearAuth();
   if (typeof window === 'undefined') return;
   if (hadSession) {
@@ -157,29 +164,25 @@ api.interceptors.response.use(
 
     isRefreshing = true;
     try {
-      const refreshToken = getRefreshToken();
-      if (!refreshToken) throw new Error('No refresh token available');
-
-      // Bare axios — no interceptor, so a 401 here won't recurse.
+      // Bare axios — no interceptor, so a 401 here won't recurse. Empty body:
+      // the refresh token is the HttpOnly cookie, sent via withCredentials.
       const resp = await axios.post(
         `${apiBaseUrl}/auth/refresh`,
-        { refreshToken },
-        { headers: { 'Content-Type': 'application/json' } },
+        {},
+        { withCredentials: true, headers: { 'X-Client': 'admin' } },
       );
 
       const newAccessToken = resp.data?.data?.accessToken as string | undefined;
-      const newRefreshToken = resp.data?.data?.refreshToken as string | undefined;
-      if (!newAccessToken || !newRefreshToken) {
+      if (!newAccessToken) {
         throw new Error('Malformed refresh response');
       }
 
       // Preserve any existing stored user record so the session stays intact.
       const storedUser = getStoredUser();
       if (storedUser) {
-        storeAuth(newAccessToken, newRefreshToken, storedUser);
+        storeAuth(newAccessToken, storedUser);
       } else {
         localStorage.setItem('accessToken', newAccessToken);
-        localStorage.setItem('refreshToken', newRefreshToken);
       }
 
       onRefreshed(newAccessToken);

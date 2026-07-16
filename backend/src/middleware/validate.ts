@@ -7,6 +7,27 @@ interface ValidationSchemas {
   params?: ZodSchema;
 }
 
+/**
+ * Send a ZodError as the standard 400 VALIDATION_ERROR envelope.
+ * Exported so controllers that defer part of a validation decision past the
+ * middleware (e.g. auth refresh/logout, where the token may instead arrive in
+ * the `wasel_rt` cookie) can emit a byte-identical error response.
+ */
+export function sendZodValidationError(res: Response, err: ZodError): void {
+  const issues = err.issues ?? [];
+  res.status(400).json({
+    success: false,
+    error: {
+      message: 'Validation failed',
+      code: 'VALIDATION_ERROR',
+      details: issues.map((e) => ({
+        field: e.path.map(String).join('.'),
+        message: e.message,
+      })),
+    },
+  });
+}
+
 export function validate(schemas: ValidationSchemas) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
@@ -28,18 +49,7 @@ export function validate(schemas: ValidationSchemas) {
       next();
     } catch (err) {
       if (err instanceof ZodError) {
-        const issues = err.issues ?? [];
-        res.status(400).json({
-          success: false,
-          error: {
-            message: 'Validation failed',
-            code: 'VALIDATION_ERROR',
-            details: issues.map((e) => ({
-              field: e.path.map(String).join('.'),
-              message: e.message,
-            })),
-          },
-        });
+        sendZodValidationError(res, err);
         return;
       }
       next(err);

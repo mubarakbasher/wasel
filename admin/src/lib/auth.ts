@@ -5,14 +5,18 @@ export interface User {
   role: string;
 }
 
-// SECURITY NOTE: Refresh tokens live in localStorage which is accessible to any
-// script executing in this origin. The risk is mitigated by:
-//   (1) strict CSP in nginx.conf (no inline/remote JS, no data: URIs in scripts),
-//   (2) the React codebase avoids dangerouslySetInnerHTML entirely,
-//   (3) receipt/asset URLs pass through resolveAssetUrl allowlist.
-// TODO(future hardening): migrate refresh token to HttpOnly+Secure+SameSite=Strict
-// cookie and keep access token in memory only. Requires backend cookie-issuance
-// changes — cross-stack, tracked for a separate follow-up. See docs/RUNBOOKS.md.
+// Auth persistence for the admin SPA.
+//
+// The refresh token is NOT stored here — it lives in an HttpOnly, Secure,
+// SameSite cookie (Path=/api/v1/auth) issued by the backend, so no script
+// running in this origin can read it. Only the short-lived access token and the
+// user record are kept in localStorage; the access token is sent as a Bearer
+// header and rotated via POST /auth/refresh (empty body, cookie-authenticated).
+//
+// Any refreshToken key left over from the pre-cookie build is stale and is
+// purged on init (below) and on every login, so it never lingers.
+localStorage.removeItem('refreshToken');
+
 export function getStoredUser(): User | null {
   const data = localStorage.getItem('user');
   return data ? JSON.parse(data) : null;
@@ -22,18 +26,15 @@ export function getAccessToken(): string | null {
   return localStorage.getItem('accessToken');
 }
 
-export function getRefreshToken(): string | null {
-  return localStorage.getItem('refreshToken');
-}
-
 export function isAuthenticated(): boolean {
   return !!getAccessToken() && !!getStoredUser();
 }
 
-export function storeAuth(accessToken: string, refreshToken: string, user: User): void {
+export function storeAuth(accessToken: string, user: User): void {
   localStorage.setItem('accessToken', accessToken);
-  localStorage.setItem('refreshToken', refreshToken);
   localStorage.setItem('user', JSON.stringify(user));
+  // Belt-and-braces: drop any stale pre-cookie refresh token on login.
+  localStorage.removeItem('refreshToken');
 }
 
 export function clearAuth(): void {

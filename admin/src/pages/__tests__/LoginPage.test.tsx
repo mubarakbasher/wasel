@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -48,6 +48,37 @@ describe('LoginPage', () => {
     expect(mockPost).toHaveBeenCalledWith('/auth/login', {
       email: 'admin@wasel.app',
       password: 'wrongpass',
+    });
+  });
+
+  it('stores only the access token on success — never a refreshToken (cookie auth)', async () => {
+    const user = userEvent.setup();
+    // Seed a stale pre-cookie refresh token to prove login purges it.
+    localStorage.setItem('refreshToken', 'stale-legacy-token');
+
+    // useAuth reads resp.data.data — the backend envelope's `data` payload.
+    // No refreshToken in the body: the server set it as an HttpOnly cookie.
+    mockPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          accessToken: 'access-abc',
+          user: { id: 'u1', name: 'Admin', email: 'admin@wasel.app', role: 'admin' },
+        },
+      },
+    });
+
+    renderLogin();
+
+    await user.type(screen.getByLabelText('Email'), 'admin@wasel.app');
+    await user.type(screen.getByLabelText('Password'), 'correct-horse');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => expect(localStorage.getItem('accessToken')).toBe('access-abc'));
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+    expect(JSON.parse(localStorage.getItem('user') ?? '{}').role).toBe('admin');
+    expect(mockPost).toHaveBeenCalledWith('/auth/login', {
+      email: 'admin@wasel.app',
+      password: 'correct-horse',
     });
   });
 

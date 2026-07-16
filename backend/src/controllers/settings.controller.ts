@@ -1,6 +1,12 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
 import * as settingsService from '../services/settings.service';
+import * as auditService from '../services/audit.service';
+import { redact } from '../utils/redact';
+
+function clientIp(req: AuthenticatedRequest): string {
+  return Array.isArray(req.ip) ? req.ip[0] : req.ip || '';
+}
 
 export async function getBankSettings(
   req: AuthenticatedRequest,
@@ -34,8 +40,17 @@ export async function updateBankSettings(
     if (accountHolder !== undefined) updates['bank.accountHolder'] = accountHolder;
     if (instructions !== undefined) updates['bank.instructions'] = instructions;
 
+    const before = await settingsService.getBankInfo();
     await settingsService.updateSettings(updates, req.user!.id);
     const data = await settingsService.getBankInfo();
+    await auditService.logAction({
+      adminId: req.user!.id,
+      action: 'settings.update_bank',
+      targetEntity: 'settings',
+      targetId: 'bank',
+      details: redact({ before, after: data }),
+      ipAddress: clientIp(req),
+    });
     res.status(200).json({ success: true, data });
   } catch (error) {
     next(error);
