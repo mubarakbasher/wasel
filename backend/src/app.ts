@@ -44,12 +44,18 @@ app.use(requestLogger);
 app.use('/api/', generalLimiter);
 
 // Static uploads (receipts, etc.).
-// Force download + nosniff so a malicious upload cannot be rendered inline by a browser.
+// Uploads are magic-byte-verified images only (see middleware/upload.ts), so image
+// extensions are safe to render inline; everything else stays a forced download.
+// nosniff is always set regardless.
+const INLINE_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp)$/i;
 app.use(
   '/uploads',
   express.static(process.env.UPLOAD_DIR || '/app/uploads', {
-    setHeaders: (res) => {
-      res.setHeader('Content-Disposition', 'attachment');
+    setHeaders: (res, path) => {
+      res.setHeader(
+        'Content-Disposition',
+        INLINE_IMAGE_EXTENSIONS.test(path) ? 'inline' : 'attachment',
+      );
       res.setHeader('X-Content-Type-Options', 'nosniff');
     },
   }),

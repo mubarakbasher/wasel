@@ -1,25 +1,13 @@
 import { useLocation } from 'react-router-dom';
 import { LogOut, Menu } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-
-const pageTitles: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/users': 'Users',
-  '/subscriptions': 'Subscriptions',
-  '/payments': 'Payments',
-  '/routers': 'Routers',
-  '/audit-logs': 'Audit Logs',
-};
+import { pageTitleFor } from '../../lib/nav';
 
 export default function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const { pathname } = useLocation();
   const { user, logout } = useAuth();
 
-  const title =
-    pageTitles[pathname] ||
-    (pathname.startsWith('/users/') && pathname !== '/users'
-      ? 'User Details'
-      : 'Admin Panel');
+  const title = pageTitleFor(pathname);
 
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between h-16 px-4 lg:px-8 bg-white border-b border-slate-200">

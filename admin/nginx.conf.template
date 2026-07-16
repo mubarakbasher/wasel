@@ -16,7 +16,12 @@ server {
     #       index.html and any remaining inline <style> blocks, and
     #   (3) nginx sub_filter or a small worker to inject that nonce per request.
     # That's a non-trivial refactor; leaving as a documented trade-off for now.
-    add_header Content-Security-Policy "default-src 'self'; connect-src 'self' https://api.wa-sel.com; img-src 'self' https://api.wa-sel.com data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+    #
+    # ${API_ORIGIN} is substituted at container start by the nginx:alpine
+    # entrypoint (envsubst over /etc/nginx/templates/*.template), driven by the
+    # API_ORIGIN environment variable set in the compose file — no hardcoded
+    # per-environment origin lives in this repo file.
+    add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ${API_ORIGIN}; img-src 'self' ${API_ORIGIN} data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
 
     location / {
         try_files $uri $uri/ /index.html;

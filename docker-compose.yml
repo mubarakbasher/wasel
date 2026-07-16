@@ -141,6 +141,12 @@ services:
     build: ./admin
     ports:
       - '127.0.0.1:5173:5173'
+    environment:
+      # API origin baked into the CSP (connect-src/img-src) via nginx envsubst
+      # templating at container start. Prod default below keeps prod working
+      # with no .env change; staging overrides API_ORIGIN=https://api.wa-sel.cloud
+      # in its .env.
+      API_ORIGIN: ${API_ORIGIN:-https://api.wa-sel.com}
     depends_on:
       backend:
         condition: service_healthy

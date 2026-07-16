@@ -1,34 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  LayoutDashboard,
-  Users,
-  CreditCard,
-  Banknote,
-  Router,
-  ScrollText,
-  Package,
-  MessageCircle,
-  Mail,
-  FileText,
-  Settings,
-} from 'lucide-react';
 import api from '../../lib/api';
 import BrandMark from '../BrandMark';
-
-const navItems = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/users', label: 'Users', icon: Users },
-  { to: '/subscriptions', label: 'Subscriptions', icon: CreditCard },
-  { to: '/plans', label: 'Plans', icon: Package },
-  { to: '/payments', label: 'Payments', icon: Banknote },
-  { to: '/messages', label: 'Messages', icon: MessageCircle },
-  { to: '/routers', label: 'Routers', icon: Router },
-  { to: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
-  { to: '/email-log', label: 'Email Log', icon: Mail },
-  { to: '/email-templates', label: 'Email Templates', icon: FileText },
-  { to: '/settings', label: 'Settings', icon: Settings },
-];
+import { NAV_ITEMS } from '../../lib/nav';
 
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: unread } = useQuery({
@@ -56,10 +30,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {NAV_ITEMS.map(({ path, label, icon: Icon }) => (
           <NavLink
-            key={to}
-            to={to}
+            key={path}
+            to={path}
             onClick={onClose}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -71,7 +45,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           >
             <Icon className="w-5 h-5 shrink-0" />
             <span className="flex-1">{label}</span>
-            {to === '/messages' && unread && unread > 0 ? (
+            {path === '/messages' && unread && unread > 0 ? (
               <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[10px] font-bold">
                 {unread > 99 ? '99+' : unread}
               </span>

@@ -93,6 +93,29 @@ function isRefreshCall(config: AxiosRequestConfig | undefined): boolean {
   return url.includes('/auth/refresh');
 }
 
+function isLoginCall(config: AxiosRequestConfig | undefined): boolean {
+  const url = config?.url ?? '';
+  return url.includes('/auth/login');
+}
+
+/**
+ * Tear down the session and bounce to /login. Records a one-shot
+ * `wasel.sessionExpired` flag so LoginPage can explain *why* the user landed
+ * there — but only when a session actually existed, so a stray 401 on an
+ * anonymous request doesn't produce a misleading "session expired" notice.
+ */
+function forceLogout(): void {
+  const hadSession = !!getAccessToken() || !!getRefreshToken();
+  clearAuth();
+  if (typeof window === 'undefined') return;
+  if (hadSession) {
+    sessionStorage.setItem('wasel.sessionExpired', '1');
+  }
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
+}
+
 type RetriableConfig = AxiosRequestConfig & { _retry?: boolean };
 
 api.interceptors.response.use(
@@ -101,12 +124,17 @@ api.interceptors.response.use(
     const original = error.config as RetriableConfig | undefined;
     const status = error.response?.status;
 
+    // A 401 from the login endpoint means bad credentials, not an expired
+    // session. Reject immediately: no refresh (there is no session yet, so the
+    // refresh path would surface a misleading "No refresh token available"),
+    // no clearAuth, no redirect. Let LoginPage render the backend's message.
+    if (status === 401 && isLoginCall(original)) {
+      return Promise.reject(error);
+    }
+
     if (status !== 401 || !original || isRefreshCall(original) || original._retry) {
       if (status === 401) {
-        clearAuth();
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+        forceLogout();
       }
       return Promise.reject(error);
     }
@@ -160,10 +188,7 @@ api.interceptors.response.use(
       return api(original);
     } catch (refreshError) {
       onRefreshed(null);
-      clearAuth();
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
+      forceLogout();
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;

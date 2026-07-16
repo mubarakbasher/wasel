@@ -8,6 +8,7 @@ import StatusBadge from '../components/StatusBadge';
 import ErrorPanel from '../components/ErrorPanel';
 import Button from '../components/ui/Button';
 import Modal from '../components/Modal';
+import { useToast } from '../hooks/useToast';
 
 interface Payment {
   id: string;
@@ -30,6 +31,7 @@ const STATUS_TABS = ['pending', 'approved', 'rejected', 'all'] as const;
 
 export default function PaymentsPage() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('pending');
   const [confirmAction, setConfirmAction] = useState<{
@@ -37,14 +39,11 @@ export default function PaymentsPage() {
     decision: 'approved' | 'rejected';
   } | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
   const [detailPayment, setDetailPayment] = useState<Payment | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentionally reset the dialog inputs whenever the confirm action opens/closes
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentionally reset the dialog input whenever the confirm action opens/closes
     setRejectionReason('');
-    setErrorMsg('');
   }, [confirmAction]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -73,17 +72,16 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
-      setSuccessMsg(
+      toast.success(
         confirmAction?.decision === 'approved'
           ? 'Payment approved successfully.'
           : 'Payment rejected successfully.',
       );
       setConfirmAction(null);
-      setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => {
       const e = err as { response?: { data?: { error?: { message?: string } } } };
-      setErrorMsg(e.response?.data?.error?.message ?? 'Request failed');
+      toast.error(e.response?.data?.error?.message ?? 'Request failed');
     },
   });
 
@@ -220,12 +218,6 @@ export default function PaymentsPage() {
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Payment Verification</h1>
 
-      {successMsg && (
-        <div className="mb-4 px-4 py-3 rounded-lg bg-green-50 text-green-700 text-sm font-medium">
-          {successMsg}
-        </div>
-      )}
-
       {/* Status filter tabs */}
       <div className="flex gap-1 mb-6 border-b">
         {STATUS_TABS.map((tab) => (
@@ -315,11 +307,6 @@ export default function PaymentsPage() {
             <div className="text-xs text-gray-400 mt-1 text-right">
               {rejectionReason.length}/500
             </div>
-          </div>
-        )}
-        {errorMsg && (
-          <div className="mt-4 px-3 py-2 rounded bg-red-50 text-red-700 text-sm">
-            {errorMsg}
           </div>
         )}
       </Modal>

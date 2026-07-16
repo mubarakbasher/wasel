@@ -1,8 +1,24 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import BrandMark from '../components/BrandMark';
 import Button from '../components/ui/Button';
+
+/**
+ * Pull a human-readable message out of a failed login. The backend uses the
+ * envelope `{ success:false, error:{ message, code } }`, so the structured
+ * message wins; client-side guards (e.g. the non-admin role check) throw a
+ * plain Error whose message we surface next; anything else falls back.
+ */
+function loginErrorMessage(err: unknown): string {
+  if (typeof err === 'object' && err !== null && 'response' in err) {
+    const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
+    const backendMessage = axiosErr.response?.data?.error?.message;
+    if (backendMessage) return backendMessage;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return 'Login failed. Please try again.';
+}
 
 export default function LoginPage() {
   const { isLoggedIn, login } = useAuth();
@@ -12,6 +28,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  // If the API interceptor bounced the user here on an expired session, explain
+  // why — then clear the one-shot flag so a manual revisit stays clean.
+  useEffect(() => {
+    if (sessionStorage.getItem('wasel.sessionExpired')) {
+      setSessionExpired(true);
+      sessionStorage.removeItem('wasel.sessionExpired');
+    }
+  }, []);
 
   if (isLoggedIn) {
     return <Navigate to="/dashboard" replace />;
@@ -26,14 +52,7 @@ export default function LoginPage() {
       await login(email, password);
       navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else if (typeof err === 'object' && err !== null && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } };
-        setError(axiosErr.response?.data?.message || 'Login failed. Please try again.');
-      } else {
-        setError('Login failed. Please try again.');
-      }
+      setError(loginErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -48,6 +67,15 @@ export default function LoginPage() {
             <h1 className="text-2xl font-bold text-slate-900">Wasel Admin</h1>
             <p className="text-sm text-slate-500 mt-1">Sign in to your admin account</p>
           </div>
+
+          {sessionExpired && (
+            <div
+              role="status"
+              className="mb-6 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800"
+            >
+              Your session expired — please sign in again.
+            </div>
+          )}
 
           {error && (
             <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
