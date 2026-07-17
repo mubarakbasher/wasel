@@ -235,21 +235,13 @@ class RouterService {
     // the API itself is reachable.
     final base = _api.dio.options.baseUrl.replaceAll(RegExp(r'/+$'), '');
     return data.map((e) {
-      final json = e as Map<String, dynamic>;
+      final json = Map<String, dynamic>.from(e as Map<String, dynamic>);
       final id = json['id'] as String;
-      final presetsJson = json['accentPresets'] as List<dynamic>?;
-      return HotspotTemplate(
-        id: id,
-        name: json['name'] as String,
-        description: json['description'] as String,
-        previewUrl: '$base/public/hotspot-templates/$id/preview.png',
-        defaultAccent: json['defaultAccent'] as String? ?? '#0f766e',
-        accentPresets: presetsJson
-                ?.map((p) =>
-                    AccentPreset.fromJson(p as Map<String, dynamic>))
-                .toList() ??
-            const [],
-      );
+      // Override previewUrl with one derived from the same base the app is
+      // already talking to, so preview images load regardless of how the
+      // backend's PUBLIC_BASE_URL is configured.
+      json['previewUrl'] = '$base/public/hotspot-templates/$id/preview.png';
+      return HotspotTemplate.fromJson(json);
     }).toList();
   }
 

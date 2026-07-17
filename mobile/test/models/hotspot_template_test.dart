@@ -37,15 +37,17 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
-  // HotspotTemplate with new fields
+  // HotspotTemplate — new split-key fields
   // ---------------------------------------------------------------------------
 
   group('HotspotTemplate.fromJson', () {
-    test('parses all fields including defaultAccent and accentPresets', () {
+    test('parses split nameEn/nameAr/descriptionEn/descriptionAr fields', () {
       final template = HotspotTemplate.fromJson({
         'id': 'clean',
-        'name': 'Daylight · نهار',
-        'description': 'A clean design',
+        'nameEn': 'Daylight',
+        'nameAr': 'نهار',
+        'descriptionEn': 'A clean design.',
+        'descriptionAr': 'تصميم نظيف.',
         'previewUrl': 'https://example.com/preview.png',
         'defaultAccent': '#4f46e5',
         'accentPresets': [
@@ -65,14 +67,18 @@ void main() {
       });
 
       expect(template.id, 'clean');
-      expect(template.name, 'Daylight · نهار');
+      expect(template.nameEn, 'Daylight');
+      expect(template.nameAr, 'نهار');
+      expect(template.descriptionEn, 'A clean design.');
+      expect(template.descriptionAr, 'تصميم نظيف.');
       expect(template.defaultAccent, '#4f46e5');
       expect(template.accentPresets, hasLength(2));
       expect(template.accentPresets.first.id, 'teal');
       expect(template.accentPresets.last.hex, '#4f46e5');
     });
 
-    test('falls back to defaults when new fields are absent (older backend)',
+    test(
+        'falls back to combined name/description when split keys are absent (older backend)',
         () {
       final template = HotspotTemplate.fromJson({
         'id': 'dark',
@@ -81,15 +87,23 @@ void main() {
         'previewUrl': 'https://example.com/dark/preview.png',
       });
 
+      // Both nameEn and nameAr should fall back to the combined 'name' value.
+      expect(template.nameEn, 'Dark Mode');
+      expect(template.nameAr, 'Dark Mode');
+      // Both descriptionEn and descriptionAr should fall back too.
+      expect(template.descriptionEn, 'A dark design');
+      expect(template.descriptionAr, 'A dark design');
       expect(template.defaultAccent, '#0f766e');
       expect(template.accentPresets, isEmpty);
     });
 
-    test('toJson round-trips with new fields', () {
+    test('toJson emits four split fields and round-trips', () {
       final original = HotspotTemplate.fromJson({
         'id': 'warm',
-        'name': 'Warm · دافئ',
-        'description': 'Warm tones',
+        'nameEn': 'Warm',
+        'nameAr': 'دافئ',
+        'descriptionEn': 'Warm tones',
+        'descriptionAr': 'ألوان دافئة',
         'previewUrl': 'https://example.com/warm.png',
         'defaultAccent': '#c2410c',
         'accentPresets': [
@@ -103,7 +117,20 @@ void main() {
       });
 
       final json = original.toJson();
+
+      // Emits the four split keys, not the old combined keys.
+      expect(json.containsKey('nameEn'), isTrue);
+      expect(json.containsKey('nameAr'), isTrue);
+      expect(json.containsKey('descriptionEn'), isTrue);
+      expect(json.containsKey('descriptionAr'), isTrue);
+      expect(json.containsKey('name'), isFalse);
+      expect(json.containsKey('description'), isFalse);
+
       final restored = HotspotTemplate.fromJson(json);
+      expect(restored.nameEn, 'Warm');
+      expect(restored.nameAr, 'دافئ');
+      expect(restored.descriptionEn, 'Warm tones');
+      expect(restored.descriptionAr, 'ألوان دافئة');
       expect(restored.defaultAccent, '#c2410c');
       expect(restored.accentPresets, hasLength(1));
       expect(restored.accentPresets.first.nameAr, 'برتقالي داكن');

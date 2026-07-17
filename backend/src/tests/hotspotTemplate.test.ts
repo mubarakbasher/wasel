@@ -245,8 +245,18 @@ describe('GET /api/v1/routers/hotspot-templates', () => {
 
     for (const t of res.body.data) {
       expect(t).toHaveProperty('id');
+      // back-compat combined fields
       expect(t).toHaveProperty('name');
       expect(t).toHaveProperty('description');
+      // new split fields
+      expect(t).toHaveProperty('nameEn');
+      expect(t).toHaveProperty('nameAr');
+      expect(t).toHaveProperty('descriptionEn');
+      expect(t).toHaveProperty('descriptionAr');
+      expect(typeof t.nameEn).toBe('string');
+      expect(typeof t.nameAr).toBe('string');
+      expect(typeof t.descriptionEn).toBe('string');
+      expect(typeof t.descriptionAr).toBe('string');
       expect(t).toHaveProperty('previewUrl');
       expect(t.previewUrl).toMatch(/\/api\/v1\/public\/hotspot-templates\/.+\/preview\.png$/);
     }

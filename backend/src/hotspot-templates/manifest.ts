@@ -56,8 +56,10 @@ export const HOTSPOT_ACCENT_PRESETS: AccentPreset[] = [
 
 export interface HotspotTemplate {
   id: string;
-  name: string;
-  description: string;
+  nameEn: string;
+  nameAr: string;
+  descriptionEn: string;
+  descriptionAr: string;
   /**
    * Files pushed onto the router (and served via the public route).
    * preview.html is excluded — it is a render-only artifact never pushed.
@@ -90,22 +92,28 @@ const COMMON_FILES = [
 export const HOTSPOT_TEMPLATES: HotspotTemplate[] = [
   {
     id: 'clean',
-    name: 'Daylight · نهار',
-    description: 'Bright paper-ticket look · تصميم فاتح بروح تذكرة ورقية',
+    nameEn: 'Daylight',
+    nameAr: 'نهار',
+    descriptionEn: 'Bright paper-ticket look',
+    descriptionAr: 'تصميم فاتح بروح تذكرة ورقية',
     files: [...COMMON_FILES, 'plus-jakarta-sans.woff2'],
     defaultAccent: '#0f766e',
   },
   {
     id: 'dark',
-    name: 'Midnight · ليل',
-    description: 'Deep night panel with a warm glow · لوحة ليلية داكنة بتوهّج هادئ',
+    nameEn: 'Midnight',
+    nameAr: 'ليل',
+    descriptionEn: 'Deep night panel with a warm glow',
+    descriptionAr: 'لوحة ليلية داكنة بتوهّج هادئ',
     files: [...COMMON_FILES, 'space-grotesk.woff2'],
     defaultAccent: '#1d4ed8',
   },
   {
     id: 'warm',
-    name: 'Souq · سوق',
-    description: 'Bold poster band with your name as the hero · لافتة جريئة تتصدرها هوية عملك',
+    nameEn: 'Souq',
+    nameAr: 'سوق',
+    descriptionEn: 'Bold poster band with your name as the hero',
+    descriptionAr: 'لافتة جريئة تتصدرها هوية عملك',
     files: [...COMMON_FILES, 'dm-sans.woff2'],
     defaultAccent: '#c2410c',
   },

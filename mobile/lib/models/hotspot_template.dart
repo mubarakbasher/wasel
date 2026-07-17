@@ -32,16 +32,20 @@ class AccentPreset {
 
 class HotspotTemplate {
   final String id;
-  final String name;
-  final String description;
+  final String nameEn;
+  final String nameAr;
+  final String descriptionEn;
+  final String descriptionAr;
   final String previewUrl;
   final String defaultAccent;
   final List<AccentPreset> accentPresets;
 
   const HotspotTemplate({
     required this.id,
-    required this.name,
-    required this.description,
+    required this.nameEn,
+    required this.nameAr,
+    required this.descriptionEn,
+    required this.descriptionAr,
     required this.previewUrl,
     this.defaultAccent = '#0f766e',
     this.accentPresets = const [],
@@ -51,8 +55,12 @@ class HotspotTemplate {
     final presetsJson = json['accentPresets'] as List<dynamic>?;
     return HotspotTemplate(
       id: json['id'] as String,
-      name: json['name'] as String,
-      description: json['description'] as String,
+      nameEn: (json['nameEn'] ?? json['name'] ?? '') as String,
+      nameAr: (json['nameAr'] ?? json['name'] ?? '') as String,
+      descriptionEn:
+          (json['descriptionEn'] ?? json['description'] ?? '') as String,
+      descriptionAr:
+          (json['descriptionAr'] ?? json['description'] ?? '') as String,
       previewUrl: json['previewUrl'] as String,
       defaultAccent: json['defaultAccent'] as String? ?? '#0f766e',
       accentPresets: presetsJson
@@ -65,8 +73,10 @@ class HotspotTemplate {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'name': name,
-      'description': description,
+      'nameEn': nameEn,
+      'nameAr': nameAr,
+      'descriptionEn': descriptionEn,
+      'descriptionAr': descriptionAr,
       'previewUrl': previewUrl,
       'defaultAccent': defaultAccent,
       'accentPresets': accentPresets.map((e) => e.toJson()).toList(),

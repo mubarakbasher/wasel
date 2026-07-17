@@ -70,8 +70,10 @@ final _indigoPreset = AccentPreset(
 
 HotspotTemplate _fakeTemplate({String? id}) => HotspotTemplate(
       id: id ?? 'clean',
-      name: 'Daylight',
-      description: 'A clean design.',
+      nameEn: 'Daylight',
+      nameAr: 'نهار',
+      descriptionEn: 'A clean design.',
+      descriptionAr: 'تصميم نظيف.',
       previewUrl: 'https://example.com/preview.png',
       defaultAccent: '#0f766e',
       accentPresets: [_tealPreset, _indigoPreset],
@@ -99,6 +101,7 @@ Widget _buildApp({
   List<HotspotTemplate>? templates,
   String routerName = _kRouterName,
   String? currentAccent,
+  Locale locale = const Locale('en'),
 }) {
   final theRouter = router ?? _fakeRouter();
   final theTemplates = templates ?? [_fakeTemplate()];
@@ -112,7 +115,7 @@ Widget _buildApp({
       ),
     ],
     child: MaterialApp(
-      locale: const Locale('en'),
+      locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -295,5 +298,20 @@ void main() {
     expect(
         // ignore: deprecated_member_use
         semantics.hasFlag(SemanticsFlag.isSelected), isTrue);
+  });
+
+  // ── Arabic locale renders Arabic text ─────────────────────────────────────
+
+  testWidgets('Arabic locale shows nameAr and hides nameEn', (tester) async {
+    await tester.pumpWidget(
+      _buildApp(notifier: notifier, locale: const Locale('ar')),
+    );
+    await tester.pumpAndSettle();
+
+    // Arabic template name must be visible.
+    expect(find.text('نهار'), findsWidgets);
+
+    // English template name must be absent.
+    expect(find.text('Daylight'), findsNothing);
   });
 }

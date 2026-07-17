@@ -123,8 +123,12 @@ export async function listHotspotTemplates(
   try {
     const templates = HOTSPOT_TEMPLATES.map((t) => ({
       id: t.id,
-      name: t.name,
-      description: t.description,
+      name: `${t.nameEn} · ${t.nameAr}`,               // back-compat for older app builds
+      description: `${t.descriptionEn} · ${t.descriptionAr}`,
+      nameEn: t.nameEn,
+      nameAr: t.nameAr,
+      descriptionEn: t.descriptionEn,
+      descriptionAr: t.descriptionAr,
       previewUrl: `${config.PUBLIC_BASE_URL}/api/v1/public/hotspot-templates/${t.id}/preview.png`,
       defaultAccent: t.defaultAccent,
       accentPresets: HOTSPOT_ACCENT_PRESETS,

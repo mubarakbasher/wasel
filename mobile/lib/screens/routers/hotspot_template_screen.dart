@@ -10,6 +10,11 @@ import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
 import '../../widgets/widgets.dart';
 
+// Returns the Arabic string when the current locale is Arabic and `ar` is
+// non-empty; falls back to English. Mirrors AccentPreset's locale handling.
+String _loc(BuildContext c, String en, String ar) =>
+    Localizations.localeOf(c).languageCode == 'ar' && ar.isNotEmpty ? ar : en;
+
 class HotspotTemplateScreen extends ConsumerWidget {
   final String routerId;
   final String routerName;
@@ -222,7 +227,10 @@ class _AccentPickerSheetState extends State<_AccentPickerSheet> {
               ),
             ),
             // Template name
-            Text(widget.template.name, style: AppTypography.title2),
+            Text(
+              _loc(context, widget.template.nameEn, widget.template.nameAr),
+              style: AppTypography.title2,
+            ),
             const SizedBox(height: AppSpacing.sm),
             // "Guests will see: <router name>"
             if (widget.routerName.isNotEmpty) ...[
@@ -408,7 +416,10 @@ class _TemplateCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _PreviewImage(url: template.previewUrl, name: template.name),
+              _PreviewImage(
+                url: template.previewUrl,
+                name: _loc(context, template.nameEn, template.nameAr),
+              ),
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 child: _CardBody(
@@ -522,7 +533,10 @@ class _CardBody extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Text(template.name, style: AppTypography.title3),
+              child: Text(
+                _loc(context, template.nameEn, template.nameAr),
+                style: AppTypography.title3,
+              ),
             ),
             if (isSelected)
               StatusBadge(
@@ -539,7 +553,7 @@ class _CardBody extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(
-          template.description,
+          _loc(context, template.descriptionEn, template.descriptionAr),
           style:
               AppTypography.subhead.copyWith(color: AppColors.textSecondary),
         ),
