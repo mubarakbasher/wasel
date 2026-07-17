@@ -1,7 +1,13 @@
 import Section from '../components/Section'
 import type { Strings } from '../i18n/strings'
+import portalClean from '../assets/previews/portal-clean.png'
+import portalDark from '../assets/previews/portal-dark.png'
+import portalWarm from '../assets/previews/portal-warm.png'
 
-const IMAGES = ['/previews/portal-clean.png', '/previews/portal-dark.png', '/previews/portal-warm.png']
+// Imported (not referenced from /public) so Vite emits content-hashed
+// filenames — every image change gets a new URL, so browsers never serve a
+// stale cached preview across deploys.
+const IMAGES = [portalClean, portalDark, portalWarm]
 
 export default function PortalShowcase({ t }: { t: Strings }) {
   return (
