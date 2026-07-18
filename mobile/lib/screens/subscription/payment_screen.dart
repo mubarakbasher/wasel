@@ -3,8 +3,8 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/clipboard_service.dart';
 import '../../services/secure_window.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -41,6 +41,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   static const _kPollTimeout = Duration(minutes: 5);
   Timer? _pollTimer;
   Timer? _pollTimeoutTimer;
+  bool _pollInFlight = false;
   bool _pollTimedOut = false;
   bool _snackBarShown = false;
 
@@ -86,7 +87,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
 
     _pollTimer = Timer.periodic(_kPollInterval, (_) async {
       if (!mounted) return;
-      await ref.read(subscriptionProvider.notifier).loadSubscription();
+      // Skip this tick if the previous poll is still running — a stalled
+      // request can outlast the interval and stack concurrent polls.
+      if (_pollInFlight) return;
+      _pollInFlight = true;
+      try {
+        await ref.read(subscriptionProvider.notifier).loadSubscription();
+      } finally {
+        _pollInFlight = false;
+      }
       if (!mounted) return;
       final sub = ref.read(subscriptionProvider).subscription;
       if (sub?.isActive ?? false) {
@@ -760,25 +769,12 @@ class _CopyableRow extends StatefulWidget {
 }
 
 class _CopyableRowState extends State<_CopyableRow> {
-  Timer? _clearTimer;
-
-  @override
-  void dispose() {
-    _clearTimer?.cancel();
-    super.dispose();
-  }
-
   Future<void> _copyWithAutoClear() async {
-    await Clipboard.setData(ClipboardData(text: widget.value));
+    // Delegated to the app-scoped service so the wipe survives navigating away
+    // (the normal flow: copy the reference, switch to the banking app).
+    await ClipboardService.instance.copyWithAutoClear(widget.value);
     if (!mounted) return;
     AppSnackbar.info(context, context.tr('payment.referenceCopied'));
-    _clearTimer?.cancel();
-    _clearTimer = Timer(const Duration(seconds: 30), () async {
-      final current = await Clipboard.getData('text/plain');
-      if (current?.text == widget.value) {
-        await Clipboard.setData(const ClipboardData(text: ''));
-      }
-    });
   }
 
   @override

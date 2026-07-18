@@ -1,10 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
+import '../../services/clipboard_service.dart';
 import '../../services/router_service.dart';
+import '../../services/secure_window.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
@@ -32,12 +35,16 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    if (Platform.isAndroid) SecureWindow.disable();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    // The setup script embeds the WireGuard private key, RADIUS secret and
+    // router admin password — block screenshots while it's on screen.
+    if (Platform.isAndroid) SecureWindow.enable();
     Future.microtask(
         () => ref.read(routersProvider.notifier).loadSetupGuide(widget.routerId));
   }
@@ -62,7 +69,10 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
   }
 
   void _copyToClipboard(String text) {
-    Clipboard.setData(ClipboardData(text: text));
+    // Longer auto-clear window than the 30s default: the setup script contains
+    // secrets the operator pastes into RouterOS, which can take a while.
+    ClipboardService.instance
+        .copyWithAutoClear(text, duration: const Duration(minutes: 2));
     AppSnackbar.success(context, context.tr('routers.guideCopied'));
   }
 
@@ -259,7 +269,9 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
                     const SizedBox(width: AppSpacing.xs),
                     InkWell(
                       onTap: () {
-                        Clipboard.setData(ClipboardData(text: step.command));
+                        ClipboardService.instance.copyWithAutoClear(
+                            step.command,
+                            duration: const Duration(minutes: 2));
                         AppSnackbar.success(
                           context,
                           context.tr('routers.stepCopied',

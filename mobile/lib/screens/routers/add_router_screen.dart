@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
 import '../../providers/routers_provider.dart';
+import '../../services/clipboard_service.dart';
 import '../../services/router_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -174,7 +174,8 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
   void _copyAllCommands() {
     final commands = (_steps ?? []).map((s) => s.command).join('\n\n');
     if (commands.isEmpty) return;
-    Clipboard.setData(ClipboardData(text: commands));
+    ClipboardService.instance
+        .copyWithAutoClear(commands, duration: const Duration(minutes: 2));
     AppSnackbar.success(context, context.tr('routers.copyAllSnackbar'));
   }
 
@@ -230,7 +231,8 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
               _StepCommand(
                 step: step,
                 onCopy: () {
-                  Clipboard.setData(ClipboardData(text: step.command));
+                  ClipboardService.instance.copyWithAutoClear(step.command,
+                      duration: const Duration(minutes: 2));
                   AppSnackbar.success(
                     context,
                     context.tr(

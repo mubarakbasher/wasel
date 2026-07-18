@@ -29,6 +29,9 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
       ref.read(sessionsProvider.notifier).loadActiveSessions(widget.routerId);
     });
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      // Skip the tick while a load is already in flight (a degraded router can
+      // make a call take 15-45s) so polls don't stack up.
+      if (ref.read(sessionsProvider).isLoading) return;
       ref.read(sessionsProvider.notifier).loadActiveSessions(widget.routerId);
     });
   }
@@ -61,8 +64,16 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen> {
     final ok = await ref
         .read(sessionsProvider.notifier)
         .disconnectSession(widget.routerId, session.id);
-    if (ok && mounted) {
+    if (!mounted) return;
+    if (ok) {
       AppSnackbar.success(context, context.tr('sessions.disconnectedSuccessfully'));
+    } else {
+      // CoA disconnect can fail (router degraded / tunnel down) — the session
+      // stays in the list, so tell the operator instead of failing silently.
+      AppSnackbar.error(
+        context,
+        ref.read(sessionsProvider).error ?? context.tr('error.unknown'),
+      );
     }
   }
 

@@ -8,6 +8,7 @@ import '../../providers/routers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
+import '../../utils/error_messages.dart';
 import '../../widgets/widgets.dart';
 
 // Returns the Arabic string when the current locale is Arabic and `ar` is
@@ -51,7 +52,7 @@ class HotspotTemplateScreen extends ConsumerWidget {
       body: templatesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorBody(
-          message: context.trOrRaw(e.toString()),
+          message: context.trOrRaw(errorToDisplay(e)),
           onRetry: () => ref.invalidate(hotspotTemplatesProvider),
         ),
         data: (templates) => _TemplateList(

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../services/clipboard_service.dart';
 import '../../theme/theme.dart';
 import '../../widgets/widgets.dart';
 
@@ -17,7 +17,9 @@ class ReportExportScreen extends StatelessWidget {
   });
 
   void _copyToClipboard(BuildContext context) {
-    Clipboard.setData(ClipboardData(text: exportData));
+    // Auto-clear the clipboard after the default window so a report's revenue /
+    // voucher data doesn't linger in the system clipboard indefinitely.
+    ClipboardService.instance.copyWithAutoClear(exportData);
     AppSnackbar.success(context, context.tr('reports.copiedToClipboard'));
   }
 

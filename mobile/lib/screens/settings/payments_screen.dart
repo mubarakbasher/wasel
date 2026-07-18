@@ -117,7 +117,14 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
           : RefreshIndicator(
               onRefresh: () =>
                   ref.read(subscriptionProvider.notifier).loadPayments(),
-              child: state.payments.isEmpty
+              child: state.error != null && state.payments.isEmpty
+                  ? ErrorState(
+                      message: state.error!,
+                      onRetry: () =>
+                          ref.read(subscriptionProvider.notifier).loadPayments(),
+                      retryLabel: context.tr('common.retry'),
+                    )
+                  : state.payments.isEmpty
                   ? _buildEmpty()
                   : ListView.separated(
                       padding: const EdgeInsets.all(AppSpacing.lg),

@@ -46,6 +46,17 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(notificationsProvider);
 
+    // Surface mutation errors (e.g. a failed swipe-delete that rolled back)
+    // even when the list is non-empty — the inline error view only shows on an
+    // empty list.
+    ref.listen(notificationsProvider, (prev, next) {
+      if (next.error != null &&
+          next.error != prev?.error &&
+          next.items.isNotEmpty) {
+        AppSnackbar.error(context, next.error!);
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: Text(context.tr('notifications.title')),

@@ -213,10 +213,16 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     _exitSelectMode();
     final deleted = await ref.read(vouchersProvider.notifier)
         .bulkDeleteVouchers(_selectedRouterId!, ids);
-    if (mounted && deleted != null) {
+    if (!mounted) return;
+    if (deleted != null) {
       AppSnackbar.success(
         context,
         context.tr('vouchers.vouchersDeleted', [deleted.toString()]),
+      );
+    } else {
+      AppSnackbar.error(
+        context,
+        ref.read(vouchersProvider).error ?? context.tr('error.unknown'),
       );
     }
   }
@@ -236,10 +242,16 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     _exitSelectMode();
     final deleted = await ref.read(vouchersProvider.notifier)
         .deleteAllVouchers(_selectedRouterId!);
-    if (mounted && deleted != null) {
+    if (!mounted) return;
+    if (deleted != null) {
       AppSnackbar.success(
         context,
         context.tr('vouchers.vouchersDeleted', [deleted.toString()]),
+      );
+    } else {
+      AppSnackbar.error(
+        context,
+        ref.read(vouchersProvider).error ?? context.tr('error.unknown'),
       );
     }
   }

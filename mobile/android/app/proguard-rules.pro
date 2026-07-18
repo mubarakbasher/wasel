@@ -19,8 +19,10 @@
 -dontwarn com.it_nomads.fluttersecurestorage.**
 
 # ---- flutter_jailbreak_detection ----
--keep class com.chillibits.flutter_jailbreak_detection.** { *; }
--dontwarn com.chillibits.flutter_jailbreak_detection.**
+# The plugin's Android package is appmire.be.flutterjailbreakdetection (NOT
+# com.chillibits.*), so the old rule matched nothing under R8 minification.
+-keep class appmire.be.flutterjailbreakdetection.** { *; }
+-dontwarn appmire.be.flutterjailbreakdetection.**
 # RootBeer (transitive dep used by jailbreak detection)
 -keep class com.scottyab.rootbeer.** { *; }
 -dontwarn com.scottyab.rootbeer.**

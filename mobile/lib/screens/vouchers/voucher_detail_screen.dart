@@ -3,8 +3,8 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/clipboard_service.dart';
 import '../../services/secure_window.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart' show Share;
@@ -39,10 +39,6 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   // iOS blur overlay: shown when app enters inactive state.
   bool _obscured = false;
 
-  // Clipboard auto-clear timer.
-  Timer? _clipboardClearTimer;
-  String? _lastCopiedValue;
-
   @override
   void initState() {
     super.initState();
@@ -64,7 +60,6 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   @override
   void dispose() {
     _refreshTimer?.cancel();
-    _clipboardClearTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isAndroid) {
       SecureWindow.disable();
@@ -97,18 +92,10 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   }
 
   /// Copy [text] to the clipboard and schedule auto-clear after 30 seconds.
-  Future<void> _copyWithAutoClear(String text) async {
-    _lastCopiedValue = text;
-    await Clipboard.setData(ClipboardData(text: text));
-    _clipboardClearTimer?.cancel();
-    _clipboardClearTimer = Timer(const Duration(seconds: 30), () async {
-      if (!mounted) return;
-      final current = await Clipboard.getData('text/plain');
-      if (current?.text == _lastCopiedValue) {
-        await Clipboard.setData(const ClipboardData(text: ''));
-      }
-    });
-  }
+  /// Delegated to the app-scoped [ClipboardService] so the wipe survives
+  /// navigating away from this screen (the normal copy-then-leave flow).
+  Future<void> _copyWithAutoClear(String text) =>
+      ClipboardService.instance.copyWithAutoClear(text);
 
   Future<void> _toggleStatus() async {
     final voucher = ref.read(vouchersProvider).selectedVoucher;
@@ -130,14 +117,22 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
 
     if (!confirmed || !mounted) return;
 
-    await ref
+    final ok = await ref
         .read(vouchersProvider.notifier)
         .toggleVoucherStatus(widget.routerId, voucher);
-    // Reload to get fresh data
-    if (mounted) {
+    if (!mounted) return;
+    if (ok) {
+      // Reload to get fresh data
       ref
           .read(vouchersProvider.notifier)
           .loadVoucher(widget.routerId, widget.voucherId);
+    } else {
+      // The PATCH can fail (router tunnel down) — surface it so the operator
+      // doesn't believe a still-active voucher was disabled.
+      AppSnackbar.error(
+        context,
+        ref.read(vouchersProvider).error ?? context.tr('error.unknown'),
+      );
     }
   }
 
@@ -159,9 +154,15 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
     final success = await ref
         .read(vouchersProvider.notifier)
         .deleteVoucher(widget.routerId, voucher.id);
-    if (success && mounted) {
+    if (!mounted) return;
+    if (success) {
       AppSnackbar.success(context, context.tr('vouchers.deletedSuccessfully'));
       context.pop();
+    } else {
+      AppSnackbar.error(
+        context,
+        ref.read(vouchersProvider).error ?? context.tr('error.unknown'),
+      );
     }
   }
 
@@ -220,7 +221,15 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           ),
           body: state.isLoading && voucher == null
               ? const Center(child: CircularProgressIndicator())
-              : voucher == null
+              : voucher == null && state.error != null
+                  ? ErrorState(
+                      message: state.error!,
+                      onRetry: () => ref
+                          .read(vouchersProvider.notifier)
+                          .loadVoucher(widget.routerId, widget.voucherId),
+                      retryLabel: context.tr('common.retry'),
+                    )
+                  : voucher == null
                   ? Center(
                       child: Text(context.tr('vouchers.voucherNotFound'),
                           style: AppTypography.body

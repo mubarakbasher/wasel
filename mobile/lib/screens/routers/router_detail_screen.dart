@@ -79,7 +79,15 @@ class _RouterDetailScreenState extends ConsumerState<RouterDetailScreen> {
       ),
       body: state.isLoading && router == null
           ? const Center(child: CircularProgressIndicator())
-          : router == null
+          : router == null && state.error != null
+              ? ErrorState(
+                  message: state.error!,
+                  onRetry: () => ref
+                      .read(routersProvider.notifier)
+                      .loadRouter(widget.routerId),
+                  retryLabel: context.tr('common.retry'),
+                )
+              : router == null
               ? Center(
                   child: Text(context.tr('routers.notFound'),
                       style: AppTypography.body

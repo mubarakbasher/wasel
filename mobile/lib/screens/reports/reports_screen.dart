@@ -415,13 +415,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildVoucherSalesReport(Map<String, dynamic> data) {
-    final summary = data['summary'] as Map<String, dynamic>? ?? {};
-    final created = summary['created'] as int? ?? 0;
-    final used = summary['used'] as int? ?? 0;
-    final expired = summary['expired'] as int? ?? 0;
-    final active = summary['active'] as int? ?? 0;
+    // Backend contract (report.service.ts VoucherSalesReport):
+    // { rows:[{date,created,used,expired,remaining}], totals:{created,used,expired,remaining} }
+    final totals = data['totals'] as Map<String, dynamic>? ?? {};
+    final created = (totals['created'] as num?)?.toInt() ?? 0;
+    final used = (totals['used'] as num?)?.toInt() ?? 0;
+    final expired = (totals['expired'] as num?)?.toInt() ?? 0;
+    final active = (totals['remaining'] as num?)?.toInt() ?? 0;
     final dailyBreakdown =
-        (data['dailyBreakdown'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        (data['rows'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -469,7 +471,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           const SizedBox(height: AppSpacing.md),
           ...dailyBreakdown.map((day) => _DailyBreakdownTile(
                 date: day['date'] as String? ?? '',
-                value: '${day['count'] ?? 0} ${context.tr('reports.vouchers')}',
+                value:
+                    '${(day['created'] as num?)?.toInt() ?? 0} ${context.tr('reports.vouchers')}',
                 icon: Icons.confirmation_number_outlined,
               )),
         ],
@@ -482,13 +485,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildSessionsReport(Map<String, dynamic> data) {
-    final summary = data['summary'] as Map<String, dynamic>? ?? {};
-    final totalSessions = summary['totalSessions'] as int? ?? 0;
-    final avgDuration = (summary['avgDuration'] as num?)?.toDouble() ?? 0.0;
-    final totalDataIn = summary['totalDataIn'] as int? ?? 0;
-    final totalDataOut = summary['totalDataOut'] as int? ?? 0;
+    // Backend contract (report.service.ts SessionReport):
+    // { rows:[{date,totalSessions,avgDurationSeconds,totalInputOctets,totalOutputOctets}],
+    //   totals:{totalSessions,avgDurationSeconds,totalInputOctets,totalOutputOctets} }
+    final totals = data['totals'] as Map<String, dynamic>? ?? {};
+    final totalSessions = (totals['totalSessions'] as num?)?.toInt() ?? 0;
+    final avgDuration =
+        (totals['avgDurationSeconds'] as num?)?.toDouble() ?? 0.0;
+    final totalDataIn = (totals['totalInputOctets'] as num?)?.toInt() ?? 0;
+    final totalDataOut = (totals['totalOutputOctets'] as num?)?.toInt() ?? 0;
     final dailyBreakdown =
-        (data['dailyBreakdown'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        (data['rows'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,7 +544,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ...dailyBreakdown.map((day) => _DailyBreakdownTile(
                 date: day['date'] as String? ?? '',
                 value:
-                    '${day['sessions'] ?? 0} ${context.tr('reports.sessions')}, ${context.tr('reports.dataInbound', [_formatBytes((day['dataIn'] as int?) ?? 0)])}',
+                    '${(day['totalSessions'] as num?)?.toInt() ?? 0} ${context.tr('reports.sessions')}, ${context.tr('reports.dataInbound', [_formatBytes((day['totalInputOctets'] as num?)?.toInt() ?? 0)])}',
                 icon: Icons.wifi,
               )),
         ],
@@ -550,11 +557,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildRevenueReport(Map<String, dynamic> data) {
-    final summary = data['summary'] as Map<String, dynamic>? ?? {};
-    final totalVouchers = summary['totalVouchers'] as int? ?? 0;
-    final profileBreakdown =
-        (data['profileBreakdown'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
-            [];
+    // Backend contract (report.service.ts RevenueReport):
+    // { rows:[...], totals:{ totalVouchers, profileBreakdown:[{profileName,groupName,count}] } }
+    final totals = data['totals'] as Map<String, dynamic>? ?? {};
+    final totalVouchers = (totals['totalVouchers'] as num?)?.toInt() ?? 0;
+    final profileBreakdown = (totals['profileBreakdown'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,9 +583,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ...profileBreakdown.map((profile) {
             final profileName =
                 profile['profileName'] as String? ?? 'Unknown';
-            final count = profile['count'] as int? ?? 0;
+            final count = (profile['count'] as num?)?.toInt() ?? 0;
+            // Backend does not send a percentage — derive it from the total.
             final percentage =
-                (profile['percentage'] as num?)?.toDouble() ?? 0.0;
+                totalVouchers > 0 ? (count / totalVouchers) * 100 : 0.0;
 
             return AppCard(
               margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -630,8 +640,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildRouterUptimeReport(Map<String, dynamic> data) {
+    // Backend contract (report.service.ts RouterUptimeReport):
+    // { routers:[{routerId,routerName,status,lastSeen,createdAt}],
+    //   summary:{totalRouters,onlineCount,offlineCount,degradedCount} }
+    // The backend reports a current-status snapshot per router (no historical
+    // uptime percentage), so we surface status + last-seen and a status summary.
     final routers =
         (data['routers'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final summary = data['summary'] as Map<String, dynamic>? ?? {};
 
     if (routers.isEmpty) {
       return EmptyState(
@@ -640,77 +656,78 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       );
     }
 
+    final online = (summary['onlineCount'] as num?)?.toInt() ?? 0;
+    final offline = (summary['offlineCount'] as num?)?.toInt() ?? 0;
+    final degraded = (summary['degradedCount'] as num?)?.toInt() ?? 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(context.tr('reports.summary'), style: AppTypography.title3),
+        const SizedBox(height: AppSpacing.md),
+        Row(
+          children: [
+            Expanded(
+                child: StatCard(
+                    label: context.tr('routers.online'),
+                    value: '$online',
+                    color: AppColors.success,
+                    icon: Icons.check_circle_outline)),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+                child: StatCard(
+                    label: context.tr('routers.degraded'),
+                    value: '$degraded',
+                    color: AppColors.warning,
+                    icon: Icons.error_outline)),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+                child: StatCard(
+                    label: context.tr('routers.offline'),
+                    value: '$offline',
+                    color: AppColors.error,
+                    icon: Icons.cancel_outlined)),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xxl),
         Text(context.tr('reports.routerUptime'), style: AppTypography.title3),
         const SizedBox(height: AppSpacing.md),
         ...routers.map((router) {
-          final name = router['name'] as String? ?? 'Unknown';
+          final name = router['routerName'] as String? ?? 'Unknown';
           final status = router['status'] as String? ?? 'offline';
-          final uptimePercent =
-              (router['uptimePercent'] as num?)?.toDouble() ?? 0.0;
-          final totalOnline = router['totalOnlineSeconds'] as int? ?? 0;
-          final totalOffline = router['totalOfflineSeconds'] as int? ?? 0;
-
-          Color uptimeBarColor;
-          if (uptimePercent >= 99) {
-            uptimeBarColor = AppColors.success;
-          } else if (uptimePercent >= 95) {
-            uptimeBarColor = AppColors.warning;
-          } else {
-            uptimeBarColor = AppColors.error;
-          }
+          final lastSeenRaw = router['lastSeen'] as String?;
+          final lastSeenDate =
+              lastSeenRaw != null ? DateTime.tryParse(lastSeenRaw) : null;
 
           return AppCard(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    StatusDot(AppColors.routerStatus(status)),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
+                StatusDot(AppColors.routerStatus(status)),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
                         name,
                         style: AppTypography.headline,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    Text(
-                      '${uptimePercent.toStringAsFixed(1)}%',
-                      style: AppTypography.title3.copyWith(
-                        color: uptimeBarColor,
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        lastSeenDate != null
+                            ? context.tr('routers.lastSeen',
+                                [_formatDate(lastSeenDate.toLocal())])
+                            : context.tr('routers.never'),
+                        style: AppTypography.caption1,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.md),
-                ClipRRect(
-                  borderRadius:
-                      BorderRadius.circular(AppSpacing.radiusSm),
-                  child: LinearProgressIndicator(
-                    value: (uptimePercent / 100).clamp(0.0, 1.0),
-                    minHeight: 8,
-                    backgroundColor: AppColors.border,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(uptimeBarColor),
+                    ],
                   ),
                 ),
-                const SizedBox(height: AppSpacing.sm),
-                Row(
-                  children: [
-                    StatusBadge(
-                      label: context.tr('reports.online', [_formatDuration(totalOnline.toDouble())]),
-                      color: AppColors.success,
-                    ),
-                    const SizedBox(width: AppSpacing.md),
-                    StatusBadge(
-                      label: context.tr('reports.offline', [_formatDuration(totalOffline.toDouble())]),
-                      color: AppColors.error,
-                    ),
-                  ],
+                StatusBadge(
+                  label: context.tr('routers.$status'),
+                  color: AppColors.routerStatus(status),
                 ),
               ],
             ),

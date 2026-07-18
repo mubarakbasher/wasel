@@ -82,6 +82,14 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    if (state.error != null && state.messages.isEmpty) {
+      return ErrorState(
+        message: state.error!,
+        onRetry: () => ref.read(supportProvider.notifier).refresh(),
+        retryLabel: context.tr('common.retry'),
+      );
+    }
+
     if (state.messages.isEmpty) {
       return _buildEmpty();
     }
