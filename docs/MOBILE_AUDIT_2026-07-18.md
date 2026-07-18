@@ -4,6 +4,25 @@
 
 **Result:** No blocking/critical crash-on-launch issues. 4 High, 26 Medium, 43 Low findings — dominated by a cluster of state-management races (un-keyed global providers), silent error-swallowing, i18n/RTL gaps in the Arabic UI, and clipboard/logging hardening. The app is architecturally sound (secure token storage, server-side voucher generation, screenshot protection on sensitive screens, no committed secrets); the highest-impact items are a certificate-pinning implementation that is effectively a no-op and several data-correctness races operators would actually hit.
 
+## Resolution status (fixed 2026-07-18)
+
+Substantially all findings were fixed across four commits on `dev`:
+
+- `0e223c4` — batch 1: state-management race guards (vouchers/sessions/routers), single-flight token refresh + FormData clone, SPKI certificate pinning via `validateCertificate`, debug-log redaction, logout/session hardening, FCM re-register + tap-through, non-blocking startup.
+- `9b5d172` — batch 2: reports contract fix (High #3), error surfacing across ~8 screens, app-scoped clipboard auto-clear + FLAG_SECURE + refcounted SecureWindow, ProGuard package fix.
+- `27bf7a7` — backend: keyset cursor pagination + machine-readable error codes + migration 036.
+- `470ca5b` — batch 3: mobile cursor consumption, i18n/RTL cluster (Arabic plurals, localized status/units/currency, validator keys, error-code→i18n map), `edit_router` setState fix, route empty-id guards, iOS push scaffolding.
+
+Verification: `flutter analyze` clean, **282 mobile tests pass**; backend `tsc` clean, **718 backend tests pass**.
+
+**Residual (deliberately deferred):**
+- **Cert pins must be verified on staging** against the live `api.wa-sel.com` cert before promoting `dev→main` — a wrong pin bricks release builds (pinning is release-only).
+- **radacct keyset index** (migration 036) uses plain `CREATE INDEX` (transactional runner) — briefly locks a FreeRADIUS-hot table on deploy; verify table size/window on staging.
+- **#5 iOS push:** real Firebase iOS app registration + `GoogleService-Info.plist` + Xcode entitlements reference remain manual (Apple-side).
+- **#59 (LOW):** a few `initState` `Future.microtask` bodies still lack a `mounted` guard (unmounted-within-frame is rare).
+- **#66 (LOW):** device-token unregister on logout is best-effort; the durable fix is server-side invalidation on `/auth/logout` (backend now receives the refresh token).
+- Dependency major-version upgrades (Riverpod 2→3, go_router 14→17, etc.) — currency, not defects.
+
 ## Methodology
 
 Three parallel recon agents mapped the app, then a multi-agent workflow ran **10 finder lenses** (network/TLS, auth/session, data-exposure, provider-architecture, pagination, JSON/models, async/lifecycle, error-handling, i18n/RTL, diff/platform). Each lens verified its seeded leads against real code and hunted for new issues. Every unique finding was then **adversarially verified by 3 independent agents** (reproduce / impact / false-positive lenses); a finding is reported only if **≥2 of 3 confirmed** it against the source. A completeness critic then swept for gaps; findings it surfaced were verified by hand and are tagged `critic+manual`.
