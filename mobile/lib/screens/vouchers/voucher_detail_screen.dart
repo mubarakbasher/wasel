@@ -278,7 +278,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
               Text(context.tr('vouchers.credentials'), style: AppTypography.title3),
               const Spacer(),
               StatusBadge(
-                label: _capitalizeStatus(voucher.status as String),
+                label: localizedVoucherStatus(context, voucher.status as String),
                 color: AppColors.voucherStatus(voucher.status as String),
               ),
             ],
@@ -406,7 +406,7 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             label: context.tr('vouchers.status'),
-            value: _capitalizeStatus(voucher.status as String),
+            value: localizedVoucherStatus(context, voucher.status as String),
             icon: Icons.circle,
             valueColor: AppColors.voucherStatus(voucher.status as String),
           ),
@@ -483,11 +483,6 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
         ),
       ],
     );
-  }
-
-  String _capitalizeStatus(String status) {
-    if (status.isEmpty) return status;
-    return status[0].toUpperCase() + status.substring(1);
   }
 
   String _formatDateTime(DateTime date) {

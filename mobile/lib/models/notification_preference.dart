@@ -26,6 +26,7 @@ class NotificationPreference {
       case 'router_online': return 'notifications.category.routerOnline';
       case 'voucher_quota_low': return 'notifications.category.voucherQuotaLow';
       case 'bulk_creation_complete': return 'notifications.category.bulkCreationComplete';
+      case 'support_reply': return 'notifications.category.supportReply';
       default: return category;
     }
   }
@@ -35,6 +36,7 @@ class NotificationPreference {
       return 'notifications.section.subscription';
     }
     if (category.startsWith('router')) return 'notifications.section.routers';
+    if (category == 'support_reply') return 'notifications.section.subscription';
     return 'notifications.section.vouchers';
   }
 }

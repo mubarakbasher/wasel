@@ -3,6 +3,24 @@ import 'package:flutter/material.dart';
 import '../models/voucher.dart';
 import 'app_localizations.dart';
 
+/// Maps a voucher status value to a localized display label.
+///
+/// Recognised values: active / unused / expired / disabled / used.
+/// Unknown values are title-cased as a human-readable fallback.
+String localizedVoucherStatus(BuildContext c, String status) {
+  final key = switch (status.toLowerCase()) {
+    'active' => 'vouchers.active',
+    'unused' => 'common.unused',
+    'expired' => 'vouchers.expired',
+    'disabled' => 'vouchers.disabled',
+    'used' => 'vouchers.used',
+    _ => null,
+  };
+  if (key != null) return c.tr(key);
+  if (status.isEmpty) return status;
+  return status[0].toUpperCase() + status.substring(1);
+}
+
 /// Returns a localized, human-readable limit string for [v], or `null` when
 /// [v] has no limit type and no meaningful profile name.
 ///

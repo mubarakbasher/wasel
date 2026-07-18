@@ -15,6 +15,10 @@ class SessionsState {
   final String? filterUsername;
   final String? filterTerminateCause;
 
+  /// Opaque keyset cursor returned by the last successful history page load.
+  /// `null` means either we haven't loaded yet or there are no more pages.
+  final String? historyNextCursor;
+
   const SessionsState({
     this.activeSessions = const [],
     this.historySessions = const [],
@@ -25,9 +29,13 @@ class SessionsState {
     this.historyLimit = 20,
     this.filterUsername,
     this.filterTerminateCause,
+    this.historyNextCursor,
   });
 
-  bool get hasMoreHistory => historySessions.length < historyTotal;
+  /// Prefer the cursor signal from the server; fall back to offset maths so
+  /// screens that relied on the old total-based guard keep compiling.
+  bool get hasMoreHistory =>
+      historyNextCursor != null || historySessions.length < historyTotal;
 
   SessionsState copyWith({
     List<ActiveSession>? activeSessions,
@@ -39,9 +47,11 @@ class SessionsState {
     int? historyLimit,
     String? filterUsername,
     String? filterTerminateCause,
+    String? historyNextCursor,
     bool clearError = false,
     bool clearFilterUsername = false,
     bool clearFilterTerminateCause = false,
+    bool clearHistoryNextCursor = false,
   }) {
     return SessionsState(
       activeSessions: activeSessions ?? this.activeSessions,
@@ -57,6 +67,9 @@ class SessionsState {
       filterTerminateCause: clearFilterTerminateCause
           ? null
           : (filterTerminateCause ?? this.filterTerminateCause),
+      historyNextCursor: clearHistoryNextCursor
+          ? null
+          : (historyNextCursor ?? this.historyNextCursor),
     );
   }
 }
@@ -91,6 +104,7 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
         historySessions: [],
         historyTotal: 0,
         historyPage: 1,
+        clearHistoryNextCursor: true,
         clearFilterUsername: true,
         clearFilterTerminateCause: true,
       );
@@ -151,10 +165,10 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
     final seq = ++_requestSeq;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      // Initial / refresh load always starts from the beginning — no cursor.
       final result = await _service.getSessionHistory(
         routerId,
         username: state.filterUsername,
-        page: refresh ? 1 : state.historyPage,
         limit: state.historyLimit,
         terminateCause: state.filterTerminateCause,
       );
@@ -163,6 +177,8 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
         historySessions: result.sessions,
         historyTotal: result.total,
         historyPage: result.page,
+        historyNextCursor: result.nextCursor,
+        clearHistoryNextCursor: result.nextCursor == null,
         isLoading: false,
       );
     } catch (e) {
@@ -174,26 +190,28 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
   Future<void> loadMoreHistory(String routerId) async {
     if (!state.hasMoreHistory || state.isLoading) return;
     final seq = ++_requestSeq;
-    final nextPage = state.historyPage + 1;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      // Pass the stored cursor; server returns the next cursor (or null = done).
       final result = await _service.getSessionHistory(
         routerId,
         username: state.filterUsername,
-        page: nextPage,
+        cursor: state.historyNextCursor,
         limit: state.historyLimit,
         terminateCause: state.filterTerminateCause,
       );
       if (seq != _requestSeq) return; // superseded
-      // Dedup by id: new sessions starting between page fetches shift offsets,
-      // so a page can repeat rows already held.
+      // Dedup by id: safety net in case the cursor window overlaps due to
+      // concurrent inserts/deletes between fetches.
       final existingIds = state.historySessions.map((s) => s.id).toSet();
       final fresh =
           result.sessions.where((s) => !existingIds.contains(s.id)).toList();
       state = state.copyWith(
         historySessions: [...state.historySessions, ...fresh],
         historyTotal: result.total,
-        historyPage: nextPage,
+        historyPage: result.page,
+        historyNextCursor: result.nextCursor,
+        clearHistoryNextCursor: result.nextCursor == null,
         isLoading: false,
       );
     } catch (e) {

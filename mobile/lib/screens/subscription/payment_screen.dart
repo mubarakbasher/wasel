@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../i18n/app_localizations.dart';
 import '../../i18n/plan_format.dart';
+import '../../i18n/status_format.dart';
 import '../../models/bank_info.dart';
 import '../../providers/subscription_provider.dart';
 import '../../services/subscription_service.dart';
@@ -482,7 +483,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
           _DetailRow(
             label: context.tr('payment.amount'),
             value:
-                '${request.currency} ${request.amount.toStringAsFixed(2)}',
+                localizedCurrency(context, request.amount, request.currency),
           ),
           const SizedBox(height: AppSpacing.md),
           _CopyableRow(

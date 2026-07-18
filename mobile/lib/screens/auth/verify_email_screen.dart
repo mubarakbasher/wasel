@@ -182,7 +182,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
                     hintText: context.tr('auth.otpHint'),
                     counterText: '',
                   ),
-                  validator: Validators.validateOtp,
+                  validator: (v) { final k = Validators.validateOtp(v); return k != null ? context.tr(k) : null; },
                   onFieldSubmitted: (_) => _verify(),
                 ),
                 const SizedBox(height: AppSpacing.xxl),

@@ -14,6 +14,10 @@ class SupportState {
   final bool isSending;
   final String? error;
 
+  /// Opaque keyset cursor returned by the last successful page load.
+  /// `null` means either we haven't loaded yet or there are no more pages.
+  final String? nextCursor;
+
   const SupportState({
     this.messages = const [],
     this.unreadAdminCount = 0,
@@ -23,6 +27,7 @@ class SupportState {
     this.isLoadingMore = false,
     this.isSending = false,
     this.error,
+    this.nextCursor,
   });
 
   SupportState copyWith({
@@ -34,7 +39,9 @@ class SupportState {
     bool? isLoadingMore,
     bool? isSending,
     String? error,
+    String? nextCursor,
     bool clearError = false,
+    bool clearNextCursor = false,
   }) {
     return SupportState(
       messages: messages ?? this.messages,
@@ -45,6 +52,7 @@ class SupportState {
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       isSending: isSending ?? this.isSending,
       error: clearError ? null : (error ?? this.error),
+      nextCursor: clearNextCursor ? null : (nextCursor ?? this.nextCursor),
     );
   }
 }
@@ -60,12 +68,15 @@ class SupportNotifier extends StateNotifier<SupportState> {
   Future<void> refresh() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final page = await _service.list(page: 1, limit: _pageSize);
+      // Initial / refresh load always starts from the beginning — no cursor.
+      final page = await _service.list(limit: _pageSize);
       state = state.copyWith(
         messages: page.items,
         unreadAdminCount: page.unreadAdminCount,
         page: page.page,
         hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
+        clearNextCursor: page.nextCursor == null,
         isLoading: false,
       );
     } catch (e) {
@@ -77,11 +88,22 @@ class SupportNotifier extends StateNotifier<SupportState> {
     if (!state.hasMore || state.isLoadingMore || state.isLoading) return;
     state = state.copyWith(isLoadingMore: true, clearError: true);
     try {
-      final next = await _service.list(page: state.page + 1, limit: _pageSize);
+      // Pass the stored cursor; server returns the next cursor (or null = done).
+      final next = await _service.list(
+        cursor: state.nextCursor,
+        limit: _pageSize,
+      );
+      // Dedup by id: safety net in case the cursor window overlaps due to
+      // concurrent inserts between fetches.
+      final existingIds = state.messages.map((m) => m.id).toSet();
+      final fresh =
+          next.items.where((m) => !existingIds.contains(m.id)).toList();
       state = state.copyWith(
-        messages: [...state.messages, ...next.items],
+        messages: [...state.messages, ...fresh],
         page: next.page,
         hasMore: next.hasMore,
+        nextCursor: next.nextCursor,
+        clearNextCursor: next.nextCursor == null,
         isLoadingMore: false,
       );
     } catch (e) {

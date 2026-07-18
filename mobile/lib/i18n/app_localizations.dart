@@ -301,6 +301,12 @@ class AppLocalizations {
     'validation.maxLength': 'Must be at most {0} characters',
     'validation.numeric': 'Must be a number',
     'validation.positive': 'Must be greater than zero',
+    'validation.nameMinLength': 'Name must be at least 2 characters',
+    'validation.nameMaxLength': 'Name must be at most 100 characters',
+    'validation.invalidPhone': 'Enter a valid phone number (e.g. +1234567890)',
+    'validation.passwordUppercase': 'Password must contain at least one uppercase letter',
+    'validation.passwordDigit': 'Password must contain at least one digit',
+    'validation.invalidOtp': 'Enter a valid 6-digit code',
 
     // ── Errors ────────────────────────────────────────────────────────────────
     'error.network': 'No internet connection',
@@ -315,6 +321,22 @@ class AppLocalizations {
     'error.routerOffline': 'Router is currently offline.',
     'error.security': 'Could not establish a secure connection. Please try again.',
     'error.rateLimited': 'Too many attempts. Please wait a moment and try again.',
+    // ── Backend machine-readable error codes ──────────────────────────────────
+    'error.VALIDATION_ERROR': 'Some fields are invalid. Please check your input.',
+    'error.INVALID_CREDENTIALS': 'Incorrect email or password.',
+    'error.EMAIL_NOT_VERIFIED': 'Please verify your email before signing in.',
+    'error.EMAIL_EXISTS': 'An account with this email already exists.',
+    'error.OTP_INVALID': 'The verification code is invalid or has expired.',
+    'error.QUOTA_EXCEEDED': 'You have reached your voucher quota for this month.',
+    'error.SUBSCRIPTION_REQUIRED': 'An active subscription is required for this action.',
+    'error.SUBSCRIPTION_EXPIRED': 'Your subscription has expired. Please renew to continue.',
+    'error.ROUTER_LIMIT_REACHED': 'You have reached the maximum number of routers for your plan.',
+    'error.ROUTER_NOT_FOUND': 'Router not found.',
+    'error.ROUTER_UNREACHABLE': 'Could not reach the router. Please check the connection.',
+    'error.VOUCHER_NOT_FOUND': 'Voucher not found.',
+    'error.TIER_INSUFFICIENT': 'Your current plan does not support this feature.',
+    'error.INVALID_CURSOR': 'Invalid pagination cursor. Please refresh and try again.',
+    'error.INTERNAL_ERROR': 'An internal server error occurred. Please try again later.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'Wasel',
@@ -342,6 +364,7 @@ class AppLocalizations {
     'auth.resetPasswordSuccess': 'Password reset successfully! Please log in.',
     'auth.emailVerifiedSuccess': 'Email verified successfully! Please log in.',
     'auth.verificationResent': 'Verification code resent',
+    'auth.passwordChangedRelogin': 'Password changed — please sign in again',
 
     // ── Extra Dashboard ──────────────────────────────────────────────────────
     'dashboard.quickCreateVoucher': 'Quick Create Voucher',
@@ -365,8 +388,14 @@ class AppLocalizations {
     'routers.never': 'Never',
     'routers.justNow': 'Just now',
     'routers.minutesAgo': '{0}m ago',
+    'routers.minutesAgo.one': '1m ago',
+    'routers.minutesAgo.other': '{0}m ago',
     'routers.hoursAgo': '{0}h ago',
+    'routers.hoursAgo.one': '1h ago',
+    'routers.hoursAgo.other': '{0}h ago',
     'routers.daysAgo': '{0}d ago',
+    'routers.daysAgo.one': '1d ago',
+    'routers.daysAgo.other': '{0}d ago',
     'routers.monthsAgo': '{0}mo ago',
     'routers.deleteConfirmNamed': "Are you sure you want to delete '{0}'? This action cannot be undone.",
     'routers.deleted': 'Router deleted successfully',
@@ -463,6 +492,8 @@ class AppLocalizations {
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} selected',
+    'vouchers.selected.one': '{0} selected',
+    'vouchers.selected.other': '{0} selected',
     'vouchers.selectAll': 'Select All',
     'vouchers.deleteAllCount': 'Delete All ({0})',
     'vouchers.printAllCount': 'Print All ({0})',
@@ -495,6 +526,8 @@ class AppLocalizations {
     'subscription.choosePlan': 'Choose a Plan',
     'subscription.month1': '1 month',
     'subscription.monthsN': '{0} months',
+    'subscription.months.one': '1 month',
+    'subscription.months.other': '{0} months',
     'subscription.subscribeTo': 'Subscribe to {0}',
     'subscription.upgradeTo': 'Upgrade to {0}',
     'subscription.downgradeTo': 'Downgrade to {0}',
@@ -539,6 +572,7 @@ class AppLocalizations {
     'notifications.category.routerOnline': 'Router Online',
     'notifications.category.voucherQuotaLow': 'Voucher Quota Low',
     'notifications.category.bulkCreationComplete': 'Bulk Creation Complete',
+    'notifications.category.supportReply': 'Support Reply',
     'notifications.section.subscription': 'Subscription',
     'notifications.section.routers': 'Routers',
     'notifications.section.vouchers': 'Vouchers',
@@ -1065,6 +1099,12 @@ class AppLocalizations {
     'validation.maxLength': 'يجب ألا يتجاوز {0} حرف',
     'validation.numeric': 'يجب أن يكون رقماً',
     'validation.positive': 'يجب أن يكون أكبر من صفر',
+    'validation.nameMinLength': 'يجب أن يكون الاسم حرفين على الأقل',
+    'validation.nameMaxLength': 'يجب ألا يتجاوز الاسم 100 حرف',
+    'validation.invalidPhone': 'أدخل رقم هاتف صحيح (مثال: +1234567890)',
+    'validation.passwordUppercase': 'يجب أن تحتوي كلمة المرور على حرف كبير واحد على الأقل',
+    'validation.passwordDigit': 'يجب أن تحتوي كلمة المرور على رقم واحد على الأقل',
+    'validation.invalidOtp': 'أدخل رمزاً صحيحاً مكوناً من 6 أرقام',
 
     // ── Errors ────────────────────────────────────────────────────────────────
     'error.network': 'لا يوجد اتصال بالإنترنت',
@@ -1079,6 +1119,22 @@ class AppLocalizations {
     'error.routerOffline': 'الراوتر غير متصل حالياً.',
     'error.security': 'تعذّر إنشاء اتصال آمن. يرجى المحاولة مرة أخرى.',
     'error.rateLimited': 'محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
+    // ── Backend machine-readable error codes ──────────────────────────────────
+    'error.VALIDATION_ERROR': 'بعض الحقول غير صحيحة. يرجى مراجعة المدخلات.',
+    'error.INVALID_CREDENTIALS': 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    'error.EMAIL_NOT_VERIFIED': 'يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول.',
+    'error.EMAIL_EXISTS': 'يوجد حساب مرتبط بهذا البريد الإلكتروني بالفعل.',
+    'error.OTP_INVALID': 'رمز التحقق غير صحيح أو منتهي الصلاحية.',
+    'error.QUOTA_EXCEEDED': 'لقد استنفدت حصة الكروت الشهرية.',
+    'error.SUBSCRIPTION_REQUIRED': 'يلزم اشتراك نشط لتنفيذ هذا الإجراء.',
+    'error.SUBSCRIPTION_EXPIRED': 'انتهى اشتراكك. يرجى التجديد للمتابعة.',
+    'error.ROUTER_LIMIT_REACHED': 'وصلت إلى الحد الأقصى لعدد الراوترات في باقتك.',
+    'error.ROUTER_NOT_FOUND': 'الراوتر غير موجود.',
+    'error.ROUTER_UNREACHABLE': 'تعذّر الوصول إلى الراوتر. يرجى التحقق من الاتصال.',
+    'error.VOUCHER_NOT_FOUND': 'الكرت غير موجود.',
+    'error.TIER_INSUFFICIENT': 'باقتك الحالية لا تدعم هذه الميزة.',
+    'error.INVALID_CURSOR': 'مؤشر الترقيم غير صحيح. يرجى التحديث والمحاولة.',
+    'error.INTERNAL_ERROR': 'حدث خطأ داخلي في الخادم. يرجى المحاولة لاحقاً.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'واصل',
@@ -1106,6 +1162,7 @@ class AppLocalizations {
     'auth.resetPasswordSuccess': 'تم إعادة تعيين كلمة المرور بنجاح! يرجى تسجيل الدخول.',
     'auth.emailVerifiedSuccess': 'تم تأكيد البريد الإلكتروني بنجاح! يرجى تسجيل الدخول.',
     'auth.verificationResent': 'تم إعادة إرسال رمز التحقق',
+    'auth.passwordChangedRelogin': 'تم تغيير كلمة المرور — يرجى تسجيل الدخول مجدداً',
 
     // ── Extra Dashboard ──────────────────────────────────────────────────────
     'dashboard.quickCreateVoucher': 'إنشاء كرت سريع',
@@ -1129,8 +1186,23 @@ class AppLocalizations {
     'routers.never': 'أبداً',
     'routers.justNow': 'الآن',
     'routers.minutesAgo': 'منذ {0} دقيقة',
+    'routers.minutesAgo.one': 'منذ دقيقة',
+    'routers.minutesAgo.two': 'منذ دقيقتين',
+    'routers.minutesAgo.few': 'منذ {0} دقائق',
+    'routers.minutesAgo.many': 'منذ {0} دقيقة',
+    'routers.minutesAgo.other': 'منذ {0} دقيقة',
     'routers.hoursAgo': 'منذ {0} ساعة',
+    'routers.hoursAgo.one': 'منذ ساعة',
+    'routers.hoursAgo.two': 'منذ ساعتين',
+    'routers.hoursAgo.few': 'منذ {0} ساعات',
+    'routers.hoursAgo.many': 'منذ {0} ساعة',
+    'routers.hoursAgo.other': 'منذ {0} ساعة',
     'routers.daysAgo': 'منذ {0} يوم',
+    'routers.daysAgo.one': 'منذ يوم',
+    'routers.daysAgo.two': 'منذ يومين',
+    'routers.daysAgo.few': 'منذ {0} أيام',
+    'routers.daysAgo.many': 'منذ {0} يوماً',
+    'routers.daysAgo.other': 'منذ {0} يوم',
     'routers.monthsAgo': 'منذ {0} شهر',
     'routers.deleteConfirmNamed': "هل أنت متأكد من حذف '{0}'؟ لا يمكن التراجع عن هذا الإجراء.",
     'routers.deleted': 'تم حذف الراوتر بنجاح',
@@ -1227,6 +1299,11 @@ class AppLocalizations {
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} محدد',
+    'vouchers.selected.one': '{0} محدد',
+    'vouchers.selected.two': '{0} محددان',
+    'vouchers.selected.few': '{0} محددة',
+    'vouchers.selected.many': '{0} محدداً',
+    'vouchers.selected.other': '{0} محدد',
     'vouchers.selectAll': 'تحديد الكل',
     'vouchers.deleteAllCount': 'حذف الكل ({0})',
     'vouchers.printAllCount': 'طباعة الكل ({0})',
@@ -1259,6 +1336,11 @@ class AppLocalizations {
     'subscription.choosePlan': 'اختر باقة',
     'subscription.month1': 'شهر واحد',
     'subscription.monthsN': '{0} أشهر',
+    'subscription.months.one': 'شهر واحد',
+    'subscription.months.two': 'شهران',
+    'subscription.months.few': '{0} أشهر',
+    'subscription.months.many': '{0} شهراً',
+    'subscription.months.other': '{0} شهر',
     'subscription.subscribeTo': 'اشتراك في {0}',
     'subscription.upgradeTo': 'ترقية إلى {0}',
     'subscription.downgradeTo': 'تخفيض إلى {0}',
@@ -1303,6 +1385,7 @@ class AppLocalizations {
     'notifications.category.routerOnline': 'الراوتر متصل',
     'notifications.category.voucherQuotaLow': 'رصيد الكروت منخفض',
     'notifications.category.bulkCreationComplete': 'اكتمل الإنشاء المجمّع',
+    'notifications.category.supportReply': 'ردّ الدعم الفني',
     'notifications.section.subscription': 'الاشتراك',
     'notifications.section.routers': 'أجهزة الراوتر',
     'notifications.section.vouchers': 'الكروت',
@@ -1642,5 +1725,49 @@ extension AppLocalizationsX on BuildContext {
     final loc = AppLocalizations.of(this);
     if (loc.hasKey(value)) return loc.translate(value, args);
     return value;
+  }
+
+  /// Plural-aware translation using CLDR plural categories.
+  ///
+  /// Arabic categories: zero / one / two / few (3-10) / many (11-99) / other
+  /// English (and all other locales): one / other
+  ///
+  /// Lookup order for the resolved [count]:
+  ///   1. `baseKey.<category>`  (most specific)
+  ///   2. `baseKey.other`       (generic plural fallback)
+  ///   3. `baseKey`             (base key — must exist)
+  ///
+  /// Optional [args] are substituted into the resolved string
+  /// (`{0}`, `{1}`, …).
+  String trPlural(String baseKey, int count, [List<String>? args]) {
+    final loc = AppLocalizations.of(this);
+    final lang = loc.locale.languageCode;
+
+    final String category;
+    if (lang == 'ar') {
+      if (count == 0) {
+        category = 'zero';
+      } else if (count == 1) {
+        category = 'one';
+      } else if (count == 2) {
+        category = 'two';
+      } else if (count % 100 >= 3 && count % 100 <= 10) {
+        category = 'few';
+      } else if (count % 100 >= 11 && count % 100 <= 99) {
+        category = 'many';
+      } else {
+        category = 'other';
+      }
+    } else {
+      category = count == 1 ? 'one' : 'other';
+    }
+
+    final categoryKey = '$baseKey.$category';
+    if (loc.hasKey(categoryKey)) return loc.translate(categoryKey, args);
+
+    final otherKey = '$baseKey.other';
+    if (loc.hasKey(otherKey)) return loc.translate(otherKey, args);
+
+    return loc.translate(baseKey, args);
   }
 }

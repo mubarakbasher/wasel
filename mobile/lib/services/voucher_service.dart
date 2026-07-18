@@ -11,11 +11,15 @@ class VoucherService {
     String? search,
     int page = 1,
     int limit = 100,
+    String? cursor,
   }) async {
-    final queryParams = <String, dynamic>{
-      'page': page,
-      'limit': limit,
-    };
+    final queryParams = <String, dynamic>{'limit': limit};
+    // When a cursor is provided use keyset pagination; fall back to offset.
+    if (cursor != null) {
+      queryParams['cursor'] = cursor;
+    } else {
+      queryParams['page'] = page;
+    }
     if (status != null) queryParams['status'] = status;
     if (limitType != null) queryParams['limitType'] = limitType;
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
@@ -31,6 +35,7 @@ class VoucherService {
       total: meta?['total'] != null ? int.parse(meta!['total'].toString()) : data.length,
       page: meta?['page'] != null ? int.parse(meta!['page'].toString()) : page,
       limit: meta?['limit'] != null ? int.parse(meta!['limit'].toString()) : limit,
+      nextCursor: meta?['nextCursor'] as String?,
     );
   }
 
@@ -123,7 +128,7 @@ class VoucherService {
     int? maxCount,
   }) async {
     final List<Voucher> allVouchers = [];
-    int page = 1;
+    String? cursor;
     const limit = 500;
 
     while (true) {
@@ -132,7 +137,7 @@ class VoucherService {
         status: status,
         limitType: limitType,
         search: search,
-        page: page,
+        cursor: cursor,
         limit: limit,
       );
       allVouchers.addAll(result.vouchers);
@@ -140,8 +145,8 @@ class VoucherService {
       if (maxCount != null && allVouchers.length >= maxCount) {
         return allVouchers.sublist(0, maxCount);
       }
-      if (allVouchers.length >= result.total) break;
-      page++;
+      if (result.nextCursor == null) break; // cursor-based termination
+      cursor = result.nextCursor;
     }
 
     return allVouchers;
@@ -154,10 +159,14 @@ class VoucherListResult {
   final int page;
   final int limit;
 
+  /// Opaque keyset cursor from the backend. `null` means no more pages.
+  final String? nextCursor;
+
   const VoucherListResult({
     required this.vouchers,
     required this.total,
     required this.page,
     required this.limit,
+    this.nextCursor,
   });
 }

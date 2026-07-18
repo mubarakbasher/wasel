@@ -115,10 +115,13 @@ class _EditRouterScreenState extends ConsumerState<EditRouterScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(routersProvider);
 
-    // Pre-fill when router loads
+    // Pre-fill when router loads.
+    // Do NOT call setState() here — we are already inside build(). The
+    // controllers are mutated by _prefill and their listeners will trigger a
+    // subsequent frame if needed. Calling setState() during build throws a
+    // framework assertion in debug mode.
     if (!_initialized && state.selectedRouter != null) {
       _prefill(state.selectedRouter!);
-      setState(() {});
     }
 
     return Scaffold(

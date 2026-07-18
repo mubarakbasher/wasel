@@ -8,24 +8,40 @@ class NotificationsInboxPage {
   final int page;
   final int limit;
 
+  /// Opaque keyset cursor from the backend. `null` means no more pages.
+  final String? nextCursor;
+
   const NotificationsInboxPage({
     required this.items,
     required this.total,
     required this.unreadCount,
     required this.page,
     required this.limit,
+    this.nextCursor,
   });
 
-  bool get hasMore => page * limit < total;
+  /// Prefer cursor signal when available; fall back to offset maths.
+  bool get hasMore => nextCursor != null || page * limit < total;
 }
 
 class NotificationsService {
   final ApiClient _api = ApiClient();
 
-  Future<NotificationsInboxPage> list({int page = 1, int limit = 20}) async {
+  Future<NotificationsInboxPage> list({
+    int page = 1,
+    int limit = 20,
+    String? cursor,
+  }) async {
+    final queryParams = <String, dynamic>{'limit': limit};
+    // Keyset pagination when cursor is available; fall back to offset.
+    if (cursor != null) {
+      queryParams['cursor'] = cursor;
+    } else {
+      queryParams['page'] = page;
+    }
     final response = await _api.get<Map<String, dynamic>>(
       '/notifications/',
-      queryParameters: {'page': page, 'limit': limit},
+      queryParameters: queryParams,
     );
     final body = response.data;
     if (body == null) {
@@ -46,6 +62,7 @@ class NotificationsService {
       unreadCount: (meta['unreadCount'] as num?)?.toInt() ?? 0,
       page: (meta['page'] as num?)?.toInt() ?? page,
       limit: (meta['limit'] as num?)?.toInt() ?? limit,
+      nextCursor: meta['nextCursor'] as String?,
     );
   }
 

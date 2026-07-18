@@ -199,12 +199,12 @@ class _MessageBubble extends StatelessWidget {
     final diff = DateTime.now().difference(d);
     if (diff.inSeconds < 60) return context.tr('routers.justNow');
     if (diff.inMinutes < 60) {
-      return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
+      return context.trPlural('routers.minutesAgo', diff.inMinutes, [diff.inMinutes.toString()]);
     }
     if (diff.inHours < 24) {
-      return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
+      return context.trPlural('routers.hoursAgo', diff.inHours, [diff.inHours.toString()]);
     }
-    return context.tr('routers.daysAgo', [diff.inDays.toString()]);
+    return context.trPlural('routers.daysAgo', diff.inDays, [diff.inDays.toString()]);
   }
 
   @override
@@ -212,12 +212,13 @@ class _MessageBubble extends StatelessWidget {
     final isUser = message.isUser;
     final bg = isUser ? AppColors.primary : AppColors.surface;
     final fg = isUser ? AppColors.textInverse : AppColors.textPrimary;
-    final align = isUser ? Alignment.centerRight : Alignment.centerLeft;
-    final radius = BorderRadius.only(
-      topLeft: const Radius.circular(16),
-      topRight: const Radius.circular(16),
-      bottomLeft: Radius.circular(isUser ? 16 : 4),
-      bottomRight: Radius.circular(isUser ? 4 : 16),
+    final align =
+        isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart;
+    final radius = BorderRadiusDirectional.only(
+      topStart: const Radius.circular(16),
+      topEnd: const Radius.circular(16),
+      bottomStart: Radius.circular(isUser ? 16 : 4),
+      bottomEnd: Radius.circular(isUser ? 4 : 16),
     );
 
     return Align(

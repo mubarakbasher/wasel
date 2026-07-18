@@ -228,7 +228,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
   }
 
   Future<void> _onDeleteAll(int total) async {
-    final filterLabel = _statusFilter != null ? ' ${_capitalizeStatus(_statusFilter!)}' : '';
+    final filterLabel = _statusFilter != null ? ' ${localizedVoucherStatus(context, _statusFilter!)}' : '';
     final confirmed = await showConfirmDialog(
       context,
       title: context.tr('vouchers.deleteAllTitle'),
@@ -311,7 +311,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                 icon: const Icon(Icons.close),
                 onPressed: _exitSelectMode,
               ),
-              title: Text(context.tr('vouchers.selected', [_selectedVoucherIds.length.toString()])),
+              title: Text(context.trPlural('vouchers.selected', _selectedVoucherIds.length, [_selectedVoucherIds.length.toString()])),
               actions: [
                 TextButton(
                   onPressed: () => _selectAll(vouchersState.vouchers),
@@ -542,7 +542,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
             if (_statusFilter != null) ...[
               const SizedBox(width: AppSpacing.xs),
               Text(
-                _capitalizeStatus(_statusFilter!),
+                localizedVoucherStatus(context, _statusFilter!),
                 style: AppTypography.caption1.copyWith(
                   color: AppColors.primary,
                   fontWeight: FontWeight.w600,
@@ -648,10 +648,6 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     );
   }
 
-  String _capitalizeStatus(String status) {
-    if (status.isEmpty) return status;
-    return status[0].toUpperCase() + status.substring(1);
-  }
 }
 
 class _VoucherCard extends StatelessWidget {
@@ -702,7 +698,7 @@ class _VoucherCard extends StatelessWidget {
                       ),
                     ),
                     StatusBadge(
-                      label: _capitalizeStatus(voucher.status),
+                      label: localizedVoucherStatus(context, voucher.status),
                       color: AppColors.voucherStatus(voucher.status),
                     ),
                   ],
@@ -773,10 +769,5 @@ class _VoucherCard extends StatelessWidget {
 
   String _formatDate(DateTime date) {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-  }
-
-  String _capitalizeStatus(String status) {
-    if (status.isEmpty) return status;
-    return status[0].toUpperCase() + status.substring(1);
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/status_format.dart';
 import '../../models/session.dart';
 import '../../providers/sessions_provider.dart';
 import '../../theme/theme.dart';
@@ -319,7 +320,7 @@ class _HistoryCardHeader extends StatelessWidget {
         ),
         if (session.terminateCause.isNotEmpty)
           StatusBadge(
-            label: session.terminateCause,
+            label: localizedTerminateCause(context, session.terminateCause),
             color: _causeColor(session.terminateCause),
           ),
       ],
@@ -390,11 +391,11 @@ class _HistoryCardStats extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _StatChip(icon: Icons.timer, label: session.sessionTimeDisplay),
+        _StatChip(icon: Icons.timer, label: localizedDuration(context, session.sessionTime)),
         const SizedBox(width: AppSpacing.sm),
-        _StatChip(icon: Icons.arrow_downward, label: session.inputDisplay),
+        _StatChip(icon: Icons.arrow_downward, label: localizedBytes(context, session.inputOctets)),
         const SizedBox(width: AppSpacing.sm),
-        _StatChip(icon: Icons.arrow_upward, label: session.outputDisplay),
+        _StatChip(icon: Icons.arrow_upward, label: localizedBytes(context, session.outputOctets)),
       ],
     );
   }

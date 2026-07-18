@@ -40,6 +40,7 @@ void main() {
       expect(notifier.state.isLoading, false);
       expect(notifier.state.error, isNull);
       expect(notifier.state.historyTotal, 0);
+      expect(notifier.state.historyNextCursor, isNull);
       expect(notifier.state.hasMoreHistory, false);
     });
 
@@ -90,7 +91,7 @@ void main() {
       expect(notifier.state.error, isNotNull);
     });
 
-    test('loadSessionHistory sets history on success', () async {
+    test('loadSessionHistory sets history and nextCursor on success', () async {
       final mockHistory = SessionHistory.fromJson({
         'id': 1,
         'username': 'user1',
@@ -101,7 +102,6 @@ void main() {
       when(() => mockService.getSessionHistory(
             'r-1',
             username: null,
-            page: 1,
             limit: 20,
             terminateCause: null,
           )).thenAnswer((_) async => SessionHistoryResult(
@@ -109,13 +109,36 @@ void main() {
             total: 1,
             page: 1,
             limit: 20,
+            nextCursor: 'cursor-hist-1',
           ));
 
       await notifier.loadSessionHistory('r-1');
 
       expect(notifier.state.historySessions, hasLength(1));
       expect(notifier.state.historyTotal, 1);
+      expect(notifier.state.historyNextCursor, 'cursor-hist-1');
+      expect(notifier.state.hasMoreHistory, true);
       expect(notifier.state.isLoading, false);
+    });
+
+    test('loadSessionHistory stores null cursor when no more pages', () async {
+      when(() => mockService.getSessionHistory(
+            'r-1',
+            username: null,
+            limit: 20,
+            terminateCause: null,
+          )).thenAnswer((_) async => SessionHistoryResult(
+            sessions: [],
+            total: 0,
+            page: 1,
+            limit: 20,
+            nextCursor: null,
+          ));
+
+      await notifier.loadSessionHistory('r-1');
+
+      expect(notifier.state.historyNextCursor, isNull);
+      expect(notifier.state.hasMoreHistory, false);
     });
 
     test('setUsernameFilter and setTerminateCauseFilter update state', () {
@@ -132,7 +155,7 @@ void main() {
       expect(notifier.state.filterTerminateCause, isNull);
     });
 
-    test('loadMoreHistory appends to existing sessions', () async {
+    test('loadMoreHistory sends cursor and appends results', () async {
       final history1 = SessionHistory.fromJson({
         'id': 1,
         'username': 'user1',
@@ -146,11 +169,10 @@ void main() {
         'sessionTime': 1800,
       });
 
-      // Initial load
+      // Initial load returns cursor-1
       when(() => mockService.getSessionHistory(
             'r-1',
             username: null,
-            page: 1,
             limit: 20,
             terminateCause: null,
           )).thenAnswer((_) async => SessionHistoryResult(
@@ -158,15 +180,17 @@ void main() {
             total: 2,
             page: 1,
             limit: 20,
+            nextCursor: 'cursor-1',
           ));
       await notifier.loadSessionHistory('r-1');
       expect(notifier.state.hasMoreHistory, true);
+      expect(notifier.state.historyNextCursor, 'cursor-1');
 
-      // Load more
+      // loadMoreHistory sends cursor-1, returns no cursor (last page)
       when(() => mockService.getSessionHistory(
             'r-1',
             username: null,
-            page: 2,
+            cursor: 'cursor-1',
             limit: 20,
             terminateCause: null,
           )).thenAnswer((_) async => SessionHistoryResult(
@@ -174,11 +198,116 @@ void main() {
             total: 2,
             page: 2,
             limit: 20,
+            nextCursor: null,
           ));
       await notifier.loadMoreHistory('r-1');
 
       expect(notifier.state.historySessions, hasLength(2));
       expect(notifier.state.historyPage, 2);
+      expect(notifier.state.historyNextCursor, isNull);
+      expect(notifier.state.hasMoreHistory, false);
+    });
+
+    test('loadMoreHistory deduplicates items already held', () async {
+      final history1 = SessionHistory.fromJson({
+        'id': 1,
+        'username': 'user1',
+        'startTime': '2026-03-01T10:00:00.000Z',
+        'sessionTime': 3600,
+      });
+      final history2 = SessionHistory.fromJson({
+        'id': 2,
+        'username': 'user2',
+        'startTime': '2026-03-01T12:00:00.000Z',
+        'sessionTime': 1800,
+      });
+
+      when(() => mockService.getSessionHistory(
+            'r-1',
+            username: null,
+            limit: 20,
+            terminateCause: null,
+          )).thenAnswer((_) async => SessionHistoryResult(
+            sessions: [history1],
+            total: 2,
+            page: 1,
+            limit: 20,
+            nextCursor: 'cursor-1',
+          ));
+      await notifier.loadSessionHistory('r-1');
+
+      // Server returns history1 again in the cursor window (overlap)
+      when(() => mockService.getSessionHistory(
+            'r-1',
+            username: null,
+            cursor: 'cursor-1',
+            limit: 20,
+            terminateCause: null,
+          )).thenAnswer((_) async => SessionHistoryResult(
+            sessions: [history1, history2], // id=1 is a duplicate
+            total: 2,
+            page: 2,
+            limit: 20,
+            nextCursor: null,
+          ));
+      await notifier.loadMoreHistory('r-1');
+
+      expect(notifier.state.historySessions, hasLength(2));
+      expect(
+        notifier.state.historySessions.map((s) => s.id).toSet(),
+        {history1.id, history2.id},
+      );
+    });
+
+    test('loadMoreHistory is a no-op when nextCursor is null', () async {
+      when(() => mockService.getSessionHistory(
+            'r-1',
+            username: null,
+            limit: 20,
+            terminateCause: null,
+          )).thenAnswer((_) async => SessionHistoryResult(
+            sessions: [
+              SessionHistory.fromJson({
+                'id': 1,
+                'username': 'u',
+                'startTime': '2026-03-01T10:00:00.000Z',
+                'sessionTime': 60,
+              }),
+            ],
+            total: 1,
+            page: 1,
+            limit: 20,
+            nextCursor: null, // terminal
+          ));
+      await notifier.loadSessionHistory('r-1');
+      expect(notifier.state.hasMoreHistory, false);
+
+      // Second call must not invoke service
+      await notifier.loadMoreHistory('r-1');
+
+      expect(notifier.state.historySessions, hasLength(1));
+    });
+
+    test('reset clears historyNextCursor', () async {
+      when(() => mockService.getSessionHistory(
+            'r-1',
+            username: null,
+            limit: 20,
+            terminateCause: null,
+          )).thenAnswer((_) async => SessionHistoryResult(
+            sessions: [],
+            total: 0,
+            page: 1,
+            limit: 20,
+            nextCursor: 'cursor-xyz',
+          ));
+      await notifier.loadSessionHistory('r-1');
+      expect(notifier.state.historyNextCursor, 'cursor-xyz');
+
+      notifier.reset();
+
+      expect(notifier.state.historyNextCursor, isNull);
+      expect(notifier.state.historySessions, isEmpty);
     });
   });
 }

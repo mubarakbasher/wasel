@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/status_format.dart';
 import '../../models/session.dart';
 import '../../providers/sessions_provider.dart';
 import '../../theme/theme.dart';
@@ -242,9 +243,9 @@ class _SessionCardStats extends StatelessWidget {
       children: [
         _InfoChip(icon: Icons.timer, label: session.uptime),
         const SizedBox(width: AppSpacing.sm),
-        _InfoChip(icon: Icons.arrow_downward, label: session.bytesInDisplay),
+        _InfoChip(icon: Icons.arrow_downward, label: localizedBytes(context, session.bytesIn)),
         const SizedBox(width: AppSpacing.sm),
-        _InfoChip(icon: Icons.arrow_upward, label: session.bytesOutDisplay),
+        _InfoChip(icon: Icons.arrow_upward, label: localizedBytes(context, session.bytesOut)),
       ],
     );
   }

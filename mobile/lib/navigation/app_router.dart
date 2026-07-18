@@ -153,6 +153,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/routers/detail',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final routerId = state.extra as String? ?? '';
+          // Guard: after OS process-death restore, extra is null → empty id →
+          // redirect to list rather than firing GET /routers/ which returns 404.
+          return routerId.isEmpty ? '/routers' : null;
+        },
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return RouterDetailScreen(routerId: routerId);
@@ -161,6 +167,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/routers/edit',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final routerId = state.extra as String? ?? '';
+          return routerId.isEmpty ? '/routers' : null;
+        },
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return EditRouterScreen(routerId: routerId);
@@ -169,6 +179,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/routers/setup-guide',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final extra = state.extra;
+          final routerId = extra is Map<String, dynamic>
+              ? (extra['routerId'] as String? ?? '')
+              : (extra as String? ?? '');
+          return routerId.isEmpty ? '/routers' : null;
+        },
         builder: (context, state) {
           final extra = state.extra;
           if (extra is Map<String, dynamic>) {
@@ -183,6 +200,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/routers/hotspot-template',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final extra = state.extra;
+          final routerId = extra is Map<String, dynamic>
+              ? (extra['id'] as String? ?? '')
+              : (extra as String? ?? '');
+          return routerId.isEmpty ? '/routers' : null;
+        },
         builder: (context, state) {
           final extra = state.extra;
           if (extra is Map<String, dynamic>) {
@@ -200,6 +224,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/vouchers/create',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final routerId = state.extra as String? ?? '';
+          return routerId.isEmpty ? '/vouchers' : null;
+        },
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return CreateVoucherWizard(routerId: routerId);
@@ -208,6 +236,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/vouchers/detail',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          if (extra == null) return '/vouchers';
+          final routerId = extra['routerId'] as String? ?? '';
+          final voucherId = extra['voucherId'] as String? ?? '';
+          return (routerId.isEmpty || voucherId.isEmpty) ? '/vouchers' : null;
+        },
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? {};
           return VoucherDetailScreen(
@@ -297,6 +332,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sessions/active',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final routerId = state.extra as String? ?? '';
+          return routerId.isEmpty ? '/routers' : null;
+        },
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return ActiveSessionsScreen(routerId: routerId);
@@ -305,6 +344,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sessions/history',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final routerId = state.extra as String? ?? '';
+          return routerId.isEmpty ? '/routers' : null;
+        },
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return SessionHistoryScreen(routerId: routerId);

@@ -106,7 +106,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   textInputAction: TextInputAction.next,
                   textCapitalization: TextCapitalization.words,
                   decoration: InputDecoration(labelText: context.tr('auth.fullName'), prefixIcon: const Icon(Icons.person_outlined)),
-                  validator: Validators.validateName,
+                  validator: (v) { final k = Validators.validateName(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -117,7 +117,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   textInputAction: TextInputAction.next,
                   autocorrect: false,
                   decoration: InputDecoration(labelText: context.tr('auth.email'), prefixIcon: const Icon(Icons.email_outlined)),
-                  validator: Validators.validateEmail,
+                  validator: (v) { final k = Validators.validateEmail(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -127,7 +127,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(labelText: context.tr('auth.phone'), prefixIcon: const Icon(Icons.phone_outlined), hintText: context.tr('auth.phoneHint')),
-                  validator: Validators.validatePhone,
+                  validator: (v) { final k = Validators.validatePhone(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -144,7 +144,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
-                  validator: Validators.validatePassword,
+                  validator: (v) { final k = Validators.validatePassword(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -161,7 +161,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                   ),
-                  validator: (v) => Validators.validateConfirmPassword(v, _passwordController.text),
+                  validator: (v) { final k = Validators.validateConfirmPassword(v, _passwordController.text); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 

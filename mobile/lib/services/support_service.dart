@@ -8,24 +8,40 @@ class SupportMessagesPage {
   final int page;
   final int limit;
 
+  /// Opaque keyset cursor from the backend. `null` means no more pages.
+  final String? nextCursor;
+
   const SupportMessagesPage({
     required this.items,
     required this.total,
     required this.unreadAdminCount,
     required this.page,
     required this.limit,
+    this.nextCursor,
   });
 
-  bool get hasMore => page * limit < total;
+  /// Prefer cursor signal when available; fall back to offset maths.
+  bool get hasMore => nextCursor != null || page * limit < total;
 }
 
 class SupportService {
   final ApiClient _api = ApiClient();
 
-  Future<SupportMessagesPage> list({int page = 1, int limit = 30}) async {
+  Future<SupportMessagesPage> list({
+    int page = 1,
+    int limit = 30,
+    String? cursor,
+  }) async {
+    final queryParams = <String, dynamic>{'limit': limit};
+    // Keyset pagination when cursor is available; fall back to offset.
+    if (cursor != null) {
+      queryParams['cursor'] = cursor;
+    } else {
+      queryParams['page'] = page;
+    }
     final response = await _api.get<Map<String, dynamic>>(
       '/support/messages',
-      queryParameters: {'page': page, 'limit': limit},
+      queryParameters: queryParams,
     );
     final body = response.data!;
     final items = (body['data'] as List)
@@ -38,6 +54,7 @@ class SupportService {
       unreadAdminCount: (meta['unreadAdminCount'] as num).toInt(),
       page: (meta['page'] as num).toInt(),
       limit: (meta['limit'] as num).toInt(),
+      nextCursor: meta['nextCursor'] as String?,
     );
   }
 

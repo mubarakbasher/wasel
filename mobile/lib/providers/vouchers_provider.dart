@@ -16,6 +16,10 @@ class VouchersState {
   final String? filterLimitType;
   final String? searchQuery;
 
+  /// Opaque keyset cursor returned by the last successful page load.
+  /// `null` means either we haven't loaded yet or there are no more pages.
+  final String? nextCursor;
+
   const VouchersState({
     this.vouchers = const [],
     this.selectedVoucher,
@@ -27,9 +31,12 @@ class VouchersState {
     this.filterStatus,
     this.filterLimitType,
     this.searchQuery,
+    this.nextCursor,
   });
 
-  bool get hasMore => vouchers.length < total;
+  /// Prefer the cursor signal from the server; fall back to offset maths so
+  /// screens that relied on the old total-based guard keep compiling.
+  bool get hasMore => nextCursor != null || vouchers.length < total;
 
   VouchersState copyWith({
     List<Voucher>? vouchers,
@@ -42,11 +49,13 @@ class VouchersState {
     String? filterStatus,
     String? filterLimitType,
     String? searchQuery,
+    String? nextCursor,
     bool clearError = false,
     bool clearSelected = false,
     bool clearFilterStatus = false,
     bool clearFilterLimitType = false,
     bool clearSearch = false,
+    bool clearNextCursor = false,
   }) {
     return VouchersState(
       vouchers: vouchers ?? this.vouchers,
@@ -61,8 +70,8 @@ class VouchersState {
           clearFilterStatus ? null : (filterStatus ?? this.filterStatus),
       filterLimitType:
           clearFilterLimitType ? null : (filterLimitType ?? this.filterLimitType),
-      searchQuery:
-          clearSearch ? null : (searchQuery ?? this.searchQuery),
+      searchQuery: clearSearch ? null : (searchQuery ?? this.searchQuery),
+      nextCursor: clearNextCursor ? null : (nextCursor ?? this.nextCursor),
     );
   }
 }
@@ -117,16 +126,21 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     // current list visible under the spinner instead of blanking the screen.
     if (_activeRouterId != routerId) {
       _activeRouterId = routerId;
-      state = state.copyWith(vouchers: [], total: 0, page: 1);
+      state = state.copyWith(
+        vouchers: [],
+        total: 0,
+        page: 1,
+        clearNextCursor: true,
+      );
     }
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      // Initial / refresh load always starts from the beginning — no cursor.
       final result = await _service.getVouchers(
         routerId,
         status: state.filterStatus,
         limitType: state.filterLimitType,
         search: state.searchQuery,
-        page: refresh ? 1 : state.page,
         limit: state.limit,
       );
       if (seq != _requestSeq) return; // superseded by a newer request
@@ -134,6 +148,8 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
         vouchers: result.vouchers,
         total: result.total,
         page: result.page,
+        nextCursor: result.nextCursor,
+        clearNextCursor: result.nextCursor == null,
         isLoading: false,
       );
     } catch (e) {
@@ -147,24 +163,27 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     final seq = ++_requestSeq;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      // Pass the stored cursor; server returns the next cursor (or null = done).
       final result = await _service.getVouchers(
         routerId,
         status: state.filterStatus,
         limitType: state.filterLimitType,
         search: state.searchQuery,
-        page: state.page + 1,
+        cursor: state.nextCursor,
         limit: state.limit,
       );
       if (seq != _requestSeq) return; // superseded (router/filter changed)
-      // Dedup by id: offset pages can shift when rows are inserted/deleted
-      // between fetches, so a page can repeat rows already held.
+      // Dedup by id: safety net in case the cursor window overlaps due to
+      // concurrent inserts/deletes between fetches.
       final existingIds = state.vouchers.map((v) => v.id).toSet();
       final fresh =
           result.vouchers.where((v) => !existingIds.contains(v.id)).toList();
       state = state.copyWith(
         vouchers: [...state.vouchers, ...fresh],
         total: result.total,
-        page: state.page + 1,
+        page: result.page,
+        nextCursor: result.nextCursor,
+        clearNextCursor: result.nextCursor == null,
         isLoading: false,
       );
     } catch (e) {

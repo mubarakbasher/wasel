@@ -130,7 +130,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                           setState(() => _obscureNew = !_obscureNew),
                     ),
                   ),
-                  validator: Validators.validatePassword,
+                  validator: (v) { final k = Validators.validatePassword(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -152,8 +152,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                           setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                   ),
-                  validator: (v) => Validators.validateConfirmPassword(
-                      v, _newPasswordController.text),
+                  validator: (v) { final k = Validators.validateConfirmPassword(v, _newPasswordController.text); return k != null ? context.tr(k) : null; },
                   onFieldSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: AppSpacing.xxl),

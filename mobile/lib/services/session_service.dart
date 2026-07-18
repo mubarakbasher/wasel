@@ -24,11 +24,15 @@ class SessionService {
     String? startDate,
     String? endDate,
     String? terminateCause,
+    String? cursor,
   }) async {
-    final queryParams = <String, dynamic>{
-      'page': page,
-      'limit': limit,
-    };
+    final queryParams = <String, dynamic>{'limit': limit};
+    // Keyset pagination when cursor is available; fall back to offset.
+    if (cursor != null) {
+      queryParams['cursor'] = cursor;
+    } else {
+      queryParams['page'] = page;
+    }
     if (username != null && username.isNotEmpty) {
       queryParams['username'] = username;
     }
@@ -49,6 +53,7 @@ class SessionService {
       total: meta?['total'] != null ? int.parse(meta!['total'].toString()) : data.length,
       page: meta?['page'] != null ? int.parse(meta!['page'].toString()) : page,
       limit: meta?['limit'] != null ? int.parse(meta!['limit'].toString()) : limit,
+      nextCursor: meta?['nextCursor'] as String?,
     );
   }
 }
@@ -59,10 +64,14 @@ class SessionHistoryResult {
   final int page;
   final int limit;
 
+  /// Opaque keyset cursor from the backend. `null` means no more pages.
+  final String? nextCursor;
+
   const SessionHistoryResult({
     required this.sessions,
     required this.total,
     required this.page,
     required this.limit,
+    this.nextCursor,
   });
 }

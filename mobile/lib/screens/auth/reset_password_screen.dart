@@ -100,7 +100,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   maxLength: 6,
                   style: AppTypography.title1.copyWith(letterSpacing: 12),
                   decoration: InputDecoration(hintText: context.tr('auth.otpHint'), counterText: ''),
-                  validator: Validators.validateOtp,
+                  validator: (v) { final k = Validators.validateOtp(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.xxl),
 
@@ -117,7 +117,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                       onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
-                  validator: Validators.validatePassword,
+                  validator: (v) { final k = Validators.validatePassword(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -135,7 +135,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                       onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                   ),
-                  validator: (v) => Validators.validateConfirmPassword(v, _passwordController.text),
+                  validator: (v) { final k = Validators.validateConfirmPassword(v, _passwordController.text); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.xxl),
 

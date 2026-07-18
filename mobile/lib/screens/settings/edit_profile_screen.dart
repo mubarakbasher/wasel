@@ -132,7 +132,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     labelText: context.tr('auth.fullName'),
                     prefixIcon: const Icon(Icons.person_outlined),
                   ),
-                  validator: Validators.validateName,
+                  validator: (v) { final k = Validators.validateName(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -145,7 +145,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     labelText: context.tr('auth.email'),
                     prefixIcon: const Icon(Icons.email_outlined),
                   ),
-                  validator: Validators.validateEmail,
+                  validator: (v) { final k = Validators.validateEmail(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -159,10 +159,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     prefixIcon: const Icon(Icons.phone_outlined),
                     hintText: context.tr('auth.phoneHint'),
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty
-                          ? null
-                          : Validators.validatePhone(v),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null;
+                    final k = Validators.validatePhone(v);
+                    return k != null ? context.tr(k) : null;
+                  },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 

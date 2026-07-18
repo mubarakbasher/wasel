@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../i18n/app_localizations.dart';
 import '../../i18n/plan_format.dart';
+import '../../i18n/status_format.dart';
 import '../../models/payment_record.dart';
 import '../../providers/subscription_provider.dart';
 import '../../theme/app_colors.dart';
@@ -219,7 +220,7 @@ class _PaymentTile extends StatelessWidget {
                   size: 18, color: AppColors.textSecondary),
               const SizedBox(width: AppSpacing.xs),
               Text(
-                '${payment.currency} ${payment.amount.toStringAsFixed(2)}',
+                localizedCurrency(context, payment.amount, payment.currency),
                 style:
                     AppTypography.subhead.copyWith(fontWeight: FontWeight.w600),
               ),

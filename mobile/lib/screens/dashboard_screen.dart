@@ -28,13 +28,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     });
   }
 
-  String _formatBytes(int bytes) {
+  String _formatBytes(BuildContext context, int bytes) {
     if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} ${context.tr('vouchers.unitKb')}';
     }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} ${context.tr('vouchers.unitMb')}';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} ${context.tr('vouchers.unitGb')}';
   }
 
   String _relativeTime(BuildContext context, String? isoDate) {
@@ -44,9 +46,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       final now = DateTime.now();
       final diff = now.difference(date);
       if (diff.inSeconds < 60) return context.tr('routers.justNow');
-      if (diff.inMinutes < 60) return context.tr('routers.minutesAgo', [diff.inMinutes.toString()]);
-      if (diff.inHours < 24) return context.tr('routers.hoursAgo', [diff.inHours.toString()]);
-      return context.tr('routers.daysAgo', [diff.inDays.toString()]);
+      if (diff.inMinutes < 60) {
+        return context.trPlural('routers.minutesAgo', diff.inMinutes, [diff.inMinutes.toString()]);
+      }
+      if (diff.inHours < 24) {
+        return context.trPlural('routers.hoursAgo', diff.inHours, [diff.inHours.toString()]);
+      }
+      return context.trPlural('routers.daysAgo', diff.inDays, [diff.inDays.toString()]);
     } catch (_) {
       return context.tr('common.notAvailable');
     }
@@ -83,6 +89,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   void _onQuickCreate(DashboardState state) {
     final subState = ref.read(subscriptionProvider);
+
+    // If the subscription failed to load (null + error), retry instead of
+    // showing the paywall — the user may well have an active subscription.
+    if (subState.subscription == null && subState.error != null) {
+      ref.read(subscriptionProvider.notifier).loadSubscription();
+      return;
+    }
+
     final isActive = subState.subscription?.isActive ?? false;
     if (!isActive) {
       _showSubscriptionGate();
@@ -327,8 +341,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final usage = state.dataUsage24h;
     final totalInput = usage['totalInput'] as int? ?? 0;
     final totalOutput = usage['totalOutput'] as int? ?? 0;
-    final downloadText = isActive ? _formatBytes(totalInput) : '--';
-    final uploadText = isActive ? _formatBytes(totalOutput) : '--';
+    final downloadText = isActive ? _formatBytes(context, totalInput) : '--';
+    final uploadText = isActive ? _formatBytes(context, totalOutput) : '--';
 
     return AppCard(
       child: Column(

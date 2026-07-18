@@ -13,6 +13,10 @@ class NotificationsState {
   final bool isLoadingMore;
   final String? error;
 
+  /// Opaque keyset cursor returned by the last successful page load.
+  /// `null` means either we haven't loaded yet or there are no more pages.
+  final String? nextCursor;
+
   const NotificationsState({
     this.items = const [],
     this.unreadCount = 0,
@@ -21,6 +25,7 @@ class NotificationsState {
     this.isLoading = false,
     this.isLoadingMore = false,
     this.error,
+    this.nextCursor,
   });
 
   NotificationsState copyWith({
@@ -31,7 +36,9 @@ class NotificationsState {
     bool? isLoading,
     bool? isLoadingMore,
     String? error,
+    String? nextCursor,
     bool clearError = false,
+    bool clearNextCursor = false,
   }) {
     return NotificationsState(
       items: items ?? this.items,
@@ -41,6 +48,7 @@ class NotificationsState {
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       error: clearError ? null : (error ?? this.error),
+      nextCursor: clearNextCursor ? null : (nextCursor ?? this.nextCursor),
     );
   }
 }
@@ -56,12 +64,15 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
   Future<void> refresh() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final page = await _service.list(page: 1, limit: _pageSize);
+      // Initial / refresh load always starts from the beginning — no cursor.
+      final page = await _service.list(limit: _pageSize);
       state = state.copyWith(
         items: page.items,
         unreadCount: page.unreadCount,
         page: page.page,
         hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
+        clearNextCursor: page.nextCursor == null,
         isLoading: false,
       );
     } catch (e) {
@@ -73,10 +84,13 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
     if (!state.hasMore || state.isLoadingMore || state.isLoading) return;
     state = state.copyWith(isLoadingMore: true, clearError: true);
     try {
-      final next = await _service.list(page: state.page + 1, limit: _pageSize);
-      // Dedup by id: a notification arriving between page fetches shifts every
-      // offset, so a page can repeat rows already held (duplicate Dismissible
-      // keys crash the list).
+      // Pass the stored cursor; server returns the next cursor (or null = done).
+      final next = await _service.list(
+        cursor: state.nextCursor,
+        limit: _pageSize,
+      );
+      // Dedup by id: safety net in case the cursor window overlaps due to
+      // concurrent inserts between fetches (duplicate Dismissible keys crash).
       final existingIds = state.items.map((n) => n.id).toSet();
       final fresh =
           next.items.where((n) => !existingIds.contains(n.id)).toList();
@@ -85,6 +99,8 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
         unreadCount: next.unreadCount,
         page: next.page,
         hasMore: next.hasMore,
+        nextCursor: next.nextCursor,
+        clearNextCursor: next.nextCursor == null,
         isLoadingMore: false,
       );
     } catch (e) {

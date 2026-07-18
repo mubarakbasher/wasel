@@ -88,7 +88,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   textInputAction: TextInputAction.done,
                   autocorrect: false,
                   decoration: InputDecoration(labelText: context.tr('auth.email'), prefixIcon: const Icon(Icons.email_outlined)),
-                  validator: Validators.validateEmail,
+                  validator: (v) { final k = Validators.validateEmail(v); return k != null ? context.tr(k) : null; },
                   onFieldSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: AppSpacing.xxl),

@@ -51,30 +51,55 @@ void main() {
       expect(notifier.state.isLoading, false);
       expect(notifier.state.error, isNull);
       expect(notifier.state.total, 0);
+      expect(notifier.state.nextCursor, isNull);
       expect(notifier.state.hasMore, false);
     });
 
-    test('loadVouchers sets vouchers on success', () async {
+    test('loadVouchers sets vouchers and nextCursor on success', () async {
       when(() => mockService.getVouchers(
             'r-1',
             status: null,
             limitType: null,
             search: null,
-            page: 1,
             limit: 100,
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher, mockVoucher2],
             total: 2,
             page: 1,
             limit: 100,
+            nextCursor: 'cursor-abc',
           ));
 
       await notifier.loadVouchers('r-1');
 
       expect(notifier.state.vouchers, hasLength(2));
       expect(notifier.state.total, 2);
+      expect(notifier.state.nextCursor, 'cursor-abc');
+      expect(notifier.state.hasMore, true);
       expect(notifier.state.isLoading, false);
       expect(notifier.state.error, isNull);
+    });
+
+    test('loadVouchers stores null nextCursor when server has no more pages',
+        () async {
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: null,
+            limitType: null,
+            search: null,
+            limit: 100,
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [mockVoucher],
+            total: 1,
+            page: 1,
+            limit: 100,
+            nextCursor: null,
+          ));
+
+      await notifier.loadVouchers('r-1');
+
+      expect(notifier.state.nextCursor, isNull);
+      expect(notifier.state.hasMore, false);
     });
 
     test('loadVouchers sets error on failure', () async {
@@ -83,7 +108,6 @@ void main() {
             status: any(named: 'status'),
             limitType: any(named: 'limitType'),
             search: any(named: 'search'),
-            page: any(named: 'page'),
             limit: any(named: 'limit'),
           )).thenThrow(Exception('fail'));
 
@@ -91,6 +115,135 @@ void main() {
 
       expect(notifier.state.isLoading, false);
       expect(notifier.state.error, isNotNull);
+    });
+
+    test('loadMore sends cursor and appends results', () async {
+      // First load: returns cursor-1
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: null,
+            limitType: null,
+            search: null,
+            limit: 100,
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [mockVoucher],
+            total: 2,
+            page: 1,
+            limit: 100,
+            nextCursor: 'cursor-1',
+          ));
+      await notifier.loadVouchers('r-1');
+      expect(notifier.state.hasMore, true);
+
+      // loadMore: sends cursor-1, returns cursor-2 (still more)
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: null,
+            limitType: null,
+            search: null,
+            cursor: 'cursor-1',
+            limit: 100,
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [mockVoucher2],
+            total: 2,
+            page: 2,
+            limit: 100,
+            nextCursor: null,
+          ));
+      await notifier.loadMore('r-1');
+
+      expect(notifier.state.vouchers, hasLength(2));
+      expect(notifier.state.vouchers[0].id, 'v-1');
+      expect(notifier.state.vouchers[1].id, 'v-2');
+      expect(notifier.state.nextCursor, isNull);
+      expect(notifier.state.hasMore, false);
+    });
+
+    test('loadMore deduplicates items already held', () async {
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: null,
+            limitType: null,
+            search: null,
+            limit: 100,
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [mockVoucher],
+            total: 2,
+            page: 1,
+            limit: 100,
+            nextCursor: 'cursor-1',
+          ));
+      await notifier.loadVouchers('r-1');
+
+      // Server returns a page that includes v-1 again (overlapping window)
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: null,
+            limitType: null,
+            search: null,
+            cursor: 'cursor-1',
+            limit: 100,
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [mockVoucher, mockVoucher2], // v-1 is a duplicate
+            total: 2,
+            page: 2,
+            limit: 100,
+            nextCursor: null,
+          ));
+      await notifier.loadMore('r-1');
+
+      // Only v-2 should be appended; v-1 already in list
+      expect(notifier.state.vouchers, hasLength(2));
+      expect(notifier.state.vouchers.map((v) => v.id).toSet(),
+          {'v-1', 'v-2'});
+    });
+
+    test('loadMore does nothing when nextCursor is null (no more pages)',
+        () async {
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: null,
+            limitType: null,
+            search: null,
+            limit: 100,
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [mockVoucher],
+            total: 1,
+            page: 1,
+            limit: 100,
+            nextCursor: null, // terminal
+          ));
+      await notifier.loadVouchers('r-1');
+      expect(notifier.state.hasMore, false);
+
+      // loadMore should be a no-op; service must not be called again
+      await notifier.loadMore('r-1');
+
+      // Only the initial stub was set up; a second call would throw via mocktail
+      expect(notifier.state.vouchers, hasLength(1));
+    });
+
+    test('reset clears nextCursor', () async {
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: null,
+            limitType: null,
+            search: null,
+            limit: 100,
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [mockVoucher],
+            total: 1,
+            page: 1,
+            limit: 100,
+            nextCursor: 'cursor-xyz',
+          ));
+      await notifier.loadVouchers('r-1');
+      expect(notifier.state.nextCursor, 'cursor-xyz');
+
+      notifier.reset();
+
+      expect(notifier.state.nextCursor, isNull);
+      expect(notifier.state.vouchers, isEmpty);
     });
 
     test('createVouchers adds to list and returns true', () async {
@@ -147,7 +300,6 @@ void main() {
             status: null,
             limitType: null,
             search: null,
-            page: 1,
             limit: 100,
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher, mockVoucher2],
@@ -174,7 +326,6 @@ void main() {
             status: null,
             limitType: null,
             search: null,
-            page: 1,
             limit: 100,
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher],

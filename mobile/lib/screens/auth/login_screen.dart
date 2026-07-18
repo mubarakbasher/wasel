@@ -112,7 +112,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     labelText: context.tr('auth.email'),
                     prefixIcon: const Icon(Icons.email_outlined),
                   ),
-                  validator: Validators.validateEmail,
+                  validator: (v) { final k = Validators.validateEmail(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -130,7 +130,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
-                  validator: Validators.validatePassword,
+                  validator: (v) { final k = Validators.validatePassword(v); return k != null ? context.tr(k) : null; },
                 ),
                 const SizedBox(height: AppSpacing.sm),
 

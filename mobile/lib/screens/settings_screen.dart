@@ -257,23 +257,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
 class _LanguageTile extends ConsumerWidget {
   const _LanguageTile();
 
+  // Each entry maps a BCP-47 language code (null = system default) to its i18n key.
   static const _languages = [
-    (code: null, label: 'System Default', native: 'System Default'),
-    (code: 'en', label: 'English', native: 'English'),
-    (code: 'ar', label: 'Arabic', native: 'العربية'),
+    (code: null, labelKey: 'settings.systemDefault'),
+    (code: 'en', labelKey: 'settings.english'),
+    (code: 'ar', labelKey: 'settings.arabic'),
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentLocale = ref.watch(localeProvider);
-    final currentLabel = currentLocale == null
-        ? context.tr('settings.systemDefault')
-        : _languages
-            .firstWhere(
-              (l) => l.code == currentLocale.languageCode,
-              orElse: () => _languages.first,
-            )
-            .native;
+    final currentLang = currentLocale == null
+        ? _languages.first
+        : _languages.firstWhere(
+            (l) => l.code == currentLocale.languageCode,
+            orElse: () => _languages.first,
+          );
+    final currentLabel = context.tr(currentLang.labelKey);
 
     return ListTile(
       leading: const Icon(Icons.language, color: AppColors.primary),
@@ -319,10 +319,7 @@ class _LanguageTile extends ConsumerWidget {
                   for (final lang in _languages)
                     RadioListTile<String?>(
                       value: lang.code,
-                      title: Text(lang.label, style: AppTypography.body),
-                      subtitle: lang.code != null && lang.native != lang.label
-                          ? Text(lang.native, style: AppTypography.footnote)
-                          : null,
+                      title: Text(context.tr(lang.labelKey), style: AppTypography.body),
                       activeColor: AppColors.primary,
                     ),
                 ],
