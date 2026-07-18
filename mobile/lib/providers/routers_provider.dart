@@ -49,9 +49,24 @@ class RoutersState {
 class RoutersNotifier extends StateNotifier<RoutersState> {
   final RouterService _service;
 
+  /// Monotonic request counter — see VouchersNotifier. A slow loadRouter(A)
+  /// must not overwrite a newer loadRouter(B).
+  int _requestSeq = 0;
+
+  /// Id of the router currently selected; when it changes we drop the previous
+  /// router's detail/status/guide so the detail screen never shows stale data.
+  String? _selectedId;
+
   RoutersNotifier({RouterService? routerService})
       : _service = routerService ?? RouterService(),
         super(const RoutersState());
+
+  /// Resets to initial state and invalidates any in-flight request (logout).
+  void reset() {
+    _requestSeq++;
+    _selectedId = null;
+    state = const RoutersState();
+  }
 
   void clearError() {
     state = state.copyWith(clearError: true);
@@ -68,11 +83,24 @@ class RoutersNotifier extends StateNotifier<RoutersState> {
   }
 
   Future<void> loadRouter(String id) async {
+    // Switching to a different router: drop the previous selection/status/guide
+    // up front so the detail screen never shows the prior router's data.
+    if (_selectedId != id) {
+      _selectedId = id;
+      state = state.copyWith(
+        clearSelectedRouter: true,
+        clearStatus: true,
+        clearGuide: true,
+      );
+    }
+    final seq = ++_requestSeq;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final router = await _service.getRouter(id);
+      if (seq != _requestSeq) return; // superseded by a newer selection
       state = state.copyWith(selectedRouter: router, isLoading: false);
     } catch (e) {
+      if (seq != _requestSeq) return;
       state = state.copyWith(isLoading: false, error: _extractError(e));
     }
   }
@@ -149,6 +177,8 @@ class RoutersNotifier extends StateNotifier<RoutersState> {
   Future<void> loadRouterStatus(String id) async {
     try {
       final status = await _service.getRouterStatus(id);
+      // Drop if the user has since navigated to a different router.
+      if (_selectedId != id) return;
       state = state.copyWith(selectedRouterStatus: status);
     } catch (e) {
       // Non-fatal — status is supplementary
@@ -179,6 +209,7 @@ class RoutersNotifier extends StateNotifier<RoutersState> {
   }
 
   void clearSelection() {
+    _selectedId = null;
     state = state.copyWith(
       clearSelectedRouter: true,
       clearStatus: true,

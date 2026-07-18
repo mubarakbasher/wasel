@@ -86,6 +86,19 @@ class SecureStorageService {
 
   Future<void> clearAll() => _storage.deleteAll();
 
+  /// Clears only session/auth-scoped keys (tokens, cached user, FCM token)
+  /// while preserving device-scoped preferences such as the chosen locale.
+  /// Use this on logout / session-expiry so an AR-first user's language choice
+  /// survives sign-out.
+  Future<void> clearSession() async {
+    await Future.wait([
+      _storage.delete(key: _accessTokenKey),
+      _storage.delete(key: _refreshTokenKey),
+      _storage.delete(key: _userDataKey),
+      _storage.delete(key: _fcmTokenKey),
+    ]);
+  }
+
   // --- Helpers ---
 
   Future<bool> hasTokens() async {

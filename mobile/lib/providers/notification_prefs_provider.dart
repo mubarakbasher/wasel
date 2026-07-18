@@ -46,16 +46,24 @@ class NotificationPrefsNotifier extends StateNotifier<NotificationPrefsState> {
   }
 
   Future<void> togglePreference(String category, bool enabled) async {
+    // Capture the pre-toggle list so a failed save reverts deterministically
+    // without depending on a reload that may itself fail.
+    final previous = state.preferences;
     final updated = state.preferences.map((p) {
       return p.category == category ? p.copyWith(enabled: enabled) : p;
     }).toList();
-    state = state.copyWith(preferences: updated);
+    state = state.copyWith(preferences: updated, clearError: true);
     try {
       await _service.updatePreferences([NotificationPreference(category: category, enabled: enabled)]);
     } catch (e) {
-      // Revert on failure
-      await loadPreferences();
+      // Revert to the captured state and surface the failure so the user knows
+      // the change did not save.
+      state = state.copyWith(preferences: previous, error: _extractError(e));
     }
+  }
+
+  void reset() {
+    state = const NotificationPrefsState();
   }
 
   String _extractError(dynamic e) => errorToDisplay(e);

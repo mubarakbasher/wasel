@@ -63,6 +63,12 @@ dependencies:
   # Security
   flutter_jailbreak_detection: ^1.9.0
   crypto: ^3.0.6
+  # ASN.1 parsing — extract the SubjectPublicKeyInfo (SPKI) from a server
+  # certificate for SPKI SHA-256 certificate pinning.
+  asn1lib: ^1.5.0
+
+  # Crash reporting (no-op unless SENTRY_DSN dart-define is set)
+  sentry_flutter: ^9.22.0
 
 dev_dependencies:
   flutter_test:

@@ -141,6 +141,10 @@ class ReportsNotifier extends StateNotifier<ReportsState> {
     state = ReportsState();
   }
 
+  void reset() {
+    state = ReportsState();
+  }
+
   String _extractError(dynamic e) => errorToDisplay(e);
 }
 

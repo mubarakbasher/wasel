@@ -88,8 +88,12 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
   }
 
   void _onStatusFilterChanged(String? status) {
-    setState(() => _statusFilter = status);
-    ref.read(vouchersProvider.notifier).setFilter(status: status);
+    // The "All" menu item carries the sentinel 'all' (a PopupMenuItem with a
+    // null value is treated as a cancelled menu, so onSelected never fires).
+    // Normalize it back to null, which the provider/service treat as "all".
+    final normalized = status == 'all' ? null : status;
+    setState(() => _statusFilter = normalized);
+    ref.read(vouchersProvider.notifier).setFilter(status: normalized);
     if (_selectedRouterId != null) {
       ref.read(vouchersProvider.notifier).loadVouchers(_selectedRouterId!, refresh: true);
     }
@@ -498,7 +502,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     return PopupMenuButton<String?>(
       onSelected: _onStatusFilterChanged,
       itemBuilder: (context) => [
-        PopupMenuItem(value: null, child: Text(context.tr('common.all'))),
+        PopupMenuItem(value: 'all', child: Text(context.tr('common.all'))),
         PopupMenuItem(value: 'unused', child: Text(context.tr('common.unused'))),
         PopupMenuItem(value: 'active', child: Text(context.tr('vouchers.active'))),
         PopupMenuItem(value: 'used', child: Text(context.tr('vouchers.used'))),

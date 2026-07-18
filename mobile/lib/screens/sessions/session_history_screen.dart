@@ -226,10 +226,12 @@ class _SearchFilterBar extends StatelessWidget {
               color: filterActive ? AppColors.primary : null,
             ),
             tooltip: context.tr('sessions.filterByTerminateCause'),
-            onSelected: onFilterSelected,
+            // "All causes" uses the sentinel 'all' — a PopupMenuItem with a null
+            // value is treated as a cancelled menu and never fires onSelected.
+            onSelected: (v) => onFilterSelected(v == 'all' ? null : v),
             itemBuilder: (context) => [
               PopupMenuItem(
-                value: null,
+                value: 'all',
                 child: Text(context.tr('sessions.allCauses')),
               ),
               const PopupMenuDivider(),

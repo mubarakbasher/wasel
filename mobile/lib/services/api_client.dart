@@ -1,7 +1,6 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
+import 'package:asn1lib/asn1lib.dart';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
@@ -42,6 +41,8 @@ const _kPinBackup = 'iFvwVyJSxnQdyaUvUERIf+8qk7gRze3612JMwoO3zdU=';
 /// Fields whose values are always replaced with '[REDACTED]' in logs.
 const _kRedactedFields = {
   'password',
+  'newPassword',
+  'currentPassword',
   'otp',
   'refresh_token',
   'refreshToken',
@@ -49,14 +50,30 @@ const _kRedactedFields = {
   'accessToken',
   'authorization',
   'Authorization',
+  // Router API credential + server-generated setup scripts (WireGuard private
+  // key, RADIUS secret, admin password live inside these).
+  'apiPass',
+  'command',
+  'commands',
+  'setupGuide',
+  'token',
 };
 
 class ApiClient {
   late final Dio _dio;
   final SecureStorageService _storage = SecureStorageService();
 
-  bool _isRefreshing = false;
-  final List<Completer<String>> _refreshQueue = [];
+  /// Single-flight token refresh. Concurrent 401s all await this same future;
+  /// late joiners never queue behind a drained list, so none can hang.
+  Future<String>? _refreshFuture;
+
+  /// After a non-auth refresh failure (e.g. a malformed 2xx from a captive
+  /// portal) we keep the tokens but back off briefly so a burst of 401s can't
+  /// trigger a per-request refresh storm.
+  DateTime? _refreshBackoffUntil;
+
+  /// Debounce for the paywall redirect so concurrent 403s don't stack pushes.
+  DateTime? _lastPaywallRedirect;
 
   /// Callback invoked when token refresh fails and the user must re-login.
   /// Set this from your auth provider / navigation layer.
@@ -84,23 +101,7 @@ class ApiClient {
     // Certificate pinning — enforced only in release mode so that local dev
     // against http://localhost:3000 continues to work without modification.
     if (!kDebugMode) {
-      _dio.httpClientAdapter = IOHttpClientAdapter(
-        createHttpClient: () {
-          final client = HttpClient();
-          client.badCertificateCallback = (cert, host, port) {
-            // Compute SPKI SHA-256 for the presented certificate.
-            final spkiDer = cert.der;
-            final digest = sha256.convert(spkiDer);
-            final pin = base64.encode(digest.bytes);
-            final allowed = pin == _kPinPrimary || pin == _kPinBackup;
-            if (!allowed) {
-              debugPrint('[CertPin] REJECTED pin=$pin host=$host');
-            }
-            return allowed;
-          };
-          return client;
-        },
-      );
+      _dio.httpClientAdapter = _pinnedAdapter();
     }
 
     _dio.interceptors.add(InterceptorsWrapper(
@@ -245,13 +246,34 @@ class ApiClient {
       final code = errorObj['code'];
       if (!_kPaywallCodes.contains(code)) return;
 
-      // Skip redirect if the user is not on an authenticated route or is
-      // already on /subscription (avoids redirect loops).
       final navigatorState = appNavigatorKey.currentState;
       if (navigatorState == null) return;
 
-      final currentRoute = GoRouter.of(navigatorState.context).routerDelegate.currentConfiguration.fullPath;
+      // Skip the redirect on unauthenticated routes (a stale in-flight 403 or a
+      // forged one must not bounce the login/splash screens to /subscription)
+      // and when already on /subscription (avoids redirect loops).
+      final currentRoute = GoRouter.of(navigatorState.context)
+          .routerDelegate
+          .currentConfiguration
+          .fullPath;
+      const unauthenticatedRoutes = {
+        '/login',
+        '/register',
+        '/splash',
+        '/verify-email',
+        '/forgot-password',
+        '/reset-password',
+      };
       if (currentRoute.startsWith('/subscription')) return;
+      if (unauthenticatedRoutes.any(currentRoute.startsWith)) return;
+
+      // Debounce: concurrent 403s must not stack multiple pushes.
+      final now = DateTime.now();
+      final last = _lastPaywallRedirect;
+      if (last != null && now.difference(last) < const Duration(seconds: 3)) {
+        return;
+      }
+      _lastPaywallRedirect = now;
 
       // Derive a human-friendly message from the code.
       final String message;
@@ -282,14 +304,13 @@ class ApiClient {
     }
   }
 
-  /// Handle 401 responses by attempting a silent token refresh.
+  /// Handle 401 responses by attempting a single-flight silent token refresh.
   ///
-  /// Strategy:
-  /// - If a refresh is already in progress, queue the failed request behind a
-  ///   [Completer] so it is retried once the new token is available.
-  /// - Otherwise, kick off the refresh flow. On success, retry the original
-  ///   request and drain the queue. On failure, clear tokens and notify the
-  ///   app so it can navigate to the login screen.
+  /// Every concurrent 401 awaits the SAME [_refreshFuture]; late joiners never
+  /// queue behind a drained list, so none can hang. On success each caller
+  /// retries its original request with the new token. On an auth rejection the
+  /// session ends; a transient/malformed failure keeps the tokens and backs
+  /// off briefly.
   Future<void> _onError(
     DioException error,
     ErrorInterceptorHandler handler,
@@ -312,83 +333,138 @@ class ApiClient {
       return handler.next(error);
     }
 
-    // If another refresh is already in flight, wait for it.
-    if (_isRefreshing) {
-      try {
-        final completer = Completer<String>();
-        _refreshQueue.add(completer);
-        final newToken = await completer.future;
-        failedRequest.headers['Authorization'] = 'Bearer $newToken';
-        final retryResponse = await _dio.fetch(failedRequest);
-        return handler.resolve(retryResponse);
-      } catch (_) {
-        return handler.next(error);
-      }
+    // Back off after a recent non-auth refresh failure so a burst of 401s
+    // can't trigger a per-request refresh storm.
+    final backoff = _refreshBackoffUntil;
+    if (backoff != null && DateTime.now().isBefore(backoff)) {
+      return handler.next(error);
     }
 
-    _isRefreshing = true;
+    try {
+      // Join the in-flight refresh, or start a new one. `??=` is atomic here
+      // (no await between read and assign on a single isolate).
+      final newToken = await (_refreshFuture ??= _performRefresh(error));
+      failedRequest.headers['Authorization'] = 'Bearer $newToken';
+      // dio finalizes FormData on send, so the original instance can't be
+      // re-sent — clone it before retrying a multipart request.
+      if (failedRequest.data is FormData) {
+        failedRequest.data = (failedRequest.data as FormData).clone();
+      }
+      final retryResponse = await _dio.fetch(failedRequest);
+      return handler.resolve(retryResponse);
+    } catch (_) {
+      return handler.next(error);
+    }
+  }
 
+  /// Performs the actual refresh. Exactly one runs at a time (guarded by
+  /// [_refreshFuture]); clears the future in `finally` so the next 401 starts
+  /// fresh rather than awaiting a settled future.
+  Future<String> _performRefresh(DioException error) async {
     try {
       final refreshToken = await _storage.getRefreshToken();
       if (refreshToken == null) {
-        // No refresh token — unrecoverable. Drain any waiters that queued
-        // behind this in-flight refresh so their handlers don't hang, then
-        // end the session.
-        for (final completer in _refreshQueue) {
-          completer.completeError(error);
-        }
-        _refreshQueue.clear();
-        await _storage.clearAll();
+        await _storage.clearSession();
         onSessionExpired?.call();
-        return handler.next(error);
+        throw error;
       }
 
-      // Use a fresh Dio instance so the interceptor doesn't attach the
-      // expired access token or trigger another refresh loop.
+      // Fresh Dio so the interceptor doesn't attach the expired token or
+      // recurse — but keep the SAME certificate pinning as the main client.
       final refreshDio = Dio(BaseOptions(
         baseUrl: _dio.options.baseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
         headers: {'Content-Type': 'application/json'},
       ));
+      if (!kDebugMode) {
+        refreshDio.httpClientAdapter = _pinnedAdapter();
+      }
 
       final response = await refreshDio.post(
         '/auth/refresh',
         data: {'refreshToken': refreshToken},
       );
 
-      final newAccessToken = response.data['data']['accessToken'] as String;
-      final newRefreshToken = response.data['data']['refreshToken'] as String;
+      // Validate the shape explicitly — a captive portal / proxy can return a
+      // 2xx with an unexpected body, and a blind cast would throw a TypeError
+      // that isAuthRejection() misclassifies as non-auth (keeping dead tokens).
+      final data = response.data;
+      final inner = data is Map ? data['data'] : null;
+      final newAccessToken = inner is Map ? inner['accessToken'] : null;
+      final newRefreshToken = inner is Map ? inner['refreshToken'] : null;
+      if (newAccessToken is! String ||
+          newAccessToken.isEmpty ||
+          newRefreshToken is! String ||
+          newRefreshToken.isEmpty) {
+        throw StateError('Malformed /auth/refresh response');
+      }
 
-      // Persist the rotated token pair.
       await _storage.setTokens(newAccessToken, newRefreshToken);
-
-      // Drain the queue — unblock every waiting request.
-      for (final completer in _refreshQueue) {
-        completer.complete(newAccessToken);
-      }
-      _refreshQueue.clear();
-
-      // Retry the original request with the fresh token.
-      failedRequest.headers['Authorization'] = 'Bearer $newAccessToken';
-      final retryResponse = await _dio.fetch(failedRequest);
-      return handler.resolve(retryResponse);
-    } catch (refreshError) {
-      for (final completer in _refreshQueue) {
-        completer.completeError(refreshError);
-      }
-      _refreshQueue.clear();
-      // Only end the session if the server rejected the refresh token. A
-      // network/transport failure keeps the tokens so the session recovers
-      // when connectivity returns.
-      if (isAuthRejection(refreshError)) {
-        await _storage.clearAll();
+      _refreshBackoffUntil = null;
+      return newAccessToken;
+    } catch (e) {
+      if (isAuthRejection(e)) {
+        await _storage.clearSession();
         onSessionExpired?.call();
+      } else {
+        // Transient/malformed: keep tokens, but don't hammer refresh.
+        _refreshBackoffUntil =
+            DateTime.now().add(const Duration(seconds: 10));
       }
-      return handler.next(error);
+      rethrow;
     } finally {
-      _isRefreshing = false;
+      _refreshFuture = null;
     }
+  }
+
+  /// Builds an [IOHttpClientAdapter] that pins the server certificate by its
+  /// SPKI SHA-256. Unlike badCertificateCallback (which only fires when default
+  /// chain validation FAILS), [validateCertificate] runs on EVERY established
+  /// TLS connection, so a CA-valid MITM certificate is still checked against
+  /// the pins.
+  ///
+  /// The pins are the SHA-256 of the SubjectPublicKeyInfo (SPKI) — see the
+  /// openssl recipe at the top of this file. They MUST be verified against the
+  /// live api.wa-sel.com certificate on staging before any prod promotion.
+  IOHttpClientAdapter _pinnedAdapter() {
+    return IOHttpClientAdapter(
+      validateCertificate: (cert, host, port) {
+        if (cert == null) return false;
+        final spki = _spkiSha256(cert.der);
+        if (spki == null) {
+          debugPrint('[CertPin] could not extract SPKI for $host');
+          return false;
+        }
+        final allowed = spki == _kPinPrimary || spki == _kPinBackup;
+        if (!allowed) {
+          debugPrint('[CertPin] REJECTED spki=$spki host=$host');
+        }
+        return allowed;
+      },
+    );
+  }
+
+  /// Extracts the SubjectPublicKeyInfo from a certificate DER and returns its
+  /// base64 SHA-256. The SPKI is the only element of TBSCertificate shaped
+  /// `SEQUENCE { AlgorithmIdentifier(SEQUENCE), subjectPublicKey(BIT STRING) }`,
+  /// so we locate it by that shape (robust to the optional version tag offset).
+  static String? _spkiSha256(Uint8List certDer) {
+    try {
+      final cert = ASN1Parser(certDer).nextObject() as ASN1Sequence;
+      final tbs = cert.elements[0] as ASN1Sequence;
+      for (final el in tbs.elements) {
+        if (el is ASN1Sequence &&
+            el.elements.length == 2 &&
+            el.elements[0] is ASN1Sequence &&
+            el.elements[1] is ASN1BitString) {
+          return base64.encode(sha256.convert(el.encodedBytes).bytes);
+        }
+      }
+    } catch (_) {
+      // Fall through to null -> connection rejected (fail closed).
+    }
+    return null;
   }
 }
 

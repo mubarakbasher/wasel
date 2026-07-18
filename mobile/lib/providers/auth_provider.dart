@@ -10,9 +10,16 @@ import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
 import '../services/secure_storage.dart';
 import '../utils/error_messages.dart';
+import 'dashboard_provider.dart';
+import 'hotspot_templates_provider.dart';
+import 'notification_prefs_provider.dart';
 import 'notifications_provider.dart';
+import 'reports_provider.dart';
+import 'routers_provider.dart';
+import 'sessions_provider.dart';
 import 'subscription_provider.dart';
 import 'support_provider.dart';
+import 'vouchers_provider.dart';
 
 // ---------------------------------------------------------------------------
 // State
@@ -106,21 +113,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
   void _resetUserScopedProviders() {
     final ref = _ref;
     if (ref == null) return;
-    try {
-      ref.read(notificationsProvider.notifier).reset();
-    } catch (_) {
-      // Provider may not be initialised yet — safe to ignore.
+    // Reset EVERY user-scoped provider so no data from the previous account
+    // survives into the next login on a shared device. Each is guarded so an
+    // uninitialised provider is a safe no-op.
+    void safeReset(void Function() fn) {
+      try {
+        fn();
+      } catch (_) {
+        // Provider may not be initialised yet — safe to ignore.
+      }
     }
-    try {
-      ref.read(supportProvider.notifier).reset();
-    } catch (_) {
-      // Same.
-    }
-    try {
-      ref.read(subscriptionProvider.notifier).clearSubscription();
-    } catch (_) {
-      // Same.
-    }
+
+    safeReset(() => ref.read(notificationsProvider.notifier).reset());
+    safeReset(() => ref.read(supportProvider.notifier).reset());
+    safeReset(() => ref.read(subscriptionProvider.notifier).clearSubscription());
+    safeReset(() => ref.read(routersProvider.notifier).reset());
+    safeReset(() => ref.read(vouchersProvider.notifier).reset());
+    safeReset(() => ref.read(sessionsProvider.notifier).reset());
+    safeReset(() => ref.read(dashboardProvider.notifier).reset());
+    safeReset(() => ref.read(reportsProvider.notifier).reset());
+    safeReset(() => ref.read(notificationPrefsProvider.notifier).reset());
+    safeReset(() => ref.read(hotspotTemplateNotifierProvider.notifier).reset());
   }
 
   /// Kick off loads for user-scoped providers that screens read but don't
@@ -182,6 +195,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(isAuthenticated: true, user: user, isLoading: false);
       _loadUserScopedProviders();
       _syncLocaleToBackend();
+      // Ensure the FCM token is (re)registered for this session.
+      PushNotificationService().registerCurrentToken();
     } catch (_) {
       // Network/transient failure must NOT log out — keep the cached session.
       state = state.copyWith(isLoading: false);
@@ -222,6 +237,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       _loadUserScopedProviders();
       _syncLocaleToBackend();
+      // Register this device's FCM token now that we're authenticated — the
+      // pre-login registration attempt (if any) 401'd and never persisted.
+      PushNotificationService().registerCurrentToken();
     } catch (e) {
       final code = _extractErrorCode(e);
       state = state.copyWith(
@@ -385,11 +403,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      // Read the refresh token BEFORE clearing storage so the server can
+      // revoke it (the backend requires it in the body for mobile clients).
+      final refreshToken = await _storage.getRefreshToken();
       await PushNotificationService().unregisterCurrentToken();
-      await _authService.logout();
+      await _authService.logout(refreshToken: refreshToken);
     } finally {
       _resetUserScopedProviders();
-      await _storage.clearAll();
+      await _storage.clearSession();
       state = const AuthState();
     }
   }
@@ -473,7 +494,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
         currentPassword: currentPassword,
         newPassword: newPassword,
       );
-      state = state.copyWith(isLoading: false);
+      // The backend revokes ALL refresh tokens (including this device's) on a
+      // successful password change. Rather than let the session die silently
+      // ~15 min later when the access token expires, end it now and route the
+      // user to sign in again with a clear message.
+      _resetUserScopedProviders();
+      await _storage.clearSession();
+      state = const AuthState(error: 'auth.passwordChangedRelogin');
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -508,7 +535,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Called by [ApiClient.onSessionExpired] when token refresh fails.
   void _handleSessionExpired() {
     _resetUserScopedProviders();
-    _storage.clearAll();
+    _storage.clearSession();
     state = const AuthState(error: 'error.unauthorized');
   }
 

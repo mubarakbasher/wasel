@@ -64,9 +64,38 @@ class SessionsState {
 class SessionsNotifier extends StateNotifier<SessionsState> {
   final SessionService _service;
 
+  /// Monotonic request counter — see VouchersNotifier. Every load captures it
+  /// before awaiting and drops its result if superseded by a newer request.
+  int _requestSeq = 0;
+
+  /// Router currently populating [state]; when it changes we drop the previous
+  /// router's active-session list, history and filters so they never bleed.
+  String? _activeRouterId;
+
   SessionsNotifier({SessionService? sessionService})
       : _service = sessionService ?? SessionService(),
         super(const SessionsState());
+
+  /// Resets to initial state and invalidates any in-flight request (logout).
+  void reset() {
+    _requestSeq++;
+    _activeRouterId = null;
+    state = const SessionsState();
+  }
+
+  void _ensureRouter(String routerId) {
+    if (_activeRouterId != routerId) {
+      _activeRouterId = routerId;
+      state = state.copyWith(
+        activeSessions: [],
+        historySessions: [],
+        historyTotal: 0,
+        historyPage: 1,
+        clearFilterUsername: true,
+        clearFilterTerminateCause: true,
+      );
+    }
+  }
 
   void clearError() {
     state = state.copyWith(clearError: true);
@@ -87,11 +116,15 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
   }
 
   Future<void> loadActiveSessions(String routerId) async {
+    _ensureRouter(routerId);
+    final seq = ++_requestSeq;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final sessions = await _service.getActiveSessions(routerId);
+      if (seq != _requestSeq) return; // superseded (router switch / newer poll)
       state = state.copyWith(activeSessions: sessions, isLoading: false);
     } catch (e) {
+      if (seq != _requestSeq) return;
       state = state.copyWith(isLoading: false, error: _extractError(e));
     }
   }
@@ -114,13 +147,8 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
     String routerId, {
     bool refresh = false,
   }) async {
-    if (refresh) {
-      state = state.copyWith(
-        historyPage: 1,
-        historySessions: [],
-        historyTotal: 0,
-      );
-    }
+    _ensureRouter(routerId);
+    final seq = ++_requestSeq;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final result = await _service.getSessionHistory(
@@ -130,6 +158,7 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
         limit: state.historyLimit,
         terminateCause: state.filterTerminateCause,
       );
+      if (seq != _requestSeq) return; // superseded by a newer request
       state = state.copyWith(
         historySessions: result.sessions,
         historyTotal: result.total,
@@ -137,12 +166,14 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
         isLoading: false,
       );
     } catch (e) {
+      if (seq != _requestSeq) return;
       state = state.copyWith(isLoading: false, error: _extractError(e));
     }
   }
 
   Future<void> loadMoreHistory(String routerId) async {
     if (!state.hasMoreHistory || state.isLoading) return;
+    final seq = ++_requestSeq;
     final nextPage = state.historyPage + 1;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -153,13 +184,20 @@ class SessionsNotifier extends StateNotifier<SessionsState> {
         limit: state.historyLimit,
         terminateCause: state.filterTerminateCause,
       );
+      if (seq != _requestSeq) return; // superseded
+      // Dedup by id: new sessions starting between page fetches shift offsets,
+      // so a page can repeat rows already held.
+      final existingIds = state.historySessions.map((s) => s.id).toSet();
+      final fresh =
+          result.sessions.where((s) => !existingIds.contains(s.id)).toList();
       state = state.copyWith(
-        historySessions: [...state.historySessions, ...result.sessions],
+        historySessions: [...state.historySessions, ...fresh],
         historyTotal: result.total,
         historyPage: nextPage,
         isLoading: false,
       );
     } catch (e) {
+      if (seq != _requestSeq) return;
       state = state.copyWith(isLoading: false, error: _extractError(e));
     }
   }

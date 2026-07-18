@@ -70,9 +70,26 @@ class VouchersState {
 class VouchersNotifier extends StateNotifier<VouchersState> {
   final VoucherService _service;
 
+  /// Monotonic request counter. Every load captures the current value before
+  /// awaiting and drops its result if a newer request has since started —
+  /// prevents a slow response from overwriting a newer router/filter selection.
+  int _requestSeq = 0;
+
+  /// The router whose data currently populates [state]. When it changes we
+  /// clear the list up front so router A's vouchers never flash under router B.
+  String? _activeRouterId;
+
   VouchersNotifier({VoucherService? voucherService})
       : _service = voucherService ?? VoucherService(),
         super(const VouchersState());
+
+  /// Resets to initial state and invalidates any in-flight request. Called on
+  /// logout so the next account never sees the previous account's vouchers.
+  void reset() {
+    _requestSeq++;
+    _activeRouterId = null;
+    state = const VouchersState();
+  }
 
   void clearError() {
     state = state.copyWith(clearError: true);
@@ -95,8 +112,12 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
   }
 
   Future<void> loadVouchers(String routerId, {bool refresh = false}) async {
-    if (refresh) {
-      state = state.copyWith(page: 1, vouchers: [], total: 0);
+    final seq = ++_requestSeq;
+    // Clear only when switching routers — a same-router refresh keeps the
+    // current list visible under the spinner instead of blanking the screen.
+    if (_activeRouterId != routerId) {
+      _activeRouterId = routerId;
+      state = state.copyWith(vouchers: [], total: 0, page: 1);
     }
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -108,6 +129,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
         page: refresh ? 1 : state.page,
         limit: state.limit,
       );
+      if (seq != _requestSeq) return; // superseded by a newer request
       state = state.copyWith(
         vouchers: result.vouchers,
         total: result.total,
@@ -115,12 +137,14 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
         isLoading: false,
       );
     } catch (e) {
+      if (seq != _requestSeq) return;
       state = state.copyWith(isLoading: false, error: _extractError(e));
     }
   }
 
   Future<void> loadMore(String routerId) async {
     if (!state.hasMore || state.isLoading) return;
+    final seq = ++_requestSeq;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final result = await _service.getVouchers(
@@ -131,13 +155,20 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
         page: state.page + 1,
         limit: state.limit,
       );
+      if (seq != _requestSeq) return; // superseded (router/filter changed)
+      // Dedup by id: offset pages can shift when rows are inserted/deleted
+      // between fetches, so a page can repeat rows already held.
+      final existingIds = state.vouchers.map((v) => v.id).toSet();
+      final fresh =
+          result.vouchers.where((v) => !existingIds.contains(v.id)).toList();
       state = state.copyWith(
-        vouchers: [...state.vouchers, ...result.vouchers],
+        vouchers: [...state.vouchers, ...fresh],
         total: result.total,
         page: state.page + 1,
         isLoading: false,
       );
     } catch (e) {
+      if (seq != _requestSeq) return;
       state = state.copyWith(isLoading: false, error: _extractError(e));
     }
   }
@@ -231,12 +262,10 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final count = await _service.bulkDeleteVouchers(routerId, ids: ids);
-      final updatedList = state.vouchers.where((v) => !ids.contains(v.id)).toList();
-      state = state.copyWith(
-        vouchers: updatedList,
-        total: state.total - count,
-        isLoading: false,
-      );
+      // Re-sync from the server instead of splicing locally: deleting rows
+      // shifts every subsequent offset page, so a surgical edit would leave
+      // hasMore/total drifting and silently skip vouchers on the next loadMore.
+      await loadVouchers(routerId, refresh: true);
       return count;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _extractError(e));
@@ -251,14 +280,21 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
 
   Future<int?> deleteAllVouchers(String routerId) async {
     state = state.copyWith(isLoading: true, clearError: true);
+    // Snapshot the active filters BEFORE the loop. Each batch is a separate
+    // server call, and reading state.filter* on every iteration means a filter
+    // change made mid-delete would retarget later batches at a different set of
+    // vouchers than the operator confirmed.
+    final status = state.filterStatus;
+    final limitType = state.filterLimitType;
+    final search = state.searchQuery;
     try {
       int total = 0;
       while (true) {
         final count = await _service.deleteAllVouchers(
           routerId,
-          status: state.filterStatus,
-          limitType: state.filterLimitType,
-          search: state.searchQuery,
+          status: status,
+          limitType: limitType,
+          search: search,
         );
         total += count;
         if (count < _bulkDeleteBatch) break; // last (or empty) batch
@@ -267,24 +303,6 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
       return total;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _extractError(e));
-      return null;
-    }
-  }
-
-  Future<List<Voucher>?> fetchAllForPrint(String routerId, {int? maxCount}) async {
-    // Don't set isLoading — the caller shows its own loading dialog.
-    // Modifying state here would trigger a rebuild while the dialog is open,
-    // causing a '_dependents.isEmpty' assertion error.
-    try {
-      return await _service.getAllVouchers(
-        routerId,
-        status: state.filterStatus,
-        limitType: state.filterLimitType,
-        search: state.searchQuery,
-        maxCount: maxCount,
-      );
-    } catch (e) {
-      state = state.copyWith(error: _extractError(e));
       return null;
     }
   }

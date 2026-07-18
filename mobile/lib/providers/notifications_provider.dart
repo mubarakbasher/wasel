@@ -74,8 +74,14 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
     state = state.copyWith(isLoadingMore: true, clearError: true);
     try {
       final next = await _service.list(page: state.page + 1, limit: _pageSize);
+      // Dedup by id: a notification arriving between page fetches shifts every
+      // offset, so a page can repeat rows already held (duplicate Dismissible
+      // keys crash the list).
+      final existingIds = state.items.map((n) => n.id).toSet();
+      final fresh =
+          next.items.where((n) => !existingIds.contains(n.id)).toList();
       state = state.copyWith(
-        items: [...state.items, ...next.items],
+        items: [...state.items, ...fresh],
         unreadCount: next.unreadCount,
         page: next.page,
         hasMore: next.hasMore,
@@ -114,16 +120,27 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
   }
 
   Future<void> delete(String id) async {
-    final removed = state.items.firstWhere((n) => n.id == id);
+    final index = state.items.indexWhere((n) => n.id == id);
+    if (index < 0) return; // already removed (double-tap / stale callback)
+    final removed = state.items[index];
+    // Capture pre-mutation state so a failed delete can be rolled back.
+    final prevItems = state.items;
+    final prevUnread = state.unreadCount;
     final filtered = state.items.where((n) => n.id != id).toList();
-    final newUnread =
-        removed.isUnread ? (state.unreadCount - 1).clamp(0, state.unreadCount) : state.unreadCount;
+    final newUnread = removed.isUnread
+        ? (state.unreadCount - 1).clamp(0, state.unreadCount)
+        : state.unreadCount;
     state = state.copyWith(items: filtered, unreadCount: newUnread);
     try {
       final serverUnread = await _service.delete(id);
       state = state.copyWith(unreadCount: serverUnread);
     } catch (e) {
-      state = state.copyWith(error: _extractError(e));
+      // Restore the optimistically-removed item so the UI reflects reality.
+      state = state.copyWith(
+        items: prevItems,
+        unreadCount: prevUnread,
+        error: _extractError(e),
+      );
     }
   }
 

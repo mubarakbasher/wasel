@@ -13,6 +13,14 @@ class AppConfig {
   );
   static const String devApiBaseUrl = 'http://10.0.2.2:3000/api/v1';
 
+  // Sentry crash-reporting DSN. Empty (the default) disables Sentry entirely,
+  // so dev/debug builds are unaffected. Release builds pass it explicitly:
+  //   flutter build apk --dart-define=SENTRY_DSN=https://...@...sentry.io/...
+  static const String sentryDsn = String.fromEnvironment(
+    'SENTRY_DSN',
+    defaultValue: '',
+  );
+
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 15);
 

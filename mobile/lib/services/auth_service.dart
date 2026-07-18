@@ -82,10 +82,14 @@ class AuthService {
   }
 
   /// POST /auth/logout
-  /// Best effort — caller should clear local state regardless of outcome.
-  Future<void> logout() async {
+  /// Body: { refreshToken } — the backend requires it to revoke the token
+  /// server-side for mobile clients. Best effort — caller should clear local
+  /// state regardless of outcome.
+  Future<void> logout({String? refreshToken}) async {
     try {
-      await _api.post('/auth/logout');
+      await _api.post('/auth/logout', data: {
+        if (refreshToken != null) 'refreshToken': refreshToken,
+      });
     } catch (_) {
       // Best effort — clear local state regardless
     }

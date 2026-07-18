@@ -65,6 +65,10 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     }
   }
 
+  void reset() {
+    state = const DashboardState();
+  }
+
   String _extractError(dynamic e) => errorToDisplay(e);
 }
 

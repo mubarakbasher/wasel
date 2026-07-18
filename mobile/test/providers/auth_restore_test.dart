@@ -215,14 +215,14 @@ void main() {
   group('AuthNotifier — session expiry via ApiClient.onSessionExpired', () {
     test(
         'onSessionExpired fires => isAuthenticated becomes false, '
-        'clearAll is called once',
+        'clearSession is called once',
         () async {
       // Arrange: put the notifier into an authenticated state first.
       when(() => storage.hasTokens()).thenAnswer((_) async => true);
       when(() => storage.getUserData()).thenAnswer((_) async => _userJson());
       when(() => svc.getProfile()).thenAnswer((_) async => _kUser);
       when(() => storage.setUserData(any())).thenAnswer((_) async {});
-      when(() => storage.clearAll()).thenAnswer((_) async {});
+      when(() => storage.clearSession()).thenAnswer((_) async {});
 
       await notifier.tryRestoreSession();
       expect(notifier.state.isAuthenticated, isTrue,
@@ -236,8 +236,9 @@ void main() {
       expect(notifier.state.isAuthenticated, isFalse,
           reason: 'a server-side rejection must clear the session');
       expect(notifier.state.isLoading, isFalse);
-      // The notifier delegates storage wipe to _handleSessionExpired.
-      verify(() => storage.clearAll()).called(1);
+      // The notifier delegates storage wipe to _handleSessionExpired, which
+      // clears only session keys (locale is preserved across sign-out).
+      verify(() => storage.clearSession()).called(1);
     });
   });
 }

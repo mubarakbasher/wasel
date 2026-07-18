@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../navigation/app_router.dart' show appNavigatorKey;
 import '../providers/notifications_provider.dart';
 import 'api_client.dart';
 import 'secure_storage.dart';
@@ -44,20 +46,49 @@ class PushNotificationService {
 
       final token = await messaging.getToken();
       if (token != null) await _registerToken(token);
-      messaging.onTokenRefresh.listen(_registerToken);
+      messaging.onTokenRefresh.listen(
+        _registerToken,
+        onError: (Object e) {
+          if (kDebugMode) debugPrint('onTokenRefresh error: $e');
+        },
+      );
 
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+      // Tap-through: notification opened while backgrounded, or the one that
+      // cold-started the app.
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+      final initial = await messaging.getInitialMessage();
+      if (initial != null) _handleNotificationTap(initial);
 
       _initialized = true;
     } catch (e) {
-      debugPrint('PushNotificationService: Firebase init failed: $e');
+      if (kDebugMode) {
+        debugPrint('PushNotificationService: Firebase init failed: $e');
+      }
+    }
+  }
+
+  /// Fetches the current FCM token and registers it with the backend,
+  /// bypassing the cache short-circuit. Called after login / session restore
+  /// because the pre-auth registration attempt (fired before a token was
+  /// cached) would have 401'd.
+  Future<void> registerCurrentToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+      // Drop the cached value so _registerToken doesn't short-circuit — the
+      // cache may hold a token that was never successfully registered.
+      await _storage.deleteFcmToken();
+      await _registerToken(token);
+    } catch (e) {
+      if (kDebugMode) debugPrint('registerCurrentToken failed: $e');
     }
   }
 
   Future<void> _registerToken(String token) async {
-    final cachedToken = await _storage.getFcmToken();
-    if (cachedToken == token) return;
     try {
+      final cachedToken = await _storage.getFcmToken();
+      if (cachedToken == token) return;
       final platform = Platform.isIOS ? 'ios' : 'android';
       await _api.dio.post('/notifications/device-token', data: {
         'token': token,
@@ -65,7 +96,7 @@ class PushNotificationService {
       });
       await _storage.setFcmToken(token);
     } catch (e) {
-      debugPrint('Failed to register device token: $e');
+      if (kDebugMode) debugPrint('Failed to register device token: $e');
     }
   }
 
@@ -81,8 +112,24 @@ class PushNotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    debugPrint('Foreground message: ${message.notification?.title}');
+    if (kDebugMode) {
+      debugPrint('Foreground message: ${message.notification?.title}');
+    }
     // Pull fresh data into the inbox so the bell badge updates immediately.
     _container?.read(notificationsProvider.notifier).refresh();
+  }
+
+  /// Handles a tapped notification (backgrounded or cold-start). Routes to the
+  /// inbox so the user always lands on the notification; best-effort so a bad
+  /// route or a not-yet-ready navigator never crashes the app.
+  void _handleNotificationTap(RemoteMessage message) {
+    _container?.read(notificationsProvider.notifier).refresh();
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) return;
+    try {
+      GoRouter.of(ctx).push('/notifications');
+    } catch (_) {
+      // Navigation is best-effort — never crash on a notification tap.
+    }
   }
 }
