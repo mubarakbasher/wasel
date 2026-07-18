@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { decrypt } from '../utils/encryption';
 import { isSafeAcctSessionId } from '../utils/radius';
 import { sendDisconnectRequest } from './radclient.service';
+import { encodeCursor, decodeCursor, TimestampUuidCursor } from '../utils/cursor';
 
 // ----- Interfaces -----
 
@@ -52,6 +53,7 @@ export interface VoucherListResult {
   total: number;
   page: number;
   limit: number;
+  nextCursor: string | null;
 }
 
 // ----- Constants -----
@@ -730,6 +732,13 @@ function buildFilterConditions(
 
 /**
  * List vouchers for a router with pagination and filtering.
+ *
+ * Supports two pagination modes:
+ *  - Cursor (keyset): when `cursor` is provided, uses a two-column keyset
+ *    condition on (created_at DESC, id DESC) — immune to insert/delete skew.
+ *  - Offset: backward-compatible fallback when `cursor` is absent.
+ *
+ * Always returns `nextCursor` (null on last page) and `total`.
  */
 export async function getVouchersByRouter(
   userId: string,
@@ -740,37 +749,99 @@ export async function getVouchersByRouter(
     page?: number;
     limit?: number;
     search?: string;
+    cursor?: string;
   } = {},
 ): Promise<VoucherListResult> {
   await verifyRouterOwnership(userId, routerId);
 
   const page = Number(options.page) || 1;
   const limit = Number(options.limit) || 20;
-  const offset = (page - 1) * limit;
 
   const { conditions, values, paramIndex } = buildFilterConditions(userId, routerId, options);
+  let pi = paramIndex;
+
+  // ── Cursor keyset condition ───────────────────────────────────────────────
+  // When a cursor is present, replace OFFSET with a two-column WHERE predicate.
+  // We fetch (limit + 1) rows to determine whether a next page exists.
+  if (options.cursor) {
+    let cursorPayload: TimestampUuidCursor;
+    try {
+      cursorPayload = decodeCursor<TimestampUuidCursor>(options.cursor);
+    } catch {
+      throw new AppError(422, 'Invalid pagination cursor', 'INVALID_CURSOR');
+    }
+    if (!cursorPayload.createdAt || !cursorPayload.id) {
+      throw new AppError(422, 'Invalid pagination cursor', 'INVALID_CURSOR');
+    }
+
+    // (created_at, id) < ($A, $B)  ≡  created_at < A OR (created_at = A AND id < B)
+    // This is correct for ORDER BY created_at DESC, id DESC (newer rows first,
+    // same-timestamp tie-broken by UUID DESC).
+    conditions.push(
+      `(vm.created_at < $${pi}::timestamptz OR (vm.created_at = $${pi}::timestamptz AND vm.id < $${pi + 1}::uuid))`,
+    );
+    values.push(cursorPayload.createdAt, cursorPayload.id);
+    pi += 2;
+
+    const whereClause = conditions.join(' AND ');
+
+    // Count total (always useful for progress bars even in cursor mode)
+    const [countResult, dataResult] = await Promise.all([
+      pool.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM voucher_meta vm WHERE ${whereClause}`,
+        values,
+      ),
+      pool.query<VoucherMetaRow>(
+        `SELECT vm.* FROM voucher_meta vm
+         WHERE ${whereClause}
+         ORDER BY vm.created_at DESC, vm.id DESC
+         LIMIT $${pi}`,
+        [...values, limit + 1],
+      ),
+    ]);
+
+    const total = parseInt(countResult.rows[0].count, 10);
+    const hasNextPage = dataResult.rows.length > limit;
+    const rows = hasNextPage ? dataResult.rows.slice(0, limit) : dataResult.rows;
+    const vouchers = await batchToVoucherInfo(rows);
+
+    const nextCursor =
+      hasNextPage && rows.length > 0
+        ? encodeCursor({ createdAt: new Date(rows[rows.length - 1].created_at).toISOString(), id: rows[rows.length - 1].id })
+        : null;
+
+    return { vouchers, total, page, limit, nextCursor };
+  }
+
+  // ── Offset pagination (backward-compat) ───────────────────────────────────
+  const offset = (page - 1) * limit;
   const whereClause = conditions.join(' AND ');
 
-  // Count total
-  const countResult = await pool.query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM voucher_meta vm WHERE ${whereClause}`,
-    values,
-  );
+  const [countResult, dataResult] = await Promise.all([
+    pool.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM voucher_meta vm WHERE ${whereClause}`,
+      values,
+    ),
+    pool.query<VoucherMetaRow>(
+      `SELECT vm.* FROM voucher_meta vm
+       WHERE ${whereClause}
+       ORDER BY vm.created_at DESC, vm.id DESC
+       LIMIT $${pi} OFFSET $${pi + 1}`,
+      [...values, limit + 1, offset],
+    ),
+  ]);
+
   const total = parseInt(countResult.rows[0].count, 10);
+  const hasNextPage = dataResult.rows.length > limit;
+  const rows = hasNextPage ? dataResult.rows.slice(0, limit) : dataResult.rows;
+  const vouchers = await batchToVoucherInfo(rows);
 
-  // Fetch page
-  const listValues = [...values, limit, offset];
-  const result = await pool.query<VoucherMetaRow>(
-    `SELECT vm.* FROM voucher_meta vm
-     WHERE ${whereClause}
-     ORDER BY vm.created_at DESC
-     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-    listValues,
-  );
+  const nextCursor =
+    hasNextPage && rows.length > 0
+      ? encodeCursor({ createdAt: new Date(rows[rows.length - 1].created_at).toISOString(), id: rows[rows.length - 1].id })
+      : null;
 
-  const vouchers = await batchToVoucherInfo(result.rows);
-
-  return { vouchers, total, page, limit };
+  return { vouchers, total, page, limit, nextCursor };
 }
 
 /**

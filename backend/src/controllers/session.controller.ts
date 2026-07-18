@@ -36,6 +36,7 @@ export async function getSessionHistory(req: AuthenticatedRequest, res: Response
         total: result.total,
         page: result.page,
         limit: result.limit,
+        nextCursor: result.nextCursor,
       },
     });
   } catch (error) {

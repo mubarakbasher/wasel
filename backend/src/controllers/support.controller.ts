@@ -10,11 +10,12 @@ export async function listMessages(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { page, limit } = req.query as Record<string, string>;
+    const { page, limit, cursor } = req.query as Record<string, string>;
     const result = await supportService.listMessages(
       req.user!.id,
       Number(page) || 1,
       Number(limit) || 30,
+      cursor,
     );
     res.status(200).json({
       success: true,
@@ -24,6 +25,7 @@ export async function listMessages(
         limit: result.limit,
         total: result.total,
         unreadAdminCount: result.unreadAdminCount,
+        nextCursor: result.nextCursor,
       },
     });
   } catch (error) {

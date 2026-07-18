@@ -56,6 +56,8 @@ export const listVouchersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(500).default(20),
   search: z.string().max(64).optional(),
+  /** Opaque keyset cursor from a previous response `meta.nextCursor`. */
+  cursor: z.string().max(512).optional(),
 });
 
 export const bulkDeleteVouchersSchema = z.object({

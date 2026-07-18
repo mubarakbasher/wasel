@@ -22,4 +22,6 @@ export const sessionHistoryQuerySchema = z.object({
     .datetime({ message: 'End date must be a valid ISO 8601 datetime' })
     .optional(),
   terminateCause: z.string().max(64, 'Terminate cause must be at most 64 characters').optional(),
+  /** Opaque keyset cursor from a previous response `meta.nextCursor`. */
+  cursor: z.string().max(512).optional(),
 });

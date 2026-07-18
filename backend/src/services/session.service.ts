@@ -1,3 +1,4 @@
+import { QueryResult } from 'pg';
 import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
@@ -6,6 +7,7 @@ import { isSafeAcctSessionId } from '../utils/radius';
 import { getActiveHotspotUsers, HotspotUser } from './routerOs.service';
 import { disconnectHotspotUser } from './routerOs.service';
 import { sendDisconnectRequest } from './radclient.service';
+import { encodeCursor, decodeCursor, TimestampIntCursor } from '../utils/cursor';
 
 // ----- Interfaces -----
 
@@ -31,6 +33,7 @@ export interface SessionHistoryResult {
   total: number;
   page: number;
   limit: number;
+  nextCursor: string | null;
 }
 
 export interface SessionHistoryOptions {
@@ -40,6 +43,7 @@ export interface SessionHistoryOptions {
   startDate?: string;
   endDate?: string;
   terminateCause?: string;
+  cursor?: string;
 }
 
 // ----- Helpers -----
@@ -230,6 +234,13 @@ export async function disconnectSession(
  *
  * Filters sessions by the router's tunnel IP (nasipaddress) and supports
  * optional username search, date range, and terminate cause filtering.
+ *
+ * Supports two pagination modes:
+ *  - Cursor (keyset): when `cursor` is provided, uses (acctstarttime DESC,
+ *    radacctid DESC) keyset condition — immune to insert skew.
+ *  - Offset: backward-compatible fallback when `cursor` is absent.
+ *
+ * radacct is append-only and FreeRADIUS-owned — we only READ from it.
  */
 export async function getSessionHistory(
   userId: string,
@@ -245,13 +256,14 @@ export async function getSessionHistory(
     startDate,
     endDate,
     terminateCause,
+    cursor,
   } = options;
 
   const tunnelIp = router.tunnel_ip;
 
-  // Build dynamic WHERE clause
+  // Build the base WHERE conditions (shared between cursor and offset modes)
   const conditions: string[] = ['nasipaddress = $1'];
-  const params: any[] = [tunnelIp];
+  const params: unknown[] = [tunnelIp];
   let paramIndex = 2;
 
   if (username) {
@@ -278,32 +290,89 @@ export async function getSessionHistory(
     paramIndex++;
   }
 
-  const whereClause = conditions.join(' AND ');
-
-  // Count total matching records
-  const countResult = await pool.query(
-    `SELECT COUNT(*) AS total FROM radacct WHERE ${whereClause}`,
-    params
-  );
-  const total = parseInt(countResult.rows[0].total, 10);
-
-  // Fetch paginated results
-  const offset = (page - 1) * limit;
-  const dataParams = [...params, limit, offset];
-
-  const dataResult = await pool.query(
-    `SELECT radacctid, acctsessionid, acctuniqueid, username, nasipaddress,
+  const selectCols = `radacctid, acctsessionid, acctuniqueid, username, nasipaddress,
             acctstarttime, acctstoptime, acctsessiontime,
             acctinputoctets, acctoutputoctets,
-            calledstationid, callingstationid, acctterminatecause, framedipaddress
-     FROM radacct
-     WHERE ${whereClause}
-     ORDER BY acctstarttime DESC
-     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-    dataParams
-  );
+            calledstationid, callingstationid, acctterminatecause, framedipaddress`;
 
-  const sessions = dataResult.rows.map(toSessionHistoryEntry);
+  let countResult: QueryResult<{ total: string }>;
+  let dataResult: QueryResult<Record<string, unknown>>;
+
+  if (cursor) {
+    // ── Cursor (keyset) mode ────────────────────────────────────────────────
+    let cursorPayload: TimestampIntCursor;
+    try {
+      cursorPayload = decodeCursor<TimestampIntCursor>(cursor);
+    } catch {
+      throw new AppError(422, 'Invalid pagination cursor', 'INVALID_CURSOR');
+    }
+    if (!cursorPayload.startTime || cursorPayload.id == null) {
+      throw new AppError(422, 'Invalid pagination cursor', 'INVALID_CURSOR');
+    }
+
+    // (acctstarttime, radacctid) < ($A, $B) ≡ acctstarttime < A OR (= A AND radacctid < B)
+    const cursorCondition =
+      `(acctstarttime < $${paramIndex}::timestamptz OR (acctstarttime = $${paramIndex}::timestamptz AND radacctid < $${paramIndex + 1}::bigint))`;
+    const cursorParams = [...params, cursorPayload.startTime, cursorPayload.id];
+    const cursorParamIndex = paramIndex + 2;
+
+    const whereWithCursor = [...conditions, cursorCondition].join(' AND ');
+    const baseWhere = conditions.join(' AND ');
+
+    const results = await Promise.all([
+      pool.query<{ total: string }>(
+        `SELECT COUNT(*) AS total FROM radacct WHERE ${baseWhere}`,
+        params,
+      ),
+      pool.query<Record<string, unknown>>(
+        `SELECT ${selectCols}
+         FROM radacct
+         WHERE ${whereWithCursor}
+         ORDER BY acctstarttime DESC, radacctid DESC
+         LIMIT $${cursorParamIndex}`,
+        [...cursorParams, limit + 1],
+      ),
+    ]);
+    countResult = results[0];
+    dataResult = results[1];
+  } else {
+    // ── Offset pagination (backward-compat) ────────────────────────────────
+    const offset = (page - 1) * limit;
+    const whereClause = conditions.join(' AND ');
+
+    const results = await Promise.all([
+      pool.query<{ total: string }>(
+        `SELECT COUNT(*) AS total FROM radacct WHERE ${whereClause}`,
+        params,
+      ),
+      pool.query<Record<string, unknown>>(
+        `SELECT ${selectCols}
+         FROM radacct
+         WHERE ${whereClause}
+         ORDER BY acctstarttime DESC, radacctid DESC
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        [...params, limit + 1, offset],
+      ),
+    ]);
+    countResult = results[0];
+    dataResult = results[1];
+  }
+
+  const total = parseInt(countResult.rows[0].total, 10);
+  const hasNextPage = dataResult.rows.length > limit;
+  const rows = hasNextPage ? dataResult.rows.slice(0, limit) : dataResult.rows;
+  const sessions = rows.map(toSessionHistoryEntry);
+
+  const lastRow = rows[rows.length - 1] as { acctstarttime?: Date | null; radacctid?: string | number } | undefined;
+  const nextCursor =
+    hasNextPage && lastRow
+      ? encodeCursor({
+          startTime: lastRow.acctstarttime
+            ? new Date(lastRow.acctstarttime).toISOString()
+            : null,
+          id: parseInt(String(lastRow.radacctid ?? 0), 10),
+        })
+      : null;
 
   logger.info('Retrieved session history', {
     userId,
@@ -311,13 +380,9 @@ export async function getSessionHistory(
     total,
     page,
     limit,
+    cursorMode: !!cursor,
     filters: { username, startDate, endDate, terminateCause },
   });
 
-  return {
-    sessions,
-    total,
-    page,
-    limit,
-  };
+  return { sessions, total, page, limit, nextCursor };
 }

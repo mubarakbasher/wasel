@@ -75,16 +75,17 @@ export async function updatePreferences(req: AuthenticatedRequest, res: Response
 
 export async function listInbox(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { page, limit } = req.query as Record<string, string>;
+    const { page, limit, cursor } = req.query as Record<string, string>;
     const result = await inboxService.listNotifications(
       req.user!.id,
       Number(page) || 1,
       Number(limit) || 20,
+      cursor,
     );
     res.status(200).json({
       success: true,
       data: result.items,
-      meta: { page: result.page, limit: result.limit, total: result.total, unreadCount: result.unreadCount },
+      meta: { page: result.page, limit: result.limit, total: result.total, unreadCount: result.unreadCount, nextCursor: result.nextCursor },
     });
   } catch (error) {
     next(error);

@@ -2,6 +2,7 @@ import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import { notifySupportReply } from './notification.service';
+import { encodeCursor, decodeCursor, TimestampUuidCursor } from '../utils/cursor';
 
 export interface SupportMessage {
   id: string;
@@ -31,21 +32,55 @@ function toMessage(row: SupportRow): SupportMessage {
 
 // ---------- User side ----------
 
+/**
+ * List support messages for a user, newest first.
+ *
+ * Supports two pagination modes:
+ *  - Cursor (keyset): when `cursor` is provided, uses (created_at DESC, id DESC)
+ *    keyset condition — immune to insert/delete skew between fetches.
+ *  - Offset: backward-compatible fallback when `cursor` is absent.
+ */
 export async function listMessages(
   userId: string,
   page: number,
   limit: number,
-): Promise<{ items: SupportMessage[]; total: number; unreadAdminCount: number; page: number; limit: number }> {
-  const offset = (page - 1) * limit;
+  cursor?: string,
+): Promise<{ items: SupportMessage[]; total: number; unreadAdminCount: number; page: number; limit: number; nextCursor: string | null }> {
+  let dataQuery: string;
+  let dataParams: unknown[];
+
+  if (cursor) {
+    let cursorPayload: TimestampUuidCursor;
+    try {
+      cursorPayload = decodeCursor<TimestampUuidCursor>(cursor);
+    } catch {
+      throw new AppError(422, 'Invalid pagination cursor', 'INVALID_CURSOR');
+    }
+    if (!cursorPayload.createdAt || !cursorPayload.id) {
+      throw new AppError(422, 'Invalid pagination cursor', 'INVALID_CURSOR');
+    }
+
+    dataQuery = `
+      SELECT id, sender, body, read_at, created_at
+      FROM support_messages
+      WHERE user_id = $1
+        AND (created_at < $2::timestamptz OR (created_at = $2::timestamptz AND id < $3::uuid))
+      ORDER BY created_at DESC, id DESC
+      LIMIT $4`;
+    dataParams = [userId, cursorPayload.createdAt, cursorPayload.id, limit + 1];
+  } else {
+    const offset = (page - 1) * limit;
+    dataQuery = `
+      SELECT id, sender, body, read_at, created_at
+      FROM support_messages
+      WHERE user_id = $1
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2 OFFSET $3`;
+    dataParams = [userId, limit + 1, offset];
+  }
+
   const [items, total, unread] = await Promise.all([
-    pool.query<SupportRow>(
-      `SELECT id, sender, body, read_at, created_at
-       FROM support_messages
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [userId, limit, offset],
-    ),
+    pool.query<SupportRow>(dataQuery, dataParams),
     pool.query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM support_messages WHERE user_id = $1`,
       [userId],
@@ -56,12 +91,22 @@ export async function listMessages(
       [userId],
     ),
   ]);
+
+  const hasNextPage = items.rows.length > limit;
+  const rows = hasNextPage ? items.rows.slice(0, limit) : items.rows;
+
+  const nextCursor =
+    hasNextPage && rows.length > 0
+      ? encodeCursor({ createdAt: new Date(rows[rows.length - 1].created_at).toISOString(), id: rows[rows.length - 1].id })
+      : null;
+
   return {
-    items: items.rows.map(toMessage),
+    items: rows.map(toMessage),
     total: parseInt(total.rows[0].count, 10),
     unreadAdminCount: parseInt(unread.rows[0].count, 10),
     page,
     limit,
+    nextCursor,
   };
 }
 

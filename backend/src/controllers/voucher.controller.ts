@@ -39,6 +39,7 @@ export async function getVouchers(req: AuthenticatedRequest, res: Response, next
         total: result.total,
         page: result.page,
         limit: result.limit,
+        nextCursor: result.nextCursor,
       },
     });
   } catch (error) {

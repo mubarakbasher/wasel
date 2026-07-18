@@ -199,7 +199,7 @@ export async function updateUser(
   }
 
   if (setClauses.length === 0) {
-    throw new AppError(400, 'No fields to update');
+    throw new AppError(400, 'No fields to update', 'NO_FIELDS_TO_UPDATE');
   }
 
   setClauses.push(`updated_at = NOW()`);
@@ -213,7 +213,7 @@ export async function updateUser(
   );
 
   if (result.rowCount === 0) {
-    throw new AppError(404, 'User not found or cannot modify admin users');
+    throw new AppError(404, 'User not found or cannot modify admin users', 'CANNOT_MODIFY_ADMIN');
   }
 
   logger.info('Admin updated user', { userId, fields: Object.keys(data) });
@@ -244,12 +244,12 @@ export async function deleteUser(userId: string): Promise<void> {
 
     if (userResult.rowCount === 0) {
       await client.query('ROLLBACK');
-      throw new AppError(404, 'User not found');
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
     }
 
     if (userResult.rows[0].role === 'admin') {
       await client.query('ROLLBACK');
-      throw new AppError(403, 'Cannot delete admin users');
+      throw new AppError(403, 'Cannot delete admin users', 'CANNOT_MODIFY_ADMIN');
     }
 
     // 2. Snapshot RADIUS usernames across ALL routers owned by this user
@@ -427,7 +427,7 @@ export async function updateSubscription(
   }
 
   if (setClauses.length === 0) {
-    throw new AppError(400, 'No fields to update');
+    throw new AppError(400, 'No fields to update', 'NO_FIELDS_TO_UPDATE');
   }
 
   setClauses.push(`updated_at = NOW()`);
@@ -441,7 +441,7 @@ export async function updateSubscription(
   );
 
   if (result.rowCount === 0) {
-    throw new AppError(404, 'Subscription not found');
+    throw new AppError(404, 'Subscription not found', 'SUBSCRIPTION_NOT_FOUND');
   }
 
   logger.info('Admin updated subscription', { subId, fields: Object.keys(data) });
@@ -459,7 +459,7 @@ export async function deleteSubscription(subId: string): Promise<void> {
   );
 
   if (result.rowCount === 0) {
-    throw new AppError(404, 'Subscription not found');
+    throw new AppError(404, 'Subscription not found', 'SUBSCRIPTION_NOT_FOUND');
   }
 
   logger.info('Admin deleted subscription', { subId });
@@ -566,7 +566,7 @@ export async function updatePlan(
   }
 
   if (setClauses.length === 0) {
-    throw new AppError(400, 'No fields to update');
+    throw new AppError(400, 'No fields to update', 'NO_FIELDS_TO_UPDATE');
   }
 
   setClauses.push(`updated_at = NOW()`);
@@ -577,7 +577,7 @@ export async function updatePlan(
   );
 
   if (result.rowCount === 0) {
-    throw new AppError(404, 'Plan not found');
+    throw new AppError(404, 'Plan not found', 'PLAN_NOT_FOUND');
   }
 
   logger.info('Admin updated plan', { planId, fields: Object.keys(data) });
@@ -595,7 +595,7 @@ export async function deletePlan(planId: string): Promise<void> {
   );
 
   if (planResult.rowCount === 0) {
-    throw new AppError(404, 'Plan not found');
+    throw new AppError(404, 'Plan not found', 'PLAN_NOT_FOUND');
   }
 
   const tier = planResult.rows[0].tier;
@@ -610,6 +610,7 @@ export async function deletePlan(planId: string): Promise<void> {
     throw new AppError(
       409,
       `Cannot delete plan "${tier}" — it has existing subscriptions. Deactivate it instead.`,
+      'PLAN_HAS_SUBSCRIPTIONS',
     );
   }
 
@@ -705,6 +706,7 @@ export async function reviewPayment(
       throw new AppError(
         404,
         'Payment not found, already reviewed, or has no receipt uploaded',
+        'PAYMENT_NOT_FOUND',
       );
     }
 

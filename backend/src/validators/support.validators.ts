@@ -7,6 +7,8 @@ export const sendMessageSchema = z.object({
 export const listMessagesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(30),
+  /** Opaque keyset cursor from a previous response `meta.nextCursor`. */
+  cursor: z.string().max(512).optional(),
 });
 
 export const conversationUserIdParamSchema = z.object({
