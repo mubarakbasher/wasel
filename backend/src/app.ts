@@ -12,6 +12,16 @@ import routes from './routes';
 
 const app = express();
 
+// Trust exactly one proxy hop (the Nginx reverse proxy that fronts this app in
+// every deployed environment — see docs/deploy.md). With this set, Express
+// derives `req.ip` from the rightmost X-Forwarded-For entry added by that single
+// trusted hop, so the per-IP rate limiters (generalLimiter, authLimiter) key on
+// the real client instead of collapsing every request onto Nginx's socket
+// address. The hop count is pinned to `1` — NOT `true` — so a client cannot
+// spoof `req.ip` by injecting its own X-Forwarded-For beyond the one hop Nginx
+// overwrites.
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet());
 app.use(

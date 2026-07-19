@@ -20,10 +20,17 @@ export async function updatePreferences(
   userId: string,
   prefs: { category: string; enabled: boolean }[],
 ): Promise<void> {
+  // Collapse duplicate categories to a single row each (last occurrence wins),
+  // so the transaction below issues at most one INSERT per distinct category
+  // rather than one per submitted element. A Map keyed by category keeps the
+  // final value for each key while bounding the loop to the real category set.
+  const deduped = Array.from(
+    new Map(prefs.map((pref) => [pref.category, pref])).values(),
+  );
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const pref of prefs) {
+    for (const pref of deduped) {
       await client.query(
         `INSERT INTO notification_preferences (user_id, category, enabled)
          VALUES ($1, $2, $3)
@@ -33,7 +40,7 @@ export async function updatePreferences(
       );
     }
     await client.query('COMMIT');
-    logger.info('Notification preferences updated', { userId, count: prefs.length });
+    logger.info('Notification preferences updated', { userId, count: deduped.length });
   } catch (error) {
     await client.query('ROLLBACK');
     logger.error('Failed to update notification preferences', { error, userId });

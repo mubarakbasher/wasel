@@ -20,6 +20,14 @@ const notificationCategorySchema = z.enum([
   'support_reply',
 ]);
 
+// Cap the preferences array at the number of distinct categories that actually
+// exist (derived from the enum so it stays correct if categories are added or
+// removed). A legitimate update carries at most one entry per category, so this
+// bound closes the connection-exhaustion DoS where an authenticated caller PUTs
+// tens of thousands of (duplicate-allowed) entries and forces one serialized
+// INSERT round-trip each inside a single held transaction.
+export const MAX_NOTIFICATION_PREFERENCES = notificationCategorySchema.options.length;
+
 export const updatePreferencesSchema = z.object({
   preferences: z
     .array(
@@ -28,7 +36,11 @@ export const updatePreferencesSchema = z.object({
         enabled: z.boolean(),
       }),
     )
-    .min(1, 'At least one preference required'),
+    .min(1, 'At least one preference required')
+    .max(
+      MAX_NOTIFICATION_PREFERENCES,
+      `At most ${MAX_NOTIFICATION_PREFERENCES} preferences allowed`,
+    ),
 });
 
 export const listInboxQuerySchema = z.object({

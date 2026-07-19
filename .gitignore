@@ -29,3 +29,7 @@ mobile/android/build/
 CLAUDE_MD_ADDITION.md
 .claude/agents/
 .claude/skills/
+
+# Machine-local agent-tool mirrors (never commit)
+.agents/
+.codex/
