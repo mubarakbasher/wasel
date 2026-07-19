@@ -661,7 +661,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     //   BEGIN
     //   UPDATE subscriptions (guarded)
     //   INSERT voucher_meta
-    //   INSERT radcheck  (Cleartext-Password + Simultaneous-Use + Max-Total-Octets)
+    //   INSERT radcheck  (Cleartext-Password + Simultaneous-Use only — NO Max-Total-Octets)
     //   INSERT radreply  (Mikrotik-Total-Limit — no Session-Timeout since no validitySeconds)
     //   COMMIT
     mockClientQuery
@@ -699,6 +699,19 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     ]);
     // Must NOT contain the gigawords attribute for a ≤4 GB voucher
     expect(insertArgs).not.toContain('Mikrotik-Total-Limit-Gigawords');
+
+    // radcheck INSERT must contain only Cleartext-Password + Simultaneous-Use —
+    // NOT Max-Total-Octets (undefined in FreeRADIUS since max_total_octets
+    // sqlcounter was retired; its presence causes authorize to fail).
+    const radcheckInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radcheck'),
+    );
+    expect(radcheckInserts).toHaveLength(1);
+    const rcArgs = radcheckInserts[0][1] as unknown[];
+    expect(rcArgs).toContain('Cleartext-Password');
+    expect(rcArgs).toContain('Simultaneous-Use');
+    expect(rcArgs).not.toContain('Max-Total-Octets');
+    expect(rcArgs).not.toContain('Max-Total-Octets-Gigawords');
   });
 
   it('inserts Mikrotik-Total-Limit (low word) AND Mikrotik-Total-Limit-Gigawords for a >4 GB data voucher', async () => {
@@ -718,7 +731,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     //   BEGIN
     //   UPDATE subscriptions (guarded)
     //   INSERT voucher_meta
-    //   INSERT radcheck  (Cleartext-Password + Simultaneous-Use + Max-Total-Octets + Max-Total-Octets-Gigawords)
+    //   INSERT radcheck  (Cleartext-Password + Simultaneous-Use only — NO Max-Total-Octets/-Gigawords)
     //   INSERT radreply  (Mikrotik-Total-Limit + Mikrotik-Total-Limit-Gigawords in one batch)
     //   COMMIT
     mockClientQuery
@@ -761,6 +774,19 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
       ':=',
       String(GIGAWORDS),
     ]);
+
+    // radcheck INSERT must contain only Cleartext-Password + Simultaneous-Use —
+    // NOT Max-Total-Octets/-Gigawords (undefined in FreeRADIUS since the
+    // max_total_octets sqlcounter was retired).
+    const radcheckInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radcheck'),
+    );
+    expect(radcheckInserts).toHaveLength(1);
+    const rcArgs = radcheckInserts[0][1] as unknown[];
+    expect(rcArgs).toContain('Cleartext-Password');
+    expect(rcArgs).toContain('Simultaneous-Use');
+    expect(rcArgs).not.toContain('Max-Total-Octets');
+    expect(rcArgs).not.toContain('Max-Total-Octets-Gigawords');
   });
 
   it('batched radreply INSERT contains BOTH Session-Timeout AND Mikrotik-Total-Limit when data voucher has a validity window', async () => {

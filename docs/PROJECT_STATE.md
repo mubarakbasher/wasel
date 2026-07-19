@@ -155,6 +155,8 @@ Operator-reported: a **data**-limited voucher (e.g. 100 MB) kept working **past*
   4. Reconnect after the cap → re-auth rejected (cron latched `Auth-Type := Reject`).
   5. Regression: a time voucher still disconnects live at `Session-Timeout`.
 
+- **⚠️ Staging-caught regression + fix (migration `038`, 2026-07-19):** retiring the `max_total_octets` sqlcounter also **un-registered the `Max-Total-Octets` attribute name** (rlm_sqlcounter auto-registers its `check_name` at startup — it was never in a dictionary file). Leftover `radcheck`/`radgroupcheck` rows then made FreeRADIUS `authorize` abort with `sql: Failed to create the pair: Unknown name "Max-Total-Octets"` → **all data vouchers rejected** (`Login incorrect`). Fix: stopped writing that attribute (voucher `radcheck` + profile `radgroupcheck` paths now rely solely on the `Mikrotik-Total-Limit` reply; profiles moved to `radgroupreply`), and migration `038_drop_max_total_octets_checks.sql` deletes the dead rows from both check tables. **Redeploy is backend-only** — the migration purges the rows on boot and FreeRADIUS recovers on the next auth (no FR rebuild). Existing data *group profiles* need a one-time API resave to gain the reply attribute (noted in the migration).
+
 ## Updating a deployed VPS (pull → rebuild)
 Full runbooks: `docs/deploy.md` (§2 deploy, §7 useful commands) and `docs/STAGING.md`. Migrations **auto-run on backend boot** (idempotent), so a code pull is usually all that's needed. Quick reference:
 

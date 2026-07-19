@@ -150,11 +150,26 @@ export async function createProfile(
       );
     }
 
+    // Data limit: write Mikrotik-Total-Limit to radgroupreply (router-enforced byte
+    // ceiling), NOT Max-Total-Octets to radgroupcheck. The max_total_octets
+    // sqlcounter that registered that attribute name is retired; using it now
+    // causes FreeRADIUS authorize to fail with "Unknown name Max-Total-Octets".
+    // For >4 GB the value is split into a 32-bit low word (Mikrotik-Total-Limit)
+    // and a gigawords high word (Mikrotik-Total-Limit-Gigawords), matching the
+    // same split used in the voucher radreply path.
     if (data.totalData != null && data.totalData > 0) {
+      const lowWord = data.totalData % 4294967296;
       await client.query(
-        'INSERT INTO radgroupcheck (groupname, attribute, op, value) VALUES ($1, $2, $3, $4)',
-        [data.groupName, 'Max-Total-Octets', ':=', String(data.totalData)],
+        'INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES ($1, $2, $3, $4)',
+        [data.groupName, 'Mikrotik-Total-Limit', ':=', String(lowWord)],
       );
+      if (data.totalData > 4294967295) {
+        const gigawords = Math.floor(data.totalData / 4294967296);
+        await client.query(
+          'INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES ($1, $2, $3, $4)',
+          [data.groupName, 'Mikrotik-Total-Limit-Gigawords', ':=', String(gigawords)],
+        );
+      }
     }
 
     // Insert radgroupreply attributes
@@ -319,11 +334,24 @@ export async function updateProfile(
         [groupName, 'Max-All-Session', ':=', String(effectiveTotalTime)],
       );
     }
+    // Data limit: write Mikrotik-Total-Limit to radgroupreply instead of
+    // Max-Total-Octets to radgroupcheck — the max_total_octets sqlcounter that
+    // registered that attribute name is retired; its use now causes FreeRADIUS
+    // authorize to fail with "Unknown name Max-Total-Octets". For >4 GB values
+    // split into low word + gigawords, matching the voucher radreply path.
     if (effectiveTotalData != null && effectiveTotalData > 0) {
+      const lowWord = effectiveTotalData % 4294967296;
       await client.query(
-        'INSERT INTO radgroupcheck (groupname, attribute, op, value) VALUES ($1, $2, $3, $4)',
-        [groupName, 'Max-Total-Octets', ':=', String(effectiveTotalData)],
+        'INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES ($1, $2, $3, $4)',
+        [groupName, 'Mikrotik-Total-Limit', ':=', String(lowWord)],
       );
+      if (effectiveTotalData > 4294967295) {
+        const gigawords = Math.floor(effectiveTotalData / 4294967296);
+        await client.query(
+          'INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES ($1, $2, $3, $4)',
+          [groupName, 'Mikrotik-Total-Limit-Gigawords', ':=', String(gigawords)],
+        );
+      }
     }
 
     // Re-insert radgroupreply

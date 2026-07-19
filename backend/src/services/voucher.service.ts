@@ -444,32 +444,18 @@ async function insertRadiusEntriesV2(
   );
 
   // radcheck: limit attribute
+  // Data vouchers carry NO limit attribute in radcheck. The byte cap is enforced
+  // via Mikrotik-Total-Limit (+Gigawords) in radreply (router disconnects live
+  // sessions the instant the cap is reached) plus the usageLimitEnforcement cron
+  // + dataUsageCoaDisconnect CoA. Writing Max-Total-Octets here would break
+  // FreeRADIUS authorize now that the max_total_octets sqlcounter (which
+  // auto-registered that attribute name) has been retired.
   if (limitType === 'time') {
     // Max-All-Session: total allowed online time in seconds
     await client.query(
       'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
       [username, 'Max-All-Session', ':=', String(normalizedLimitValue)],
     );
-  } else {
-    // Data limit
-    if (normalizedLimitValue <= 4294967295) {
-      await client.query(
-        'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
-        [username, 'Max-Total-Octets', ':=', String(normalizedLimitValue)],
-      );
-    } else {
-      // Split into base + gigawords for values > 4GB
-      const gigawords = Math.floor(normalizedLimitValue / 4294967296);
-      const remainder = normalizedLimitValue % 4294967296;
-      await client.query(
-        'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
-        [username, 'Max-Total-Octets', ':=', String(remainder)],
-      );
-      await client.query(
-        'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
-        [username, 'Max-Total-Octets-Gigawords', ':=', String(gigawords)],
-      );
-    }
   }
 
   // Expiration is NOT set here — the validityExpiration job sets it
@@ -490,11 +476,9 @@ async function insertRadiusEntriesV2(
   }
 
   // Mikrotik-Total-Limit is the router-enforced byte ceiling (reply attribute).
-  // The router disconnects the live session the instant the cap is reached,
-  // unlike radcheck Max-Total-Octets which only blocks new logins.
+  // The router disconnects the live session the instant the cap is reached.
   // For >4 GB limits the value is split into a 32-bit low word
-  // (Mikrotik-Total-Limit) and a gigawords high word, exactly matching
-  // the existing Max-Total-Octets split in radcheck above.
+  // (Mikrotik-Total-Limit) and a gigawords high word (Mikrotik-Total-Limit-Gigawords).
   if (limitType === 'data') {
     const lowWord = normalizedLimitValue % 4294967296;
     await client.query(
@@ -618,21 +602,16 @@ export async function createVouchers(
       rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
       rcValues.push(cred.username, 'Simultaneous-Use', ':=', String(VOUCHER_SIMULTANEOUS_USE));
 
-      // Limit attribute
+      // Limit attribute (radcheck)
+      // Data vouchers: NO limit attribute written to radcheck. The byte cap is
+      // enforced via Mikrotik-Total-Limit (+Gigawords) in radreply below, plus
+      // the usageLimitEnforcement cron + dataUsageCoaDisconnect CoA. Writing
+      // Max-Total-Octets to radcheck would cause FreeRADIUS authorize to fail
+      // with "Unknown name Max-Total-Octets" now that the max_total_octets
+      // sqlcounter (which auto-registered that attribute name) is retired.
       if (data.limitType === 'time') {
         rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
         rcValues.push(cred.username, 'Max-All-Session', ':=', String(normalizedValue));
-      } else if (normalizedValue <= 4294967295) {
-        rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
-        rcValues.push(cred.username, 'Max-Total-Octets', ':=', String(normalizedValue));
-      } else {
-        // > 4 GB: split into base + gigawords
-        const gigawords = Math.floor(normalizedValue / 4294967296);
-        const remainder = normalizedValue % 4294967296;
-        rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
-        rcValues.push(cred.username, 'Max-Total-Octets', ':=', String(remainder));
-        rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
-        rcValues.push(cred.username, 'Max-Total-Octets-Gigawords', ':=', String(gigawords));
       }
     }
 
