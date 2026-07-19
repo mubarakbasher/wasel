@@ -12,11 +12,14 @@ RUN npm run build
 FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 # - wireguard-tools: wg CLI used by wireguardPeer.ts
-# - freeradius: ships radclient (synthetic RADIUS auth probe in
-#   routerHealth.service.ts) and radmin (read-only `show clients` probes
-#   via the freeradius_control socket).
+# - freeradius: ships radmin (read-only `show clients` probes via the
+#   freeradius_control socket). It does NOT ship radclient on Alpine.
+# - freeradius-utils: ships radclient (CoA disconnects in
+#   radclient.service.ts and the synthetic RADIUS auth probe in
+#   routerHealth.service.ts). Without it every disconnect spawn fails
+#   with ENOENT — found live on prod 2026-07-20.
 # - iputils: `ping` used by the tunnel-reachability health probe
-RUN apk add --no-cache wireguard-tools libcap freeradius iputils su-exec \
+RUN apk add --no-cache wireguard-tools libcap freeradius freeradius-utils iputils su-exec \
     && setcap cap_net_admin+eip /usr/bin/wg
 
 WORKDIR /app

@@ -7,6 +7,8 @@ Scope of this promotion: ~50 commits, 14 new migrations (`025`→`038`), FreeRAD
 
 Target: `wa-sel.com`, repo `/opt/wasel`, branch `main`, env `/etc/wasel/compose.env`. Every compose command needs `--env-file /etc/wasel/compose.env` (or rely on the `/opt/wasel/.env` copy).
 
+> **AS EXECUTED (2026-07-20 ~23:00–23:10 UTC · all gates passed):** the prod repo actually lives at **`/root/wasel`**, not `/opt/wasel` (backups went to `/opt/wasel-backups/`); there is **no `/etc/wasel/backup.key`** — the plaintext-gzip fallback was used (86 MB). Rollback SHA `92878e2e`; deployed `d58c936`. Verified live: 14 migrations, FR clean start, data voucher → Access-Accept **with `Mikrotik-Total-Limit` + `Gigawords`** (5 GiB voucher), time voucher → `Session-Timeout=14400`, organic logins flowing. **Found live:** Alpine's `freeradius` apk does NOT ship `radclient` → every CoA disconnect spawn failed `ENOENT`; hot-patched with `apk add freeradius-utils` in the running backend + permanent Dockerfile fix. Phase 4b turned out moot: zero group profiles and zero routers with an applied hotspot template (settings converge via health remediation).
+
 ---
 
 ## Phase 0 — Pre-deploy safety gates (do NOT skip)
@@ -92,9 +94,13 @@ docker compose --env-file /etc/wasel/compose.env build backend admin freeradius 
 
 **2.1 Validate the freshly-built FreeRADIUS config BEFORE it replaces the running FR** (entrypoint execs `freeradius -f` with no validation; a syntax error in the new REJECT unlang = crash-looping FR = total auth outage). Throwaway check — does not touch the live container:
 ```bash
-docker compose --env-file /etc/wasel/compose.env run --rm --no-deps --entrypoint sh freeradius -c \
-  'envsubst "$RADIUS_DB_HOST $RADIUS_DB_PORT $RADIUS_DB_USER $RADIUS_DB_PASS $RADIUS_DB_NAME" < /etc/freeradius/sql.template > /etc/freeradius/mods-enabled/sql && freeradius -XC'
+docker compose --env-file /etc/wasel/compose.env run --rm --no-deps -T freeradius freeradius -XC
 ```
+This runs the image's real entrypoint (which does the envsubst with the correct single-quoted
+variable list) and then `freeradius -XC` instead of `-f` — the exact production startup path.
+*(The original inline-envsubst variant of this command was broken: its double-quoted `"$RADIUS_DB_HOST …"`
+list gets shell-expanded to values before envsubst sees it, so nothing is substituted.)*
+
 **REQUIRE** the tail to print `Configuration appears to be OK`. If it errors: **ABORT — do not recreate FR.**
 
 ## Phase 3 — Recreate, ORDERED (backend FIRST — this is the blocker fix)
