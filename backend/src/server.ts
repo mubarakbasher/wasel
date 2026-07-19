@@ -12,6 +12,7 @@ import { startSubscriptionNotificationJob } from './jobs/subscriptionNotificatio
 import { startQuotaMonitorJob } from './jobs/quotaMonitor';
 import { startValidityExpirationJob } from './jobs/validityExpiration';
 import { startValidityCoaDisconnectJob } from './jobs/validityCoaDisconnect';
+import { startDataUsageCoaDisconnectJob } from './jobs/dataUsageCoaDisconnect';
 import { startUsageLimitEnforcementJob } from './jobs/usageLimitEnforcement';
 import { startStaleSessionReaperJob } from './jobs/staleSessionReaper';
 import { startMonitoring } from './services/wireguardMonitor';
@@ -118,6 +119,7 @@ async function startServer(): Promise<void> {
     startQuotaMonitorJob();
     startValidityExpirationJob();
     startValidityCoaDisconnectJob();
+    startDataUsageCoaDisconnectJob();
     startUsageLimitEnforcementJob();
     startStaleSessionReaperJob();
     startMonitoring();

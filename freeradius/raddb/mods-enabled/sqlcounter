@@ -1,8 +1,10 @@
 #
-#  Wasel — SQL-based counters for enforcing time and data limits.
+#  Wasel — SQL-based counters for enforcing cumulative time limits.
 #
-#  These counters query the radacct table to track cumulative usage
-#  and compare against check attributes (Max-All-Session, Max-Total-Octets).
+#  This counter queries the radacct table to track cumulative usage
+#  and compare against the Max-All-Session check attribute.
+#  (Cumulative-data enforcement previously lived here as a second
+#  sqlcounter; see the NOTE further down for why it was retired.)
 #
 
 #
@@ -28,24 +30,19 @@ sqlcounter max_all_session {
 }
 
 #
-#  Total data (input + output octets) counter — no reset.
-#  Checks the Max-Total-Octets attribute in radcheck/radgroupcheck.
+#  NOTE: the former cumulative-data sqlcounter has been retired.
+#  rlm_sqlcounter binds its check attribute to a 32-bit integer, so it
+#  cannot represent byte limits above 4 GB (it would reject large data
+#  vouchers early on the low 32 bits of the split limit) — see the
+#  FreeRADIUS wiki page for rlm_sqlcounter (documents check_name /
+#  reply_name semantics):
+#      https://wiki.freeradius.org/modules/Rlm_sqlcounter
+#  Data-limit enforcement now lives on the router via the
+#  Mikrotik-Total-Limit (+ Mikrotik-Total-Limit-Gigawords) reply
+#  attributes written to radreply — see the MikroTik RADIUS
+#  attributes reference:
+#      https://help.mikrotik.com/docs/spaces/ROS/pages/328097/RADIUS
+#  plus the backend usageLimitEnforcement (auth-time latch) and
+#  dataUsageCoaDisconnect (live CoA backstop) jobs — full 64-bit
+#  precision.
 #
-sqlcounter max_total_octets {
-    sql_module_instance = sql
-    dialect = postgresql
-
-    counter_name = Max-Total-Octets
-    check_name = Max-Total-Octets
-    reply_name = Session-Timeout
-    reply_message_name = Reply-Message
-
-    key = User-Name
-
-    reset = never
-
-    query = "\
-        SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0) \
-        FROM radacct \
-        WHERE username = '%{${key}}'"
-}

@@ -645,6 +645,186 @@ describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => 
   });
 });
 
+// ─── Mikrotik-Total-Limit radreply tests ─────────────────────────────────────
+
+describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attributes', () => {
+  // 100 MB in bytes (≤ 4 GB → only the base attribute, no gigawords)
+  const DATA_100MB = 100 * 1024 * 1024; // 104857600
+
+  it('inserts exactly one Mikrotik-Total-Limit radreply for a ≤4 GB data voucher (no validitySeconds)', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
+
+    // Transaction:
+    //   BEGIN
+    //   UPDATE subscriptions (guarded)
+    //   INSERT voucher_meta
+    //   INSERT radcheck  (Cleartext-Password + Simultaneous-Use + Max-Total-Octets)
+    //   INSERT radreply  (Mikrotik-Total-Limit — no Session-Timeout since no validitySeconds)
+    //   COMMIT
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                                        // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })   // UPDATE subscriptions
+      .mockResolvedValueOnce({ rows: [{ ...MOCK_VOUCHER_ROW, limit_type: 'data', limit_value: DATA_100MB }] })
+      .mockResolvedValueOnce(undefined)                                        // INSERT radcheck
+      .mockResolvedValueOnce(undefined)                                        // INSERT radreply
+      .mockResolvedValueOnce(undefined);                                       // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'data', limitValue: 100, limitUnit: 'MB', count: 1, price: 5 });
+
+    expect(res.status).toBe(201);
+
+    // Exactly one radreply INSERT call
+    const radreplyInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radreply'),
+    );
+    expect(radreplyInserts).toHaveLength(1);
+
+    // Assert exact 4-tuple for the Mikrotik-Total-Limit row (catches placeholder/column-index bugs).
+    // Username is a randomly generated 8-digit code — assert structure, not the exact value.
+    const insertArgs = radreplyInserts[0][1] as unknown[];
+    // Row layout: [username, attribute, op, value] — first row starts at index 0
+    expect(insertArgs.slice(0, 4)).toEqual([
+      expect.stringMatching(/^\d{8}$/),
+      'Mikrotik-Total-Limit',
+      ':=',
+      String(DATA_100MB),
+    ]);
+    // Must NOT contain the gigawords attribute for a ≤4 GB voucher
+    expect(insertArgs).not.toContain('Mikrotik-Total-Limit-Gigawords');
+  });
+
+  it('inserts Mikrotik-Total-Limit (low word) AND Mikrotik-Total-Limit-Gigawords for a >4 GB data voucher', async () => {
+    // 5 GB = 5 * 1024^3 = 5368709120 bytes
+    // low word  = 5368709120 % 4294967296 = 1073741824
+    // gigawords = Math.floor(5368709120 / 4294967296) = 1
+    const DATA_5GB = 5 * 1024 * 1024 * 1024; // 5368709120
+    const LOW_WORD = DATA_5GB % 4294967296;   // 1073741824
+    const GIGAWORDS = Math.floor(DATA_5GB / 4294967296); // 1
+
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
+
+    // Transaction:
+    //   BEGIN
+    //   UPDATE subscriptions (guarded)
+    //   INSERT voucher_meta
+    //   INSERT radcheck  (Cleartext-Password + Simultaneous-Use + Max-Total-Octets + Max-Total-Octets-Gigawords)
+    //   INSERT radreply  (Mikrotik-Total-Limit + Mikrotik-Total-Limit-Gigawords in one batch)
+    //   COMMIT
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                                        // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })   // UPDATE subscriptions
+      .mockResolvedValueOnce({ rows: [{ ...MOCK_VOUCHER_ROW, limit_type: 'data', limit_value: DATA_5GB }] })
+      .mockResolvedValueOnce(undefined)                                        // INSERT radcheck
+      .mockResolvedValueOnce(undefined)                                        // INSERT radreply
+      .mockResolvedValueOnce(undefined);                                       // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'data', limitValue: 5, limitUnit: 'GB', count: 1, price: 20 });
+
+    expect(res.status).toBe(201);
+
+    // Exactly one radreply INSERT call (both attributes go into the same batch)
+    const radreplyInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radreply'),
+    );
+    expect(radreplyInserts).toHaveLength(1);
+
+    // Assert exact 4-tuples: first row = Mikrotik-Total-Limit (low word),
+    // second row = Mikrotik-Total-Limit-Gigawords.  This catches any
+    // placeholder/column-index or wrong-value bug.
+    // Username is a randomly generated 8-digit code — assert structure, not the exact value.
+    const insertArgs = radreplyInserts[0][1] as unknown[];
+    expect(insertArgs.slice(0, 4)).toEqual([
+      expect.stringMatching(/^\d{8}$/),
+      'Mikrotik-Total-Limit',
+      ':=',
+      String(LOW_WORD),
+    ]);
+    expect(insertArgs.slice(4, 8)).toEqual([
+      expect.stringMatching(/^\d{8}$/),
+      'Mikrotik-Total-Limit-Gigawords',
+      ':=',
+      String(GIGAWORDS),
+    ]);
+  });
+
+  it('batched radreply INSERT contains BOTH Session-Timeout AND Mikrotik-Total-Limit when data voucher has a validity window', async () => {
+    // 200 MB = 209715200 bytes (≤4 GB path)
+    const DATA_200MB = 200 * 1024 * 1024; // 209715200
+    const VALIDITY = 86400; // 1 day in seconds
+
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
+
+    // Transaction:
+    //   BEGIN
+    //   UPDATE subscriptions (guarded)
+    //   INSERT voucher_meta
+    //   INSERT radcheck
+    //   INSERT radreply  (Session-Timeout + Mikrotik-Total-Limit in ONE batch — the restructured guard)
+    //   COMMIT
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                                        // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })   // UPDATE subscriptions
+      .mockResolvedValueOnce({ rows: [{ ...MOCK_VOUCHER_ROW, limit_type: 'data', limit_value: DATA_200MB, validity_seconds: VALIDITY }] })
+      .mockResolvedValueOnce(undefined)                                        // INSERT radcheck
+      .mockResolvedValueOnce(undefined)                                        // INSERT radreply (both attrs)
+      .mockResolvedValueOnce(undefined);                                       // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'data', limitValue: 200, limitUnit: 'MB', count: 1, price: 5, validitySeconds: VALIDITY });
+
+    expect(res.status).toBe(201);
+
+    // Must be exactly ONE radreply INSERT call (not two separate ones)
+    const radreplyInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radreply'),
+    );
+    expect(radreplyInserts).toHaveLength(1);
+
+    // The single batch must contain both Session-Timeout and Mikrotik-Total-Limit rows.
+    // Username is a randomly generated 8-digit code — assert structure, not the exact value.
+    const insertArgs = radreplyInserts[0][1] as unknown[];
+    // Row 0: Session-Timeout
+    expect(insertArgs.slice(0, 4)).toEqual([
+      expect.stringMatching(/^\d{8}$/),
+      'Session-Timeout',
+      ':=',
+      String(VALIDITY),
+    ]);
+    // Row 1: Mikrotik-Total-Limit (lowWord == DATA_200MB for ≤4 GB)
+    expect(insertArgs.slice(4, 8)).toEqual([
+      expect.stringMatching(/^\d{8}$/),
+      'Mikrotik-Total-Limit',
+      ':=',
+      String(DATA_200MB),
+    ]);
+    // No gigawords row for a ≤4 GB voucher
+    expect(insertArgs).not.toContain('Mikrotik-Total-Limit-Gigawords');
+  });
+});
+
 // ─── allocateVoucherUsernames unit tests ─────────────────────────────────────
 
 describe('allocateVoucherUsernames', () => {

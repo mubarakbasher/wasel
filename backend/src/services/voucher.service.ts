@@ -416,6 +416,12 @@ type PgClient = { query: (...args: any[]) => Promise<any> };
  * NAS-IP-Address AVP (RFC 2865 §5.4), which RouterOS sets to the router's
  * own IP — not the WireGuard peer IP — so the comparison structurally
  * could not succeed on this deployment's topology.
+ *
+ * NOTE: This function has no callers today. It is intentionally kept in sync
+ * with the `createVouchers` batch path as a template for a future
+ * group-profile route (radgroupreply), so the mirrored Mikrotik-Total-Limit
+ * block is not accidental drift — it is the intended single source of truth
+ * for what a data voucher's RADIUS entries should look like.
  */
 async function insertRadiusEntriesV2(
   client: PgClient,
@@ -481,6 +487,27 @@ async function insertRadiusEntriesV2(
       'INSERT INTO radreply (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
       [username, 'Session-Timeout', ':=', String(validitySeconds)],
     );
+  }
+
+  // Mikrotik-Total-Limit is the router-enforced byte ceiling (reply attribute).
+  // The router disconnects the live session the instant the cap is reached,
+  // unlike radcheck Max-Total-Octets which only blocks new logins.
+  // For >4 GB limits the value is split into a 32-bit low word
+  // (Mikrotik-Total-Limit) and a gigawords high word, exactly matching
+  // the existing Max-Total-Octets split in radcheck above.
+  if (limitType === 'data') {
+    const lowWord = normalizedLimitValue % 4294967296;
+    await client.query(
+      'INSERT INTO radreply (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+      [username, 'Mikrotik-Total-Limit', ':=', String(lowWord)],
+    );
+    if (normalizedLimitValue > 4294967295) {
+      const gigawords = Math.floor(normalizedLimitValue / 4294967296);
+      await client.query(
+        'INSERT INTO radreply (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+        [username, 'Mikrotik-Total-Limit-Gigawords', ':=', String(gigawords)],
+      );
+    }
   }
 }
 
@@ -614,19 +641,42 @@ export async function createVouchers(
       rcValues,
     );
 
-    // ── Batched INSERT: radreply (Session-Timeout) ────────────────────────────
-    if (data.validitySeconds && data.validitySeconds > 0) {
+    // ── Batched INSERT: radreply (Session-Timeout + Mikrotik-Total-Limit) ──────
+    // Build the full row list first, then run a single INSERT when any rows
+    // were added. Session-Timeout is added for every voucher when a validity
+    // window is set; Mikrotik-Total-Limit (and Gigawords for >4 GB limits) is
+    // added for every data voucher so the router enforces the byte ceiling live.
+    //
+    // lowWord / rrGigawords are batch-constant (all vouchers share the same
+    // normalizedValue) — compute them once here rather than inside the loop.
+    {
       const rrValues: unknown[] = [];
       const rrPlaceholders: string[] = [];
       let rrIdx = 1;
+      const rrLowWord = data.limitType === 'data' ? normalizedValue % 4294967296 : 0;
+      const rrGigawords = data.limitType === 'data' && normalizedValue > 4294967295
+        ? Math.floor(normalizedValue / 4294967296)
+        : 0;
       for (const cred of credentials) {
-        rrPlaceholders.push(`($${rrIdx++}, $${rrIdx++}, $${rrIdx++}, $${rrIdx++})`);
-        rrValues.push(cred.username, 'Session-Timeout', ':=', String(data.validitySeconds));
+        if (data.validitySeconds && data.validitySeconds > 0) {
+          rrPlaceholders.push(`($${rrIdx++}, $${rrIdx++}, $${rrIdx++}, $${rrIdx++})`);
+          rrValues.push(cred.username, 'Session-Timeout', ':=', String(data.validitySeconds));
+        }
+        if (data.limitType === 'data') {
+          rrPlaceholders.push(`($${rrIdx++}, $${rrIdx++}, $${rrIdx++}, $${rrIdx++})`);
+          rrValues.push(cred.username, 'Mikrotik-Total-Limit', ':=', String(rrLowWord));
+          if (normalizedValue > 4294967295) {
+            rrPlaceholders.push(`($${rrIdx++}, $${rrIdx++}, $${rrIdx++}, $${rrIdx++})`);
+            rrValues.push(cred.username, 'Mikrotik-Total-Limit-Gigawords', ':=', String(rrGigawords));
+          }
+        }
       }
-      await client.query(
-        `INSERT INTO radreply (username, attribute, op, value) VALUES ${rrPlaceholders.join(', ')}`,
-        rrValues,
-      );
+      if (rrPlaceholders.length > 0) {
+        await client.query(
+          `INSERT INTO radreply (username, attribute, op, value) VALUES ${rrPlaceholders.join(', ')}`,
+          rrValues,
+        );
+      }
     }
 
     await client.query('COMMIT');
