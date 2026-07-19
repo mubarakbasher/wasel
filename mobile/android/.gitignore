@@ -12,3 +12,7 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Backup TLS private key for the certificate-pin backup pin (see lib/services/cert_pinning.dart).
+# Store a copy off this machine alongside the keystore; losing it kills the backup pin's value.
+wasel-backup-tls.key

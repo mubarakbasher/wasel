@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground: Wasel wi-fi monogram (blue arcs + orange dot).
+  Viewport: 108×108dp.  All geometry sits inside the API-26 safe zone
+  (centre 66×66dp, i.e. x∈[21,87], y∈[21,87]).
+
+  Arc geometry — three concentric arcs centred at (54, 74), each spanning
+  ~130° (65° either side of vertical), drawn with rounded stroke caps:
+    inner  radius 13dp  endpoints (42.22, 68.50) → (65.78, 68.50)
+    middle radius 23dp  endpoints (33.16, 64.27) → (74.84, 64.27)
+    outer  radius 33dp  endpoints (24.10, 60.04) → (83.90, 60.04)
+  Stroke 5.5dp, colour #1E88E5 (Wasel brand blue).
+  Dot: filled circle r=5dp at (54, 74), colour #F5A623 (Wasel orange).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer arc (radius 33) -->
+    <path
+        android:pathData="M 24.10,60.04 A 33,33 0 0,1 83.90,60.04"
+        android:strokeColor="#1E88E5"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- Middle arc (radius 23) -->
+    <path
+        android:pathData="M 33.16,64.27 A 23,23 0 0,1 74.84,64.27"
+        android:strokeColor="#1E88E5"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- Inner arc (radius 13) -->
+    <path
+        android:pathData="M 42.22,68.50 A 13,13 0 0,1 65.78,68.50"
+        android:strokeColor="#1E88E5"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- Orange dot — two 180° clockwise arcs forming a full circle -->
+    <path
+        android:pathData="M 54,69 A 5,5 0 1,1 54,79 A 5,5 0 1,1 54,69 Z"
+        android:fillColor="#F5A623" />
+
+</vector>

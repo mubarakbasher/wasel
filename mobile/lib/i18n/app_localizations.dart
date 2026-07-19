@@ -735,7 +735,6 @@ class AppLocalizations {
     'payment.includeReference': 'Include your reference code in the transfer description.',
     'payment.receiptSubmitted': 'Receipt Submitted',
     'payment.receiptSubmittedDesc': 'Your payment is being reviewed. You will be notified once your subscription is activated.',
-    'payment.uploadReceipt': 'Upload Receipt',
     'payment.receiptUrlDesc': 'Provide a URL to your payment receipt (e.g., image upload link or screenshot URL).',
     'payment.receiptUrl': 'Receipt URL',
     'payment.receiptUrlRequired': 'Receipt URL is required',

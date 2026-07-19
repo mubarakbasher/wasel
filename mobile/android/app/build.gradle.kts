@@ -32,7 +32,7 @@ android {
     defaultConfig {
         applicationId = "com.wasel.wasel"
         minSdk = 26
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36 // pinned — flutter.targetSdkVersion resolves to 36 (FlutterExtension.kt); explicit for store predictability
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

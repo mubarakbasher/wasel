@@ -26,7 +26,7 @@
 
 **Proof points to cite:** live in production with paying users (wa-sel.com); adversarially-verified security audit with all Critical/High findings fixed; AES-256-GCM credential encryption; RADIUS never exposed to the internet; 500+ automated tests across the stack.
 
-**Claims to AVOID until true:** iOS availability (no release track) · certificate-pinning as a guarantee (currently a no-op) · PDF report export (returns 501; CSV works) · "24/7 monitored / SLA" (no monitoring yet) · automated/card payments · non-Mikrotik routers.
+**Claims to AVOID until true:** iOS availability (no release track) · PDF report export (returns 501; CSV works) · "24/7 monitored / SLA" (no monitoring yet) · automated/card payments · non-Mikrotik routers. *(Certificate pinning became real on 2026-07-19 — SPKI pins with a CI regression test against the live leaf — and may now be claimed.)*
 
 ## 3. Competitive landscape (condensed)
 

@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:asn1lib/asn1lib.dart';
-import 'package:crypto/crypto.dart' show sha256;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
@@ -11,32 +9,8 @@ import 'package:go_router/go_router.dart';
 import '../config/app_config.dart';
 import '../navigation/app_router.dart' show appNavigatorKey;
 import '../utils/error_messages.dart';
+import 'cert_pinning.dart' show kPinPrimary, kPinBackup, spkiSha256;
 import 'secure_storage.dart';
-
-// ---------------------------------------------------------------------------
-// Certificate pinning — SPKI SHA-256 pins for api.wa-sel.com
-//
-// Primary: pin of the current leaf certificate. Rotates every ~90 days when
-// the leaf is renewed.
-// Backup: pin of the issuing intermediate CA. Stable for years; survives
-// leaf rotations and lets us recover from a compromised primary without
-// shipping an app update.
-//
-// To refresh the primary (leaf) pin:
-//   echo | openssl s_client -connect api.wa-sel.com:443 -servername api.wa-sel.com 2>/dev/null \
-//     | openssl x509 -pubkey -noout \
-//     | openssl pkey -pubin -outform der \
-//     | openssl dgst -sha256 -binary | openssl enc -base64
-//
-// To refresh the backup (intermediate CA) pin — only when the CA changes:
-//   echo | openssl s_client -servername api.wa-sel.com -connect api.wa-sel.com:443 -showcerts 2>/dev/null \
-//     | awk 'BEGIN{c=0} /BEGIN CERTIFICATE/{c++} c==2,/END CERTIFICATE/' \
-//     | openssl x509 -pubkey -noout \
-//     | openssl pkey -pubin -outform der \
-//     | openssl dgst -sha256 -binary | openssl enc -base64
-// ---------------------------------------------------------------------------
-const _kPinPrimary = 'Mh+xVjeEin+YcN+tBVkpv5L9gicHLflwqHGPEb2VAWA=';
-const _kPinBackup = 'iFvwVyJSxnQdyaUvUERIf+8qk7gRze3612JMwoO3zdU=';
 
 /// Fields whose values are always replaced with '[REDACTED]' in logs.
 const _kRedactedFields = {
@@ -424,47 +398,24 @@ class ApiClient {
   /// TLS connection, so a CA-valid MITM certificate is still checked against
   /// the pins.
   ///
-  /// The pins are the SHA-256 of the SubjectPublicKeyInfo (SPKI) — see the
-  /// openssl recipe at the top of this file. They MUST be verified against the
-  /// live api.wa-sel.com certificate on staging before any prod promotion.
+  /// Both pins are leaf-key pins — see cert_pinning.dart for the full
+  /// rationale and rotation procedure.
   IOHttpClientAdapter _pinnedAdapter() {
     return IOHttpClientAdapter(
       validateCertificate: (cert, host, port) {
         if (cert == null) return false;
-        final spki = _spkiSha256(cert.der);
+        final spki = spkiSha256(cert.der);
         if (spki == null) {
           debugPrint('[CertPin] could not extract SPKI for $host');
           return false;
         }
-        final allowed = spki == _kPinPrimary || spki == _kPinBackup;
+        final allowed = spki == kPinPrimary || spki == kPinBackup;
         if (!allowed) {
           debugPrint('[CertPin] REJECTED spki=$spki host=$host');
         }
         return allowed;
       },
     );
-  }
-
-  /// Extracts the SubjectPublicKeyInfo from a certificate DER and returns its
-  /// base64 SHA-256. The SPKI is the only element of TBSCertificate shaped
-  /// `SEQUENCE { AlgorithmIdentifier(SEQUENCE), subjectPublicKey(BIT STRING) }`,
-  /// so we locate it by that shape (robust to the optional version tag offset).
-  static String? _spkiSha256(Uint8List certDer) {
-    try {
-      final cert = ASN1Parser(certDer).nextObject() as ASN1Sequence;
-      final tbs = cert.elements[0] as ASN1Sequence;
-      for (final el in tbs.elements) {
-        if (el is ASN1Sequence &&
-            el.elements.length == 2 &&
-            el.elements[0] is ASN1Sequence &&
-            el.elements[1] is ASN1BitString) {
-          return base64.encode(sha256.convert(el.encodedBytes).bytes);
-        }
-      }
-    } catch (_) {
-      // Fall through to null -> connection rejected (fail closed).
-    }
-    return null;
   }
 }
 

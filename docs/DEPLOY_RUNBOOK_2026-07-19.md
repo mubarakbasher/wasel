@@ -54,6 +54,26 @@ docker compose --env-file /etc/wasel/compose.env exec -T postgres psql -U wasel 
 sudo ufw status | grep 3000 || sudo ufw allow from 10.10.0.0/16 to any port 3000 proto tcp comment 'Hotspot template fetch over WG'
 ```
 
+**0.7 Pin-stability: certbot reuse_key (REQUIRED — mobile release APK pins the current TLS key)**
+
+The signed release APK hard-pins the SPKI of the `api.wa-sel.com` leaf certificate (SHA-256 Base64 = `Xak9G0tg0OqaD3D3cNK5q82wLw2/OeXH5YcUn56TUgA=`, Let's Encrypt leaf valid Jun 3 – Sep 1 2026). By default, certbot generates a **new key pair** at each renewal (~90 days, so early August is the next renewal window for this cert). A new key pair means a new SPKI, which silently invalidates the pin in every installed release APK — the app connects, the pin check fails, and HTTPS dies with no useful error to the user. Every operator on the current APK version is bricked until they force-update.
+
+The fix is one line: tell certbot to reuse the existing private key on renewal. The certificate is still rotated on schedule; only the key is preserved.
+
+```bash
+# Add reuse_key = True under [renewalparams] if not already set:
+grep -q reuse_key /etc/letsencrypt/renewal/api.wa-sel.com.conf \
+  || sudo sed -i '/^\[renewalparams\]/a reuse_key = True' \
+       /etc/letsencrypt/renewal/api.wa-sel.com.conf
+
+# Verify the dry-run completes without error (no actual renewal):
+sudo certbot renew --cert-name api.wa-sel.com --dry-run
+```
+
+The dry-run should report `Simulating renewal of an existing certificate` and end with `Congratulations, all simulated renewals succeeded`. If it errors, inspect `/etc/letsencrypt/renewal/api.wa-sel.com.conf` — the `[renewalparams]` section must be present (created by the original `certbot --nginx` run).
+
+> **IMPORTANT — if you ever rotate the key deliberately** (e.g. compromise): update `kPinPrimary`/`kPinBackup` in `mobile/lib/services/cert_pinning.dart` (enforced via Dio's `IOHttpClientAdapter.validateCertificate` in `api_client.dart`), regenerate the test fixture `mobile/test/fixtures/api_wa_sel_com_leaf.der` from the new leaf cert, run `flutter test`, rebuild + re-sign the APK, and **distribute the forced update BEFORE cutting over the server to the new certificate**. An installed APK with the old pin + a new server cert = broken app for every user who has not updated.
+
 ## Phase 1 — Promote (local machine)
 
 ```bash
