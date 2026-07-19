@@ -138,6 +138,42 @@ server default {
         #  On Access-Reject, still log to radpostauth for auditing
         #
         Post-Auth-Type REJECT {
+            #  Wasel: surface the real reject reason as Reply-Message so the MikroTik
+            #  captive-portal login page can show it (expired / disabled / over-limit)
+            #  instead of the generic "invalid username or password". Derived at reject
+            #  time from voucher_meta + the radcheck Expiration row. This runs ONLY on
+            #  rejects; on an empty/error result it sets nothing and the page falls back
+            #  to RouterOS's default string, so it can never affect a successful login.
+            #
+            #  Belt-and-suspenders: the %{sql:} xlat already auto-escapes the
+            #  User-Name expansion in FR 3.2, but since User-Name is attacker-
+            #  controllable on the reject path we additionally gate the whole
+            #  lookup on a strict voucher-username character class. A malformed
+            #  username simply gets no custom Reply-Message (RouterOS default),
+            #  which is the right UX for a wrong-code attempt anyway. The
+            #  radpostauth-logging `sql` call stays OUTSIDE this guard so every
+            #  reject is still audited.
+            if (&User-Name =~ /^[A-Za-z0-9._-]+$/) {
+                update control {
+                    &Tmp-String-0 := "%{sql: \
+                        SELECT CASE \
+                          WHEN vm.status = 'disabled' THEN 'voucher disabled' \
+                          WHEN EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = vm.radius_username \
+                               AND rc.attribute = 'Expiration' \
+                               AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS') AT TIME ZONE 'UTC' < NOW()) \
+                            THEN 'voucher expired' \
+                          WHEN vm.status = 'expired' AND vm.limit_type = 'data' THEN 'data limit reached' \
+                          WHEN vm.status = 'expired' AND vm.limit_type = 'time' THEN 'time limit reached' \
+                          WHEN vm.status = 'expired' THEN 'voucher expired' \
+                          ELSE '' END \
+                        FROM voucher_meta vm WHERE vm.radius_username = '%{User-Name}' LIMIT 1}"
+                }
+                if (&control:Tmp-String-0 != '') {
+                    update reply {
+                        &Reply-Message := "%{control:Tmp-String-0}"
+                    }
+                }
+            }
             sql
         }
     }

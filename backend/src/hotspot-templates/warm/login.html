@@ -82,6 +82,7 @@ $(if chap-id)<script type="text/javascript" src="md5.js"></script>$(endif)
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
             <span id="err-text">$(error)</span>
             <span id="err-raw" style="display:none">$(error)</span>
+            <span id="err-orig" style="display:none">$(error-orig)</span>
           </div>
           $(endif)
           <form name="login" action="$(link-login-only)" method="post" onsubmit="return doLogin()">
@@ -131,6 +132,9 @@ var I18N = {
 };
 
 var ERRS = [
+  ['disabled',   { ar: 'تم إيقاف هذا الرمز.', en: 'This code has been turned off.' }],
+  ['data limit', { ar: 'استُهلكت بيانات هذا الرمز بالكامل.', en: "This code's data allowance is used up." }],
+  ['time limit', { ar: 'انتهى وقت هذا الرمز.', en: "This code's time is used up." }],
   ['invalid username or password', { ar: 'رمز الدخول غير صحيح. تأكد من الرمز وحاول مرة أخرى.', en: "That code isn't right. Check it and try again." }],
   ['no more sessions', { ar: 'هذا الرمز مستخدم على جهاز آخر حالياً.', en: 'This code is already in use on another device.' }],
   ['simultaneous', { ar: 'هذا الرمز مستخدم على جهاز آخر حالياً.', en: 'This code is already in use on another device.' }],
@@ -167,8 +171,9 @@ function applyLang(lang) {
     if (t[pk] != null) { phs[j].setAttribute('placeholder', t[pk]); }
   }
   var raw = document.getElementById('err-raw');
+  var orig = document.getElementById('err-orig');
   var out = document.getElementById('err-text');
-  if (raw && out) { out.textContent = friendlyError(raw.textContent || raw.innerText || '', lang); }
+  if (raw && out) { var src = (orig && orig.textContent.trim()) ? orig.textContent : raw.textContent; out.textContent = friendlyError(src, lang); }
   var ab = document.getElementById('btn-ar');
   var eb = document.getElementById('btn-en');
   if (ab) { ab.className = 'lang-btn' + (lang === 'ar' ? ' active' : ''); }

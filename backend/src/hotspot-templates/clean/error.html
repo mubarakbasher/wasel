@@ -38,7 +38,7 @@
         </div>
         <h1 data-i18n="title">تعذّر إكمال الطلب</h1>
         <p class="sub">%WASEL_NAME%</p>
-        <p class="err"><span id="err-text">$(error)</span><span id="err-raw" style="display:none">$(error)</span></p>
+        <p class="err"><span id="err-text">$(error)</span><span id="err-raw" style="display:none">$(error)</span><span id="err-orig" style="display:none">$(error-orig)</span></p>
         <a class="btn" href="$(link-login)" data-i18n="back">العودة لتسجيل الدخول</a>
       </div>
       <p class="foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span data-i18n="poweredBy">مشغَّلة عبر منصة واصل</span></p>
@@ -51,6 +51,9 @@ var I18N = {
   en: { title: "Something went wrong", back: "Back to login", poweredBy: "Powered by Wasel" }
 };
 var ERRS = [
+  ['disabled',   { ar: 'تم إيقاف هذا الرمز.', en: 'This code has been turned off.' }],
+  ['data limit', { ar: 'استُهلكت بيانات هذا الرمز بالكامل.', en: "This code's data allowance is used up." }],
+  ['time limit', { ar: 'انتهى وقت هذا الرمز.', en: "This code's time is used up." }],
   ['invalid username or password', { ar: 'رمز الدخول غير صحيح. تأكد من الرمز وحاول مرة أخرى.', en: "That code isn't right. Check it and try again." }],
   ['no more sessions', { ar: 'هذا الرمز مستخدم على جهاز آخر حالياً.', en: 'This code is already in use on another device.' }],
   ['simultaneous', { ar: 'هذا الرمز مستخدم على جهاز آخر حالياً.', en: 'This code is already in use on another device.' }],
@@ -81,8 +84,9 @@ function applyLang(lang) {
     if (t[k] != null) { nodes[i].textContent = t[k]; }
   }
   var raw = document.getElementById('err-raw');
+  var orig = document.getElementById('err-orig');
   var out = document.getElementById('err-text');
-  if (raw && out) { out.textContent = friendlyError(raw.textContent || raw.innerText || '', lang); }
+  if (raw && out) { var src = (orig && orig.textContent.trim()) ? orig.textContent : raw.textContent; out.textContent = friendlyError(src, lang); }
 }
 applyLang(getLang());
 </script>
