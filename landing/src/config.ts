@@ -1,10 +1,11 @@
 // ════════════════════════════════════════════════════════════════════
-// TODO(launch) — REPLACE PLACEHOLDERS BEFORE GO-LIVE
+// TODO(launch) — WHATSAPP_URL is still a placeholder (needs the real
+// business WhatsApp number).
 //
-//   1. WHATSAPP_URL — real business WhatsApp number (currently placeholder).
-//   2. APK_URL      — real APK download URL ('#' until hosting is decided).
+// APK_URL: MediaFire is the interim host (2026-07-20) — swap to the
+// Uptodown app page once their editorial review approves the listing.
 //
 // Every CTA on the page imports from this file — nothing else to hunt.
 // ════════════════════════════════════════════════════════════════════
 export const WHATSAPP_URL = 'https://wa.me/2499XXXXXXX'
-export const APK_URL = '#'
+export const APK_URL = 'https://www.mediafire.com/file/mrdwwbddv5z0fso/app-release.apk/file'
