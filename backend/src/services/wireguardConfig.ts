@@ -180,7 +180,7 @@ function deriveNetwork30(ip: string): string {
 
 /**
  * Generate RouterOS CLI commands that configure WireGuard + RADIUS + hotspot +
- * firewall on a Mikrotik router. The operator pastes all 13 lines into a
+ * firewall on a Mikrotik router. The operator pastes all 11 lines into a
  * Mikrotik terminal (SSH or Winbox terminal) in one shot — no Stage-2 push needed.
  *
  * service=hotspot,login is required on some RouterOS versions for the PPP/hotspot
@@ -231,29 +231,13 @@ export function generateMikrotikConfig(params: {
     // 8. CoA listener — accept=yes lets FreeRADIUS disconnect sessions and push policy updates
     `/radius incoming set accept=yes port=3799`,
 
-    // 9. Hotspot profile — enable RADIUS auth, accounting, and 5-minute interim updates.
-    //    radius-interim-update=00:05:00 sends periodic Accounting-Interim-Update packets
-    //    so the stale-session reaper can confirm a session is still alive.
-    //    login-by includes mac-cookie so re-logins can reuse the stored credential.
-    `/ip hotspot profile set default use-radius=yes radius-accounting=yes radius-interim-update=00:05:00 login-by=mac-cookie,http-chap,http-pap,https`,
-
-    // 10. Hotspot user profile — timing defaults + MAC-cookie auto-relogin enabled.
-    //     add-mac-cookie=yes + mac-cookie-timeout=30d lets RouterOS auto-resume returning
-    //     clients. A mac-cookie relogin re-submits the stored username/password through
-    //     the normal RADIUS login path (fresh Access-Request each reconnect), so
-    //     rlm_expiration and Auth-Type := Reject are still enforced on every reconnect —
-    //     a disabled or expired voucher is rejected even with mac-cookie enabled.
-    //     Interim updates (step 9) keep accounting rows current so the stale-session
-    //     reaper does not incorrectly close live sessions.
-    `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m add-mac-cookie=yes mac-cookie-timeout=30d`,
-
-    // 11. Firewall — allow RADIUS auth from VPS
+    // 9. Firewall — allow RADIUS auth from VPS
     `/ip firewall filter add chain=input action=accept protocol=udp src-address=${params.radiusServerIp} dst-port=1812 comment=wasel-radius-auth place-before=0`,
 
-    // 12. Firewall — allow RADIUS CoA from VPS
+    // 10. Firewall — allow RADIUS CoA from VPS
     `/ip firewall filter add chain=input action=accept protocol=udp src-address=${params.radiusServerIp} dst-port=3799 comment=wasel-radius-coa place-before=1`,
 
-    // 13. Firewall — allow WireGuard
+    // 11. Firewall — allow WireGuard
     `/ip firewall filter add chain=input action=accept protocol=udp dst-port=51820 comment=wasel-wg place-before=2`,
   ];
 
@@ -363,31 +347,7 @@ Allows Wasel to disconnect voucher sessions and push policy updates.
   /radius incoming set accept=yes port=3799
 
 --------------------------------------------------------------------------------
-STEP 9: Enable RADIUS on the hotspot profile + accounting + interim updates
---------------------------------------------------------------------------------
-radius-accounting=yes + radius-interim-update=00:05:00 sends periodic
-Accounting-Interim-Update packets so Wasel can track active session time.
-login-by includes mac-cookie so returning clients can auto-resume.
-
-  /ip hotspot profile set default use-radius=yes radius-accounting=yes \\
-     radius-interim-update=00:05:00 \\
-     login-by=mac-cookie,http-chap,http-pap,https
-
---------------------------------------------------------------------------------
-STEP 10: Set hotspot user profile timing defaults + enable MAC-cookie
---------------------------------------------------------------------------------
-add-mac-cookie=yes lets returning clients auto-resume without re-typing the code.
-A mac-cookie relogin re-submits the stored username/password through the normal
-RADIUS login path (fresh Access-Request each reconnect), so rlm_expiration and
-Auth-Type := Reject are still enforced — a disabled or expired voucher is rejected
-even with mac-cookie enabled. Interim updates from step 9 keep accounting rows
-current so the stale-session reaper does not close live sessions.
-
-  /ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m \\
-     add-mac-cookie=yes mac-cookie-timeout=30d
-
---------------------------------------------------------------------------------
-STEP 11: Firewall — allow RADIUS authentication traffic
+STEP 9: Firewall — allow RADIUS authentication traffic
 --------------------------------------------------------------------------------
 
   /ip firewall filter add chain=input action=accept \\
@@ -395,7 +355,7 @@ STEP 11: Firewall — allow RADIUS authentication traffic
      dst-port=1812 comment=wasel-radius-auth place-before=0
 
 --------------------------------------------------------------------------------
-STEP 12: Firewall — allow RADIUS CoA traffic
+STEP 10: Firewall — allow RADIUS CoA traffic
 --------------------------------------------------------------------------------
 
   /ip firewall filter add chain=input action=accept \\
@@ -403,7 +363,7 @@ STEP 12: Firewall — allow RADIUS CoA traffic
      dst-port=3799 comment=wasel-radius-coa place-before=1
 
 --------------------------------------------------------------------------------
-STEP 13: Firewall — allow WireGuard
+STEP 11: Firewall — allow WireGuard
 --------------------------------------------------------------------------------
 
   /ip firewall filter add chain=input action=accept \\
@@ -437,8 +397,10 @@ export interface SetupStep {
  *
  * Steps 1–6 bring the WireGuard tunnel up and create the API user so the
  * backend can run health probes and read live sessions.
- * Steps 7–13 configure RADIUS, hotspot, and firewall so voucher auth works
- * immediately after the operator pastes the script — no Stage-2 push required.
+ * Steps 7–11 configure RADIUS and firewall so voucher auth works immediately
+ * after the operator pastes the script — no Stage-2 push required.
+ * Hotspot RADIUS and MAC-cookie settings (formerly steps 9–10) are omitted here
+ * because ensureHotspotRadiusSettings() applies them programmatically on connect.
  *
  * service=hotspot,login on step 7 is required on some RouterOS versions; using
  * only hotspot causes the login flow to not route auth requests to FreeRADIUS.
@@ -511,30 +473,18 @@ export function generateSetupSteps(params: {
     },
     {
       step: 9,
-      title: 'Enable RADIUS on the hotspot profile + accounting + interim updates',
-      description: 'Tells the hotspot to authenticate via RADIUS. radius-accounting=yes + radius-interim-update=00:05:00 sends periodic Accounting-Interim-Update packets so Wasel can track active sessions. login-by includes mac-cookie so returning clients can auto-resume.',
-      command: `/ip hotspot profile set default use-radius=yes radius-accounting=yes radius-interim-update=00:05:00 login-by=mac-cookie,http-chap,http-pap,https`,
-    },
-    {
-      step: 10,
-      title: 'Set hotspot user profile timing defaults + enable MAC-cookie auto-relogin',
-      description: 'Sets idle and keepalive timeouts and enables MAC-cookie auto-relogin. A mac-cookie relogin re-submits stored credentials through the RADIUS login path (fresh Access-Request each reconnect) — so disabled or expired vouchers are still rejected. Interim updates from step 9 keep accounting rows current so the stale-session reaper does not close live sessions.',
-      command: `/ip hotspot user profile set default idle-timeout=5m keepalive-timeout=2m add-mac-cookie=yes mac-cookie-timeout=30d`,
-    },
-    {
-      step: 11,
       title: 'Firewall — allow RADIUS authentication traffic',
       description: 'Allows UDP port 1812 from the Wasel VPS so RADIUS authentication packets are not dropped.',
       command: `/ip firewall filter add chain=input action=accept protocol=udp src-address=${params.radiusServerIp} dst-port=1812 comment=wasel-radius-auth place-before=0`,
     },
     {
-      step: 12,
+      step: 10,
       title: 'Firewall — allow RADIUS CoA traffic',
       description: 'Allows UDP port 3799 from the Wasel VPS so CoA disconnect and policy-push packets are not dropped.',
       command: `/ip firewall filter add chain=input action=accept protocol=udp src-address=${params.radiusServerIp} dst-port=3799 comment=wasel-radius-coa place-before=1`,
     },
     {
-      step: 13,
+      step: 11,
       title: 'Firewall — allow WireGuard',
       description: 'Allows UDP port 51820 so the WireGuard tunnel can be established even if the default firewall has a drop rule.',
       command: `/ip firewall filter add chain=input action=accept protocol=udp dst-port=51820 comment=wasel-wg place-before=2`,

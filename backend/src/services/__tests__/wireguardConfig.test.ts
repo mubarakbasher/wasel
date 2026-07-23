@@ -27,10 +27,10 @@ const BASE_PARAMS = {
 };
 
 describe('generateMikrotikConfig', () => {
-  it('emits exactly 13 non-empty lines', () => {
+  it('emits exactly 11 non-empty lines', () => {
     const output = generateMikrotikConfig(BASE_PARAMS);
     const lines = output.split('\n').filter((l) => l.trim().length > 0);
-    expect(lines).toHaveLength(13);
+    expect(lines).toHaveLength(11);
   });
 
   it('step 7 is the correct /radius add line with interpolated values', () => {
@@ -111,12 +111,12 @@ describe('generateMikrotikConfig', () => {
 });
 
 describe('generateSetupSteps', () => {
-  it('returns exactly 13 steps', () => {
+  it('returns exactly 11 steps', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
-    expect(steps).toHaveLength(13);
+    expect(steps).toHaveLength(11);
   });
 
-  it('step numbers are 1 through 13 in order', () => {
+  it('step numbers are 1 through 11 in order', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
     steps.forEach((s, idx) => {
       expect(s.step).toBe(idx + 1);
@@ -138,31 +138,27 @@ describe('generateSetupSteps', () => {
     expect(steps[6].command).toContain('src-address=10.10.0.2');
   });
 
-  it('step 11 (index 10) command contains wasel-radius-auth', () => {
+  it('step 9 (index 8) command contains wasel-radius-auth', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
-    expect(steps[10].command).toContain('comment=wasel-radius-auth');
+    expect(steps[8].command).toContain('comment=wasel-radius-auth');
   });
 
-  it('step 12 (index 11) command contains wasel-radius-coa', () => {
+  it('step 10 (index 9) command contains wasel-radius-coa', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
-    expect(steps[11].command).toContain('comment=wasel-radius-coa');
+    expect(steps[9].command).toContain('comment=wasel-radius-coa');
   });
 
-  it('step 13 (index 12) command contains wasel-wg', () => {
+  it('step 11 (index 10) command contains wasel-wg', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
-    expect(steps[12].command).toContain('comment=wasel-wg');
+    expect(steps[10].command).toContain('comment=wasel-wg');
   });
 
-  it('step 9 enables radius-accounting and radius-interim-update on the hotspot profile', () => {
+  it('no step configures hotspot RADIUS or MAC-cookie (applied by ensureHotspotRadiusSettings)', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
-    expect(steps[8].command).toContain('radius-accounting=yes');
-    expect(steps[8].command).toContain('radius-interim-update=00:05:00');
-  });
-
-  it('step 10 enables MAC-cookie auto-relogin with 30d timeout', () => {
-    const steps = generateSetupSteps(BASE_PARAMS);
-    expect(steps[9].command).toContain('add-mac-cookie=yes');
-    expect(steps[9].command).toContain('mac-cookie-timeout=30d');
+    for (const s of steps) {
+      expect(s.command).not.toContain('use-radius');
+      expect(s.command).not.toContain('add-mac-cookie');
+    }
   });
 
   it('every step has a non-empty title, description, and command', () => {
@@ -190,11 +186,13 @@ describe('generateMikrotikConfigText', () => {
     expect(text).toContain('comment=wasel');
   });
 
-  it('contains all 13 STEP headings', () => {
+  it('contains all 11 STEP headings and no more', () => {
     const text = generateMikrotikConfigText(TEXT_PARAMS);
-    for (let i = 1; i <= 13; i++) {
+    for (let i = 1; i <= 11; i++) {
       expect(text).toContain(`STEP ${i}:`);
     }
+    expect(text).not.toContain('STEP 12:');
+    expect(text).not.toContain('STEP 13:');
   });
 
   it('does not contain /tool fetch (old callback step)', () => {
@@ -202,14 +200,9 @@ describe('generateMikrotikConfigText', () => {
     expect(text).not.toContain('/tool fetch');
   });
 
-  it('contains radius-interim-update on the hotspot profile command', () => {
+  it('does not contain hotspot RADIUS / MAC-cookie commands (applied by ensureHotspotRadiusSettings)', () => {
     const text = generateMikrotikConfigText(TEXT_PARAMS);
-    expect(text).toContain('radius-interim-update=00:05:00');
-  });
-
-  it('enables MAC-cookie auto-relogin on the user profile', () => {
-    const text = generateMikrotikConfigText(TEXT_PARAMS);
-    expect(text).toContain('add-mac-cookie=yes');
-    expect(text).toContain('mac-cookie-timeout=30d');
+    expect(text).not.toContain('radius-interim-update');
+    expect(text).not.toContain('add-mac-cookie');
   });
 });
