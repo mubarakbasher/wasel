@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Toggles Android's FLAG_SECURE (blocks screenshots / screen recording /
@@ -16,6 +17,9 @@ class SecureWindow {
 
   static Future<void> enable() async {
     if (!Platform.isAndroid) return;
+    // Debug builds skip FLAG_SECURE so demo videos/screenshots can be
+    // recorded; release and profile builds always protect these screens.
+    if (kDebugMode) return;
     _count++;
     if (_count == 1) {
       await _channel.invokeMethod<void>('enable');
