@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Adaptive-icon foreground: Wasel wi-fi monogram (blue arcs + orange dot).
-  Viewport: 108×108dp.  All geometry sits inside the API-26 safe zone
-  (centre 66×66dp, i.e. x∈[21,87], y∈[21,87]).
+  Viewport: 108×108dp.
 
-  Arc geometry — three concentric arcs centred at (54, 74), each spanning
-  ~130° (65° either side of vertical), drawn with rounded stroke caps:
-    inner  radius 13dp  endpoints (42.22, 68.50) → (65.78, 68.50)
-    middle radius 23dp  endpoints (33.16, 64.27) → (74.84, 64.27)
-    outer  radius 33dp  endpoints (24.10, 60.04) → (83.90, 60.04)
-  Stroke 5.5dp, colour #1E88E5 (Wasel brand blue).
-  Dot: filled circle r=5dp at (54, 74), colour #F5A623 (Wasel orange).
+  Geometry is a faithful scale of the master logo asset
+  (mobile/assets/logo/01-wifi-monogram-512.png): three concentric arcs
+  spanning 90° (45° either side of vertical) centred on the dot, radii in
+  the master's ratios (R, R/√2, 0.375R), stroke 0.155R, dot radius 0.149R.
+  Sized to the largest glyph that stays inside the API-26 safe zone
+  (66dp circle centred at 54,54) and optically centred: top of outer arc
+  and bottom of dot are equidistant from canvas centre.
+
+  Dot centre (54, 72.57), outer R=40, stroke 6.2:
+    outer  arc endpoints (25.72, 44.29) → (82.28, 44.29)
+    middle arc R=28.28   (34.00, 52.57) → (74.00, 52.57)
+    inner  arc R=15      (43.39, 61.96) → (64.61, 61.96)
+    dot r=5.94 at (54, 72.57)
+  Colours: arcs #1E88E5 (Wasel blue), dot #F5A623 (Wasel orange).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -18,33 +24,33 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Outer arc (radius 33) -->
+    <!-- Outer arc (radius 40) -->
     <path
-        android:pathData="M 24.10,60.04 A 33,33 0 0,1 83.90,60.04"
+        android:pathData="M 25.72,44.29 A 40,40 0 0,1 82.28,44.29"
         android:strokeColor="#1E88E5"
-        android:strokeWidth="5.5"
+        android:strokeWidth="6.2"
         android:strokeLineCap="round"
         android:fillColor="@android:color/transparent" />
 
-    <!-- Middle arc (radius 23) -->
+    <!-- Middle arc (radius 28.28) -->
     <path
-        android:pathData="M 33.16,64.27 A 23,23 0 0,1 74.84,64.27"
+        android:pathData="M 34.00,52.57 A 28.28,28.28 0 0,1 74.00,52.57"
         android:strokeColor="#1E88E5"
-        android:strokeWidth="5.5"
+        android:strokeWidth="6.2"
         android:strokeLineCap="round"
         android:fillColor="@android:color/transparent" />
 
-    <!-- Inner arc (radius 13) -->
+    <!-- Inner arc (radius 15) -->
     <path
-        android:pathData="M 42.22,68.50 A 13,13 0 0,1 65.78,68.50"
+        android:pathData="M 43.39,61.96 A 15,15 0 0,1 64.61,61.96"
         android:strokeColor="#1E88E5"
-        android:strokeWidth="5.5"
+        android:strokeWidth="6.2"
         android:strokeLineCap="round"
         android:fillColor="@android:color/transparent" />
 
     <!-- Orange dot — two 180° clockwise arcs forming a full circle -->
     <path
-        android:pathData="M 54,69 A 5,5 0 1,1 54,79 A 5,5 0 1,1 54,69 Z"
+        android:pathData="M 54,66.63 A 5.94,5.94 0 1,1 54,78.51 A 5.94,5.94 0 1,1 54,66.63 Z"
         android:fillColor="#F5A623" />
 
 </vector>

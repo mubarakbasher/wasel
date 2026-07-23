@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../models/voucher.dart';
 import 'api_client.dart';
 
@@ -67,6 +69,10 @@ class VoucherService {
     final response = await _api.dio.post(
       '/routers/$routerId/vouchers',
       data: body,
+      options: Options(
+        receiveTimeout: const Duration(seconds: 120),
+        sendTimeout: const Duration(seconds: 30),
+      ),
     );
     final data = response.data['data'] as List;
     return data.map((e) => Voucher.fromJson(e as Map<String, dynamic>)).toList();

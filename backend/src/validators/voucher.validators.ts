@@ -29,7 +29,7 @@ export const createVouchersSchema = z.object({
     .number()
     .int()
     .min(1, 'Count must be at least 1')
-    .max(500, 'Count must be at most 500 per request'),
+    .max(3000, 'Count must be at most 3000 per request'),
   price: z
     .number()
     .min(0, 'Price must be non-negative'),

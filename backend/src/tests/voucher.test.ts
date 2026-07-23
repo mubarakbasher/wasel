@@ -572,13 +572,13 @@ describe('POST /api/v1/routers/:id/vouchers — F2 quota race regression', () =>
 // ─── F3 regression: count validation ─────────────────────────────────────────
 
 describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => {
-  it('rejects count: 501 with 400 Zod validation error', async () => {
+  it('rejects count: 3001 with 400 Zod validation error', async () => {
     mockSubscriptionQuery(mockQuery);
 
     const res = await request(app)
       .post(BASE_URL)
       .set(authHeader())
-      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 501, price: 5 });
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 3001, price: 5 });
 
     // The validate middleware returns 400 for Zod failures in this codebase.
     expect(res.status).toBe(400);
@@ -598,14 +598,14 @@ describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => 
   });
 
   // S4: Direct Zod schema assertions (replaces the shallow status !== 422 test)
-  it('S4: createVouchersSchema accepts count: 500 (upper boundary)', () => {
-    const validBase = { limitType: 'time' as const, limitValue: 60, limitUnit: 'minutes' as const, count: 500, price: 5 };
+  it('S4: createVouchersSchema accepts count: 3000 (upper boundary)', () => {
+    const validBase = { limitType: 'time' as const, limitValue: 60, limitUnit: 'minutes' as const, count: 3000, price: 5 };
     const result = createVouchersSchema.safeParse(validBase);
     expect(result.success).toBe(true);
   });
 
-  it('S4: createVouchersSchema rejects count: 501 (above upper boundary)', () => {
-    const overBoundary = { limitType: 'time' as const, limitValue: 60, limitUnit: 'minutes' as const, count: 501, price: 5 };
+  it('S4: createVouchersSchema rejects count: 3001 (above upper boundary)', () => {
+    const overBoundary = { limitType: 'time' as const, limitValue: 60, limitUnit: 'minutes' as const, count: 3001, price: 5 };
     const result = createVouchersSchema.safeParse(overBoundary);
     expect(result.success).toBe(false);
   });
@@ -616,7 +616,7 @@ describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => 
     expect(result.success).toBe(false);
   });
 
-  it('accepts count: 500 (boundary — HTTP round-trip also passes)', async () => {
+  it('accepts count: 3000 (boundary — HTTP round-trip also passes)', async () => {
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
@@ -635,11 +635,11 @@ describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => 
     const res = await request(app)
       .post(BASE_URL)
       .set(authHeader())
-      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 500, price: 5 });
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 3000, price: 5 });
 
-    // Zod schema allows 500 — must not be a 400/422 validation error.
+    // Zod schema allows 3000 — must not be a 400/422 validation error.
     // (May be 201 on success or a non-validation 5xx if mock data is thin for
-    // 500 rows, but never a schema rejection.)
+    // 3000 rows, but never a schema rejection.)
     expect(res.status).not.toBe(400);
     expect(res.status).not.toBe(422);
   });
