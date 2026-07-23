@@ -698,7 +698,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
             keyboardType: TextInputType.number,
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(3),
+              LengthLimitingTextInputFormatter(4),
             ],
             decoration: InputDecoration(
               labelText: context.tr('vouchers.numberOfVouchers'),
@@ -709,7 +709,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               if (v == null || v.trim().isEmpty) return context.tr('common.required');
               final n = int.tryParse(v.trim());
               if (n == null || n < 1) return context.tr('validation.positive');
-              if (n > 500) return context.tr('vouchers.countMax');
+              if (n > 3000) return context.tr('vouchers.countMax');
               return null;
             },
           ),
