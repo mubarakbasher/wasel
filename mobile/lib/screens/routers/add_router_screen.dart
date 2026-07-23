@@ -197,7 +197,7 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
   }
 
   Widget _buildStepCard(SetupStep step) {
-    final isFinal = step.step == 13;
+    final isFinal = step.step == _steps!.last.step;
     final isApiUser = step.step == 5;
 
     final borderColor = isFinal
