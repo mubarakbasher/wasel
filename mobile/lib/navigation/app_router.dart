@@ -32,6 +32,7 @@ import '../screens/reports/report_export_screen.dart';
 import '../screens/notification_preferences_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
 import '../screens/vouchers/voucher_print_screen.dart';
+import '../i18n/app_localizations.dart';
 import '../models/voucher.dart';
 import '../providers/auth_provider.dart';
 import 'scaffold_with_nav_bar.dart';
@@ -255,10 +256,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/vouchers/print',
         parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final vouchers = extra?['vouchers'] as List<Voucher>?;
+          return (vouchers == null || vouchers.isEmpty) ? '/vouchers' : null;
+        },
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>? ?? {};
           final vouchers = extra['vouchers'] as List<Voucher>? ?? [];
-          final routerName = extra['routerName'] as String? ?? 'Wi-Fi';
+          final routerName = extra['routerName'] as String? ??
+              context.tr('routers.defaultRouterName');
           return VoucherPrintScreen(
             vouchers: vouchers,
             routerName: routerName,

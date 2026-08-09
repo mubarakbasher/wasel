@@ -45,6 +45,18 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
   String _customValidityUnit = 'hours'; // 'hours' or 'days'
 
   @override
+  void initState() {
+    super.initState();
+    // The Dashboard quick-create path reaches this wizard without the routers
+    // list ever being loaded; fetch it so the print header can resolve the
+    // router's name instead of falling back to the localized "Wi-Fi".
+    final routers = ref.read(routersProvider).routers;
+    if (routers.where((r) => r.id == widget.routerId).isEmpty) {
+      Future.microtask(() => ref.read(routersProvider.notifier).loadRouters());
+    }
+  }
+
+  @override
   void dispose() {
     _pageController.dispose();
     _limitValueController.dispose();
