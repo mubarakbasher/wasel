@@ -32,6 +32,7 @@ import '../screens/reports/report_export_screen.dart';
 import '../screens/notification_preferences_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
 import '../screens/vouchers/voucher_print_screen.dart';
+import '../screens/vouchers/voucher_batch_history_screen.dart';
 import '../i18n/app_localizations.dart';
 import '../models/voucher.dart';
 import '../providers/auth_provider.dart';
@@ -232,6 +233,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final routerId = state.extra as String? ?? '';
           return CreateVoucherWizard(routerId: routerId);
+        },
+      ),
+      GoRoute(
+        path: '/vouchers/batches',
+        parentNavigatorKey: appNavigatorKey,
+        redirect: (context, state) {
+          final routerId = state.extra as String? ?? '';
+          return routerId.isEmpty ? '/vouchers' : null;
+        },
+        builder: (context, state) {
+          final routerId = state.extra as String? ?? '';
+          return VoucherBatchHistoryScreen(routerId: routerId);
         },
       ),
       GoRoute(

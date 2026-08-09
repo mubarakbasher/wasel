@@ -83,6 +83,19 @@ export async function deleteVoucher(req: AuthenticatedRequest, res: Response, ne
   }
 }
 
+export async function getVoucherBatches(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const batches = await voucherService.getVoucherBatches(
+      req.user!.id,
+      req.params.id as string,
+      { limit: Number(req.query.limit) || 100 },
+    );
+    res.status(200).json({ success: true, data: batches });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function bulkDeleteVouchers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const result = await voucherService.bulkDeleteVouchers(req.user!.id, req.params.id as string, req.body);

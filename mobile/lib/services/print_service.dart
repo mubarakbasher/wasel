@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -26,39 +27,61 @@ class VoucherPrintItem {
   });
 }
 
-class PrintService {
-  // Arabic Unicode block + Arabic Supplement + Arabic Extended-A + Arabic
-  // Presentation Forms. If the string contains any of these, we must render it
-  // RTL so the pdf package runs Arabic glyph shaping (joining initial/medial/
-  // final forms). Without this, Arabic letters stay as isolated shapes.
-  static final _arabicRegex =
-      RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
+/// Plain-data job passed to [compute] for isolate-offloaded PDF generation.
+class VoucherPdfJob {
+  final List<VoucherPrintItem> items;
+  final String businessName;
+  final int columns;
+  final Uint8List cairoRegular;
+  final Uint8List cairoBold;
 
-  pw.Font? _cairo;
-  pw.Font? _cairoBold;
+  const VoucherPdfJob({
+    required this.items,
+    required this.businessName,
+    required this.columns,
+    required this.cairoRegular,
+    required this.cairoBold,
+  });
+}
+
+/// Top-level entry point for [compute] — must be a top-level function.
+Future<Uint8List> buildVouchersPdfJob(VoucherPdfJob job) {
+  final builder = _VouchersPdfBuilder(
+    cairo: pw.Font.ttf(job.cairoRegular.buffer.asByteData(
+      job.cairoRegular.offsetInBytes,
+      job.cairoRegular.lengthInBytes,
+    )),
+    cairoBold: pw.Font.ttf(job.cairoBold.buffer.asByteData(
+      job.cairoBold.offsetInBytes,
+      job.cairoBold.lengthInBytes,
+    )),
+  );
+  return builder.build(job.items, job.businessName, columns: job.columns);
+}
+
+// Arabic Unicode block + Arabic Supplement + Arabic Extended-A + Arabic
+// Presentation Forms. If the string contains any of these, we must render it
+// RTL so the pdf package runs Arabic glyph shaping (joining initial/medial/
+// final forms). Without this, Arabic letters stay as isolated shapes.
+final _arabicRegex =
+    RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
+
+class _VouchersPdfBuilder {
+  final pw.Font cairo;
+  final pw.Font cairoBold;
+
+  _VouchersPdfBuilder({required this.cairo, required this.cairoBold});
 
   bool _hasArabic(String s) => _arabicRegex.hasMatch(s);
 
   pw.TextDirection _direction(String s) =>
       _hasArabic(s) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
 
-  Future<void> _ensureFont() async {
-    _cairo ??= pw.Font.ttf(
-      await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
-    );
-    _cairoBold ??= pw.Font.ttf(
-      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
-    );
-  }
-
-  /// Generate an A4 PDF with voucher cards arranged in a configurable grid.
-  Future<Uint8List> generateVouchersPdf(
+  Future<Uint8List> build(
     List<VoucherPrintItem> items,
     String businessName, {
     int columns = 4,
   }) async {
-    await _ensureFont();
-
     final doc = pw.Document(title: 'Wasel Vouchers', author: 'Wasel');
 
     const double marginH = 16;
@@ -181,7 +204,7 @@ class PrintService {
                   businessName,
                   style: pw.TextStyle(
                     fontSize: headerFs,
-                    font: _cairoBold,
+                    font: cairoBold,
                     fontWeight: pw.FontWeight.bold,
                   ),
                 ),
@@ -204,7 +227,7 @@ class PrintService {
                       font: pw.Font.courierBold(),
                       fontWeight: pw.FontWeight.bold,
                       letterSpacing: 1,
-                      fontFallback: [_cairo!],
+                      fontFallback: [cairo],
                     ),
                   ),
                 ),
@@ -221,7 +244,7 @@ class PrintService {
                             item.limitText!,
                             style: pw.TextStyle(
                               fontSize: infoFs,
-                              font: _cairoBold,
+                              font: cairoBold,
                               fontWeight: pw.FontWeight.bold,
                             ),
                           ),
@@ -241,7 +264,7 @@ class PrintService {
                           item.validityText,
                           style: pw.TextStyle(
                             fontSize: infoFs,
-                            font: _cairo,
+                            font: cairo,
                           ),
                         ),
                       ),
@@ -253,6 +276,43 @@ class PrintService {
           ),
         ],
       ),
+    );
+  }
+}
+
+class PrintService {
+  Uint8List? _cairoBytes;
+  Uint8List? _cairoBoldBytes;
+
+  Future<void> _ensureFontBytes() async {
+    if (_cairoBytes == null) {
+      final bd = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
+      _cairoBytes = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
+    }
+    if (_cairoBoldBytes == null) {
+      final bd = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
+      _cairoBoldBytes =
+          bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
+    }
+  }
+
+  /// Generate an A4 PDF with voucher cards arranged in a configurable grid.
+  Future<Uint8List> generateVouchersPdf(
+    List<VoucherPrintItem> items,
+    String businessName, {
+    int columns = 4,
+  }) async {
+    await _ensureFontBytes();
+    return compute(
+      buildVouchersPdfJob,
+      VoucherPdfJob(
+        items: items,
+        businessName: businessName,
+        columns: columns,
+        cairoRegular: _cairoBytes!,
+        cairoBold: _cairoBoldBytes!,
+      ),
+      debugLabel: 'voucherPdf',
     );
   }
 }

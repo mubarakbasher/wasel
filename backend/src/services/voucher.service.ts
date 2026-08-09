@@ -67,6 +67,35 @@ export interface VoucherListResult {
  */
 const VOUCHER_SIMULTANEOUS_USE = 20;
 
+/**
+ * µs-precision UTC text of vm.created_at — shared wire format for keyset
+ * cursors and batch keys. JS Date.toISOString() truncates to milliseconds,
+ * which breaks keyset pagination when a multi-row batch INSERT shares one
+ * microsecond-precision created_at value.
+ */
+const CREATED_AT_US_SQL =
+  `to_char(vm.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+/** VoucherMetaRow extended with the µs-precision cursor field added by the SELECT projection. */
+type VoucherMetaRowCursor = VoucherMetaRow & { created_at_us?: string };
+
+/** ms-precision (legacy cursors) or µs-precision UTC timestamp. */
+const CURSOR_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{3})?Z$/;
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * True when the cursor timestamp is shaped right AND survives an exact
+ * Date round-trip — Date.parse alone silently normalizes calendar overflow
+ * (Feb 31 → Mar 3), which would still fail the ::timestamptz cast as a 500.
+ */
+function isValidCursorTimestamp(value: string): boolean {
+  if (!CURSOR_TIMESTAMP_REGEX.test(value)) return false;
+  const msPrefix = value.slice(0, 23) + 'Z';
+  const t = Date.parse(msPrefix);
+  return !Number.isNaN(t) && new Date(t).toISOString() === msPrefix;
+}
+
 // ----- Helpers -----
 
 /**
@@ -732,11 +761,15 @@ export function buildVoucherStatusConditions(status: string): string[] {
 /**
  * Build WHERE-clause conditions for voucher queries.
  * Shared between getVouchersByRouter and bulkDeleteVouchers.
+ *
+ * `batch` is a µs-precision created_at string (e.g. '2026-08-09T10:11:12.123456Z')
+ * that pins the query to a single creation group. It composes with cursor, offset,
+ * COUNT, and bulk-delete filter mode.
  */
 function buildFilterConditions(
   userId: string,
   routerId: string,
-  options: { status?: string; limitType?: string; search?: string },
+  options: { status?: string; limitType?: string; search?: string; batch?: string },
 ): { conditions: string[]; values: unknown[]; paramIndex: number } {
   const conditions: string[] = ['vm.user_id = $1', 'vm.router_id = $2'];
   const values: unknown[] = [userId, routerId];
@@ -754,6 +787,11 @@ function buildFilterConditions(
   if (options.search) {
     conditions.push(`vm.radius_username ILIKE $${paramIndex++}`);
     values.push(`%${options.search}%`);
+  }
+
+  if (options.batch) {
+    conditions.push(`vm.created_at = $${paramIndex++}::timestamptz`);
+    values.push(options.batch);
   }
 
   return { conditions, values, paramIndex };
@@ -779,6 +817,8 @@ export async function getVouchersByRouter(
     limit?: number;
     search?: string;
     cursor?: string;
+    /** µs-precision batch key — restricts results to a single creation group. */
+    batch?: string;
   } = {},
 ): Promise<VoucherListResult> {
   await verifyRouterOwnership(userId, routerId);
@@ -802,10 +842,21 @@ export async function getVouchersByRouter(
     if (!cursorPayload.createdAt || !cursorPayload.id) {
       throw new AppError(422, 'Invalid pagination cursor', 'INVALID_CURSOR');
     }
+    // Semantic validation: garbage values would otherwise reach the
+    // ::timestamptz / ::uuid casts and surface as a 500 instead of a 422.
+    if (!isValidCursorTimestamp(cursorPayload.createdAt) || !UUID_REGEX.test(cursorPayload.id)) {
+      throw new AppError(422, 'Invalid pagination cursor', 'INVALID_CURSOR');
+    }
 
     // (created_at, id) < ($A, $B)  ≡  created_at < A OR (created_at = A AND id < B)
     // This is correct for ORDER BY created_at DESC, id DESC (newer rows first,
     // same-timestamp tie-broken by UUID DESC).
+
+    // Bug 2 fix: snapshot WHERE before pushing the cursor predicate so the COUNT
+    // query reflects the full collection, not just the remaining pages.
+    const preCursorWhere = conditions.join(' AND ');
+    const preCursorValues = [...values];
+
     conditions.push(
       `(vm.created_at < $${pi}::timestamptz OR (vm.created_at = $${pi}::timestamptz AND vm.id < $${pi + 1}::uuid))`,
     );
@@ -814,14 +865,14 @@ export async function getVouchersByRouter(
 
     const whereClause = conditions.join(' AND ');
 
-    // Count total (always useful for progress bars even in cursor mode)
+    // COUNT uses the pre-cursor snapshot; DATA uses the full clause with cursor predicate.
     const [countResult, dataResult] = await Promise.all([
       pool.query<{ count: string }>(
-        `SELECT COUNT(*) AS count FROM voucher_meta vm WHERE ${whereClause}`,
-        values,
+        `SELECT COUNT(*) AS count FROM voucher_meta vm WHERE ${preCursorWhere}`,
+        preCursorValues,
       ),
-      pool.query<VoucherMetaRow>(
-        `SELECT vm.* FROM voucher_meta vm
+      pool.query<VoucherMetaRowCursor>(
+        `SELECT vm.*, ${CREATED_AT_US_SQL} AS created_at_us FROM voucher_meta vm
          WHERE ${whereClause}
          ORDER BY vm.created_at DESC, vm.id DESC
          LIMIT $${pi}`,
@@ -834,9 +885,12 @@ export async function getVouchersByRouter(
     const rows = hasNextPage ? dataResult.rows.slice(0, limit) : dataResult.rows;
     const vouchers = await batchToVoucherInfo(rows);
 
+    // Bug 1 fix: prefer the µs-precision created_at_us string from the SELECT projection;
+    // fall back to ms-truncated ISO string so mocked tests without created_at_us stay green.
+    const last = rows[rows.length - 1] as VoucherMetaRowCursor;
     const nextCursor =
       hasNextPage && rows.length > 0
-        ? encodeCursor({ createdAt: new Date(rows[rows.length - 1].created_at).toISOString(), id: rows[rows.length - 1].id })
+        ? encodeCursor({ createdAt: last.created_at_us ?? new Date(last.created_at).toISOString(), id: last.id })
         : null;
 
     return { vouchers, total, page, limit, nextCursor };
@@ -851,8 +905,8 @@ export async function getVouchersByRouter(
       `SELECT COUNT(*) AS count FROM voucher_meta vm WHERE ${whereClause}`,
       values,
     ),
-    pool.query<VoucherMetaRow>(
-      `SELECT vm.* FROM voucher_meta vm
+    pool.query<VoucherMetaRowCursor>(
+      `SELECT vm.*, ${CREATED_AT_US_SQL} AS created_at_us FROM voucher_meta vm
        WHERE ${whereClause}
        ORDER BY vm.created_at DESC, vm.id DESC
        LIMIT $${pi} OFFSET $${pi + 1}`,
@@ -865,12 +919,86 @@ export async function getVouchersByRouter(
   const rows = hasNextPage ? dataResult.rows.slice(0, limit) : dataResult.rows;
   const vouchers = await batchToVoucherInfo(rows);
 
+  // Bug 1 fix: use µs-precision created_at_us from SELECT projection; fall back to
+  // ms-truncated ISO so mocked tests without created_at_us remain green.
+  const last = rows[rows.length - 1] as VoucherMetaRowCursor;
   const nextCursor =
     hasNextPage && rows.length > 0
-      ? encodeCursor({ createdAt: new Date(rows[rows.length - 1].created_at).toISOString(), id: rows[rows.length - 1].id })
+      ? encodeCursor({ createdAt: last.created_at_us ?? new Date(last.created_at).toISOString(), id: last.id })
       : null;
 
   return { vouchers, total, page, limit, nextCursor };
+}
+
+// ----- Voucher Batches -----
+
+export interface VoucherBatchInfo {
+  batchKey: string;
+  createdAt: string;
+  count: number;
+  limitType: string | null;
+  limitValue: number | null;
+  limitUnit: string | null;
+  validitySeconds: number | null;
+  price: number | null;
+}
+
+/**
+ * List distinct creation batches for a router's vouchers, newest-first.
+ *
+ * Each batch corresponds to a single multi-row INSERT that shares one
+ * microsecond-precision `created_at` value. The batchKey is the µs-precision
+ * UTC string returned by CREATED_AT_US_SQL — usable as a `batch` filter param
+ * in GET /vouchers and DELETE /bulk-delete requests.
+ *
+ * Per-batch fields (limitType, limitValue, limitUnit, validitySeconds, price)
+ * are batch-uniform by construction, so MIN() safely extracts the shared value.
+ */
+export async function getVoucherBatches(
+  userId: string,
+  routerId: string,
+  options: { limit?: number } = {},
+): Promise<VoucherBatchInfo[]> {
+  await verifyRouterOwnership(userId, routerId);
+
+  const batchLimit = options.limit ?? 100;
+
+  const result = await pool.query<{
+    batch_key: string;
+    created_at: Date;
+    count: number;
+    limit_type: string | null;
+    limit_value: string | null;
+    limit_unit: string | null;
+    validity_seconds: number | null;
+    price: string | null;
+  }>(
+    `SELECT ${CREATED_AT_US_SQL} AS batch_key,
+            vm.created_at,
+            COUNT(*)::int            AS count,
+            MIN(vm.limit_type)       AS limit_type,
+            MIN(vm.limit_value)      AS limit_value,
+            MIN(vm.limit_unit)       AS limit_unit,
+            MIN(vm.validity_seconds) AS validity_seconds,
+            MIN(vm.price)            AS price
+     FROM voucher_meta vm
+     WHERE vm.user_id = $1 AND vm.router_id = $2
+     GROUP BY vm.created_at
+     ORDER BY vm.created_at DESC
+     LIMIT $3`,
+    [userId, routerId, batchLimit],
+  );
+
+  return result.rows.map((row) => ({
+    batchKey: row.batch_key,
+    createdAt: new Date(row.created_at).toISOString(),
+    count: row.count,
+    limitType: row.limit_type,
+    limitValue: row.limit_value ? Number(row.limit_value) : null,
+    limitUnit: row.limit_unit,
+    validitySeconds: row.validity_seconds,
+    price: row.price ? parseFloat(row.price) : null,
+  }));
 }
 
 /**
@@ -1133,6 +1261,8 @@ export async function bulkDeleteVouchers(
       limitType?: string;
       search?: string;
       all?: boolean;
+      /** µs-precision batch key — restricts delete to a single creation group. */
+      batch?: string;
     };
   },
 ): Promise<{ deletedCount: number }> {
@@ -1154,6 +1284,7 @@ export async function bulkDeleteVouchers(
       status: body.filter.status,
       limitType: body.filter.limitType,
       search: body.filter.search,
+      batch: body.filter.batch,
     });
     const whereClause = conditions.join(' AND ');
     // Cap filter-mode deletes at 500 rows per request to prevent unbounded

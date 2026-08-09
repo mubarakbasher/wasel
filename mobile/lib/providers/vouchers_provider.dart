@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/voucher.dart';
+import '../models/voucher_batch.dart';
 import '../services/voucher_service.dart';
 import '../utils/error_messages.dart';
 
@@ -15,6 +16,7 @@ class VouchersState {
   final String? filterStatus;
   final String? filterLimitType;
   final String? searchQuery;
+  final VoucherBatch? filterBatch;
 
   /// Opaque keyset cursor returned by the last successful page load.
   /// `null` means either we haven't loaded yet or there are no more pages.
@@ -31,6 +33,7 @@ class VouchersState {
     this.filterStatus,
     this.filterLimitType,
     this.searchQuery,
+    this.filterBatch,
     this.nextCursor,
   });
 
@@ -49,12 +52,14 @@ class VouchersState {
     String? filterStatus,
     String? filterLimitType,
     String? searchQuery,
+    VoucherBatch? filterBatch,
     String? nextCursor,
     bool clearError = false,
     bool clearSelected = false,
     bool clearFilterStatus = false,
     bool clearFilterLimitType = false,
     bool clearSearch = false,
+    bool clearFilterBatch = false,
     bool clearNextCursor = false,
   }) {
     return VouchersState(
@@ -71,6 +76,8 @@ class VouchersState {
       filterLimitType:
           clearFilterLimitType ? null : (filterLimitType ?? this.filterLimitType),
       searchQuery: clearSearch ? null : (searchQuery ?? this.searchQuery),
+      filterBatch:
+          clearFilterBatch ? null : (filterBatch ?? this.filterBatch),
       nextCursor: clearNextCursor ? null : (nextCursor ?? this.nextCursor),
     );
   }
@@ -120,10 +127,19 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     );
   }
 
+  void setBatchFilter(VoucherBatch? batch) {
+    state = state.copyWith(
+      filterBatch: batch,
+      clearFilterBatch: batch == null,
+    );
+  }
+
   Future<void> loadVouchers(String routerId, {bool refresh = false}) async {
     final seq = ++_requestSeq;
     // Clear only when switching routers — a same-router refresh keeps the
     // current list visible under the spinner instead of blanking the screen.
+    // Also clear the batch filter on router switch since batch keys are
+    // router-scoped and would be meaningless for the new router.
     if (_activeRouterId != routerId) {
       _activeRouterId = routerId;
       state = state.copyWith(
@@ -131,6 +147,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
         total: 0,
         page: 1,
         clearNextCursor: true,
+        clearFilterBatch: true,
       );
     }
     state = state.copyWith(isLoading: true, clearError: true);
@@ -141,6 +158,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
         status: state.filterStatus,
         limitType: state.filterLimitType,
         search: state.searchQuery,
+        batch: state.filterBatch?.batchKey,
         limit: state.limit,
       );
       if (seq != _requestSeq) return; // superseded by a newer request
@@ -169,6 +187,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
         status: state.filterStatus,
         limitType: state.filterLimitType,
         search: state.searchQuery,
+        batch: state.filterBatch?.batchKey,
         cursor: state.nextCursor,
         limit: state.limit,
       );
@@ -306,6 +325,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
     final status = state.filterStatus;
     final limitType = state.filterLimitType;
     final search = state.searchQuery;
+    final batch = state.filterBatch?.batchKey;
     try {
       int total = 0;
       while (true) {
@@ -314,6 +334,7 @@ class VouchersNotifier extends StateNotifier<VouchersState> {
           status: status,
           limitType: limitType,
           search: search,
+          batch: batch,
         );
         total += count;
         if (count < _bulkDeleteBatch) break; // last (or empty) batch

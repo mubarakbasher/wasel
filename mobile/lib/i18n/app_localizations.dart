@@ -668,6 +668,12 @@ class AppLocalizations {
     'vouchers.wifiVoucher': 'WiFi Voucher',
     'vouchers.plan': 'Plan',
     'vouchers.countMax': 'You can create at most 3000 vouchers at once.',
+    'vouchers.batchHistory': 'Creation history',
+    'vouchers.batchFilter': 'Batch',
+    'vouchers.allBatches': 'All batches',
+    'vouchers.selectBatch': 'Select batch',
+    'vouchers.batchCount': '{0} vouchers',
+    'vouchers.noBatches': 'No creation batches yet',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'No active sessions',
@@ -1476,6 +1482,12 @@ class AppLocalizations {
     'vouchers.wifiVoucher': 'كرت واي فاي',
     'vouchers.plan': 'الباقة',
     'vouchers.countMax': 'يمكنك إنشاء 3000 كرت كحد أقصى في المرة الواحدة.',
+    'vouchers.batchHistory': 'سجل الإنشاء',
+    'vouchers.batchFilter': 'الدفعة',
+    'vouchers.allBatches': 'كل الدفعات',
+    'vouchers.selectBatch': 'اختر الدفعة',
+    'vouchers.batchCount': '{0} كرت',
+    'vouchers.noBatches': 'لا توجد دفعات إنشاء بعد',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'لا توجد جلسات نشطة',

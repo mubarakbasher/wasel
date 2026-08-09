@@ -170,13 +170,15 @@ describe('GET /routers/:id/vouchers — cursor pagination', () => {
     mockSubscriptionQuery(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
 
+    // Ids must be UUID-shaped: the cursor round-trip is semantically validated
+    // (non-UUID ids in a cursor now 422 before reaching the ::uuid cast).
     const page1Rows = [
-      makeVoucherRow('v-pg1-a', 'ua', NOW),
-      makeVoucherRow('v-pg1-b', 'ub', OLDER),
+      makeVoucherRow('b1b1b1b1-0000-4000-8000-000000000001', 'ua', NOW),
+      makeVoucherRow('b1b1b1b1-0000-4000-8000-000000000002', 'ub', OLDER),
     ];
     mockQuery.mockResolvedValueOnce({ rows: [{ count: '4' }] });
     // limit+1 = 3: return 3 rows so hasNextPage = true
-    mockQuery.mockResolvedValueOnce({ rows: [...page1Rows, makeVoucherRow('v-pg2-c', 'uc', OLDEST)] });
+    mockQuery.mockResolvedValueOnce({ rows: [...page1Rows, makeVoucherRow('b1b1b1b1-0000-4000-8000-000000000003', 'uc', OLDEST)] });
     // batchToVoucherInfo for sliced rows ['ua','ub'] → radcheck + radacct only (group_profile=null)
     mockBatchEnrich(mockQuery, ['ua', 'ub']);
 
@@ -195,7 +197,7 @@ describe('GET /routers/:id/vouchers — cursor pagination', () => {
     mockSubscriptionQuery(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
 
-    const page2Rows = [makeVoucherRow('v-pg2-c', 'uc', OLDEST)];
+    const page2Rows = [makeVoucherRow('b1b1b1b1-0000-4000-8000-000000000003', 'uc', OLDEST)];
     mockQuery.mockResolvedValueOnce({ rows: [{ count: '2' }] });
     // Only 1 row returned (< limit), so hasNextPage = false → nextCursor = null
     mockQuery.mockResolvedValueOnce({ rows: page2Rows });

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../models/voucher.dart';
+import '../models/voucher_batch.dart';
 import 'api_client.dart';
 
 class VoucherService {
@@ -14,6 +15,8 @@ class VoucherService {
     int page = 1,
     int limit = 100,
     String? cursor,
+    String? batch,
+    Duration? receiveTimeout,
   }) async {
     final queryParams = <String, dynamic>{'limit': limit};
     // When a cursor is provided use keyset pagination; fall back to offset.
@@ -25,10 +28,14 @@ class VoucherService {
     if (status != null) queryParams['status'] = status;
     if (limitType != null) queryParams['limitType'] = limitType;
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
+    if (batch != null) queryParams['batch'] = batch;
 
     final response = await _api.dio.get(
       '/routers/$routerId/vouchers',
       queryParameters: queryParams,
+      options: receiveTimeout != null
+          ? Options(receiveTimeout: receiveTimeout)
+          : null,
     );
     final data = response.data['data'] as List;
     final meta = response.data['meta'] as Map<String, dynamic>?;
@@ -114,11 +121,13 @@ class VoucherService {
     String? status,
     String? limitType,
     String? search,
+    String? batch,
   }) async {
     final filter = <String, dynamic>{'all': true};
     if (status != null) filter['status'] = status;
     if (limitType != null) filter['limitType'] = limitType;
     if (search != null && search.isNotEmpty) filter['search'] = search;
+    if (batch != null) filter['batch'] = batch;
     final response = await _api.dio.post(
       '/routers/$routerId/vouchers/bulk-delete',
       data: {'filter': filter},
@@ -131,6 +140,7 @@ class VoucherService {
     String? status,
     String? limitType,
     String? search,
+    String? batch,
     int? maxCount,
   }) async {
     final List<Voucher> allVouchers = [];
@@ -143,8 +153,10 @@ class VoucherService {
         status: status,
         limitType: limitType,
         search: search,
+        batch: batch,
         cursor: cursor,
         limit: limit,
+        receiveTimeout: const Duration(seconds: 60),
       );
       allVouchers.addAll(result.vouchers);
 
@@ -156,6 +168,20 @@ class VoucherService {
     }
 
     return allVouchers;
+  }
+
+  Future<List<VoucherBatch>> getVoucherBatches(
+    String routerId, {
+    int limit = 100,
+  }) async {
+    final response = await _api.dio.get(
+      '/routers/$routerId/vouchers/batches',
+      queryParameters: {'limit': limit},
+    );
+    final data = response.data['data'] as List;
+    return data
+        .map((e) => VoucherBatch.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 }
 
