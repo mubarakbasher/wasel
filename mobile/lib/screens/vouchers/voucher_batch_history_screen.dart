@@ -80,14 +80,23 @@ class _VoucherBatchHistoryScreenState
   @override
   Widget build(BuildContext context) {
     final batchesState = ref.watch(voucherBatchesProvider);
+    final routerName = ref
+        .watch(routersProvider)
+        .routers
+        .where((r) => r.id == widget.routerId)
+        .firstOrNull
+        ?.name;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.tr('vouchers.batchHistory')),
+        title: _AppBarTitle(
+          routerName: routerName,
+          mainTitle: context.tr('vouchers.batchHistory'),
+        ),
       ),
       body: Stack(
         children: [
-          _buildBody(batchesState),
+          _buildBody(batchesState, routerName),
           if (_isPrintLoading)
             Positioned.fill(
               child: Container(
@@ -100,7 +109,7 @@ class _VoucherBatchHistoryScreenState
     );
   }
 
-  Widget _buildBody(VoucherBatchesState batchesState) {
+  Widget _buildBody(VoucherBatchesState batchesState, String? routerName) {
     if (batchesState.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -116,7 +125,9 @@ class _VoucherBatchHistoryScreenState
       return EmptyState(
         icon: Icons.history,
         title: context.tr('vouchers.noBatches'),
-        message: '',
+        message: routerName != null
+            ? context.tr('vouchers.noBatchesForRouter', [routerName])
+            : '',
       );
     }
     return RefreshIndicator(
@@ -133,6 +144,37 @@ class _VoucherBatchHistoryScreenState
           );
         },
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Two-line AppBar title: main title + optional router name subtitle.
+// ---------------------------------------------------------------------------
+
+class _AppBarTitle extends StatelessWidget {
+  final String mainTitle;
+  final String? routerName;
+
+  const _AppBarTitle({required this.mainTitle, this.routerName});
+
+  @override
+  Widget build(BuildContext context) {
+    if (routerName == null) {
+      return Text(mainTitle);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(mainTitle),
+        Text(
+          routerName!,
+          style: AppTypography.caption1.copyWith(
+            color: AppColors.textInverse.withValues(alpha: 0.75),
+          ),
+        ),
+      ],
     );
   }
 }

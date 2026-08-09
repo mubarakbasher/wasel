@@ -674,6 +674,7 @@ class AppLocalizations {
     'vouchers.selectBatch': 'Select batch',
     'vouchers.batchCount': '{0} vouchers',
     'vouchers.noBatches': 'No creation batches yet',
+    'vouchers.noBatchesForRouter': 'No creation batches for "{0}" yet',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'No active sessions',
@@ -1488,6 +1489,7 @@ class AppLocalizations {
     'vouchers.selectBatch': 'اختر الدفعة',
     'vouchers.batchCount': '{0} كرت',
     'vouchers.noBatches': 'لا توجد دفعات إنشاء بعد',
+    'vouchers.noBatchesForRouter': 'لا توجد دفعات إنشاء للراوتر "{0}" بعد',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'لا توجد جلسات نشطة',
