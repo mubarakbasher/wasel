@@ -699,7 +699,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                                           '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
                                           '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
                                       final limitLabel =
-                                          batch.limitDisplayText;
+                                          localizedLimitText(context, limitType: batch.limitType, limitValue: batch.limitValue, limitUnit: batch.limitUnit) ?? '';
                                       final priceLabel = batch.price != null
                                           ? ' · ${batch.price}'
                                           : '';

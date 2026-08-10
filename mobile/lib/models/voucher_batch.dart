@@ -19,36 +19,6 @@ class VoucherBatch {
     this.price,
   });
 
-  /// Human-readable limit summary (e.g. "1 hours", "500 MB").
-  /// Returns an empty string when no limit data is available.
-  /// Uses the same reverse-normalization logic as Voucher.limitDisplayText.
-  String get limitDisplayText {
-    if (limitType == null || limitValue == null || limitUnit == null) {
-      return '';
-    }
-    int displayValue;
-    switch (limitUnit) {
-      case 'minutes':
-        displayValue = limitValue! ~/ 60;
-        break;
-      case 'hours':
-        displayValue = limitValue! ~/ 3600;
-        break;
-      case 'days':
-        displayValue = limitValue! ~/ 86400;
-        break;
-      case 'MB':
-        displayValue = limitValue! ~/ (1024 * 1024);
-        break;
-      case 'GB':
-        displayValue = limitValue! ~/ (1024 * 1024 * 1024);
-        break;
-      default:
-        displayValue = limitValue!;
-    }
-    return '$displayValue $limitUnit';
-  }
-
   factory VoucherBatch.fromJson(Map<String, dynamic> json) {
     return VoucherBatch(
       batchKey: json['batchKey'] as String,

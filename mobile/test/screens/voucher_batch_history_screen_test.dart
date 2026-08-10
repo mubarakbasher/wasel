@@ -57,6 +57,17 @@ VoucherBatch _fakeBatch(int offsetDays) => VoucherBatch(
       count: 10 + offsetDays,
     );
 
+/// Batch with a time limit of 198 000 s = 55 hours, used to verify that the
+/// UI renders the localized unit rather than the raw English 'hours' string.
+VoucherBatch _fakeBatchWithLimit() => VoucherBatch(
+      batchKey: 'batch-limit',
+      createdAt: DateTime(2026, 1, 15),
+      count: 20,
+      limitType: 'time',
+      limitValue: 198000, // 55 * 3600
+      limitUnit: 'hours',
+    );
+
 // ---------------------------------------------------------------------------
 // Helper — pumps VoucherBatchHistoryScreen inside a localization + provider
 // scope.
@@ -65,6 +76,7 @@ VoucherBatch _fakeBatch(int offsetDays) => VoucherBatch(
 Widget _buildApp({
   required _FakeRoutersNotifier routersNotifier,
   required _FakeBatchesNotifier batchesNotifier,
+  Locale? locale,
 }) {
   return ProviderScope(
     overrides: [
@@ -72,6 +84,7 @@ Widget _buildApp({
       voucherBatchesProvider.overrideWith((ref) => batchesNotifier),
     ],
     child: MaterialApp(
+      locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -149,6 +162,37 @@ void main() {
         findsAtLeastNWidgets(1),
         reason: 'Empty state message must name the router so the user '
             'understands why no batches appear',
+      );
+    });
+
+    testWidgets(
+        'batch card shows Arabic unit label (ساعات) not raw English "hours"',
+        (tester) async {
+      // This test MUST fail before the localizedLimitText fix because
+      // limitDisplayText hard-codes English unit strings. After the fix it
+      // passes because localizedLimitText uses the vouchers.hours i18n key.
+      final routersNotifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+      final batchesNotifier =
+          _FakeBatchesNotifier(batches: [_fakeBatchWithLimit()]);
+
+      await tester.pumpWidget(_buildApp(
+        routersNotifier: routersNotifier,
+        batchesNotifier: batchesNotifier,
+        locale: const Locale('ar'),
+      ));
+      await tester.pump();
+
+      expect(
+        find.textContaining('55'),
+        findsAtLeastNWidgets(1),
+        reason: 'The numeric value 55 must appear in the batch detail line',
+      );
+      expect(
+        find.textContaining('ساعات'),
+        findsOneWidget,
+        reason:
+            'The Arabic translation of "hours" (ساعات) must appear — '
+            'not the raw English unit string',
       );
     });
   });

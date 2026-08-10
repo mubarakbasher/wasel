@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/voucher_format.dart';
 import '../../models/voucher_batch.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/voucher_batches_provider.dart';
@@ -192,7 +193,7 @@ class _BatchCard extends StatelessWidget {
         '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
         '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
-    final limitLabel = batch.limitDisplayText;
+    final limitLabel = localizedLimitText(context, limitType: batch.limitType, limitValue: batch.limitValue, limitUnit: batch.limitUnit) ?? '';
     final detailParts = <String>[
       context.tr('vouchers.batchCount', [batch.count.toString()]),
       if (limitLabel.isNotEmpty) limitLabel,

@@ -69,50 +69,5 @@ void main() {
       expect(batch.price, isNull);
     });
 
-    test('limitDisplayText shows correct reverse-normalized value', () {
-      // 1 hour = 3600 seconds
-      final batch = VoucherBatch.fromJson({
-        'batchKey': '2026-08-09T10:11:12.123456Z',
-        'createdAt': '2026-08-09T10:11:12.123456Z',
-        'count': 10,
-        'limitType': 'time',
-        'limitValue': 3600,
-        'limitUnit': 'hours',
-        'validitySeconds': null,
-        'price': null,
-      });
-
-      expect(batch.limitDisplayText, '1 hours');
-    });
-
-    test('limitDisplayText returns empty string when limit is null', () {
-      final batch = VoucherBatch.fromJson({
-        'batchKey': '2026-08-09T10:11:12.123456Z',
-        'createdAt': '2026-08-09T10:11:12.123456Z',
-        'count': 10,
-        'limitType': null,
-        'limitValue': null,
-        'limitUnit': null,
-        'validitySeconds': null,
-        'price': null,
-      });
-
-      expect(batch.limitDisplayText, '');
-    });
-
-    test('limitDisplayText for data GB batch', () {
-      final batch = VoucherBatch.fromJson({
-        'batchKey': '2026-08-09T10:11:12.123456Z',
-        'createdAt': '2026-08-09T10:11:12.123456Z',
-        'count': 5,
-        'limitType': 'data',
-        'limitValue': 1073741824, // 1 GB in bytes
-        'limitUnit': 'GB',
-        'validitySeconds': null,
-        'price': null,
-      });
-
-      expect(batch.limitDisplayText, '1 GB');
-    });
   });
 }
