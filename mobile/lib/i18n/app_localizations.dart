@@ -337,6 +337,10 @@ class AppLocalizations {
     'error.TIER_INSUFFICIENT': 'Your current plan does not support this feature.',
     'error.INVALID_CURSOR': 'Invalid pagination cursor. Please refresh and try again.',
     'error.INTERNAL_ERROR': 'An internal server error occurred. Please try again later.',
+    'error.USERNAME_TAKEN': 'Could not allocate unique voucher codes. Please try again.',
+    'error.USERNAME_GENERATION_FAILED': 'Failed to generate unique voucher codes. Please try again.',
+    'error.ROUTER_NOT_READY': 'Router is still being provisioned. Try again once it is online.',
+    'error.RATE_LIMIT_EXCEEDED': 'Too many requests, please try again later.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'Wasel',
@@ -675,6 +679,7 @@ class AppLocalizations {
     'vouchers.batchCount': '{0} vouchers',
     'vouchers.noBatches': 'No creation batches yet',
     'vouchers.noBatchesForRouter': 'No creation batches for "{0}" yet',
+    'vouchers.pdfDocTitle': 'Wasel Vouchers',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'No active sessions',
@@ -1137,6 +1142,10 @@ class AppLocalizations {
     'error.TIER_INSUFFICIENT': 'باقتك الحالية لا تدعم هذه الميزة.',
     'error.INVALID_CURSOR': 'مؤشر الترقيم غير صحيح. يرجى التحديث والمحاولة.',
     'error.INTERNAL_ERROR': 'حدث خطأ داخلي في الخادم. يرجى المحاولة لاحقاً.',
+    'error.USERNAME_TAKEN': 'تعذّر توليد أكواد كروت فريدة. يرجى المحاولة مرة أخرى.',
+    'error.USERNAME_GENERATION_FAILED': 'فشل توليد أكواد كروت فريدة. يرجى المحاولة مرة أخرى.',
+    'error.ROUTER_NOT_READY': 'لا يزال الراوتر قيد التجهيز. حاول مرة أخرى عندما يصبح متصلاً.',
+    'error.RATE_LIMIT_EXCEEDED': 'محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'واصل',
@@ -1447,9 +1456,9 @@ class AppLocalizations {
     'vouchers.hours': 'ساعات',
     'vouchers.days': 'أيام',
     'vouchers.exampleHint': 'مثال: {0}',
-    'vouchers.unitMb': 'MB',
-    'vouchers.unitGb': 'GB',
-    'vouchers.unitKb': 'KB',
+    'vouchers.unitMb': 'ميجابايت',
+    'vouchers.unitGb': 'جيجابايت',
+    'vouchers.unitKb': 'كيلوبايت',
     'vouchers.unitMinShort': 'دقيقة',
     'vouchers.unitHrShort': 'ساعة',
     'vouchers.unitDayShort': 'يوم',
@@ -1490,6 +1499,7 @@ class AppLocalizations {
     'vouchers.batchCount': '{0} كرت',
     'vouchers.noBatches': 'لا توجد دفعات إنشاء بعد',
     'vouchers.noBatchesForRouter': 'لا توجد دفعات إنشاء للراوتر "{0}" بعد',
+    'vouchers.pdfDocTitle': 'كروت واصل',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'لا توجد جلسات نشطة',

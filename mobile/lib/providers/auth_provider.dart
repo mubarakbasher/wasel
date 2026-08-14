@@ -19,6 +19,7 @@ import 'routers_provider.dart';
 import 'sessions_provider.dart';
 import 'subscription_provider.dart';
 import 'support_provider.dart';
+import 'voucher_batches_provider.dart';
 import 'vouchers_provider.dart';
 
 // ---------------------------------------------------------------------------
@@ -129,6 +130,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     safeReset(() => ref.read(subscriptionProvider.notifier).clearSubscription());
     safeReset(() => ref.read(routersProvider.notifier).reset());
     safeReset(() => ref.read(vouchersProvider.notifier).reset());
+    safeReset(() => ref.read(voucherBatchesProvider.notifier).reset());
     safeReset(() => ref.read(sessionsProvider.notifier).reset());
     safeReset(() => ref.read(dashboardProvider.notifier).reset());
     safeReset(() => ref.read(reportsProvider.notifier).reset());

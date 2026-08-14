@@ -8,6 +8,7 @@ import 'package:wasel/models/voucher_batch.dart';
 import 'package:wasel/providers/routers_provider.dart';
 import 'package:wasel/providers/voucher_batches_provider.dart';
 import 'package:wasel/screens/vouchers/voucher_batch_history_screen.dart';
+import 'package:wasel/theme/app_theme.dart';
 
 // ---------------------------------------------------------------------------
 // Fake RoutersNotifier
@@ -84,6 +85,10 @@ Widget _buildApp({
       voucherBatchesProvider.overrideWith((ref) => batchesNotifier),
     ],
     child: MaterialApp(
+      // The real app theme is load-bearing for regression coverage: it sets
+      // ElevatedButton minimumSize to an infinite width, which crashes layouts
+      // that place a button in an unbounded Row slot.
+      theme: AppTheme.light,
       locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
@@ -103,6 +108,28 @@ Widget _buildApp({
 
 void main() {
   group('VoucherBatchHistoryScreen', () {
+    testWidgets('renders batch cards without layout exceptions under the real theme',
+        (tester) async {
+      final routersNotifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+      final batchesNotifier =
+          _FakeBatchesNotifier(batches: [_fakeBatch(0), _fakeBatch(1)]);
+
+      await tester.pumpWidget(_buildApp(
+        routersNotifier: routersNotifier,
+        batchesNotifier: batchesNotifier,
+      ));
+      await tester.pump();
+
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'the Print button must have bounded constraints inside the '
+            'card Row — the app theme forces infinite-min-width buttons',
+      );
+      expect(find.text('2026-01-01 00:00'), findsOneWidget);
+      expect(find.text('2026-01-02 00:00'), findsOneWidget);
+    });
+
     testWidgets('shows the router name in the app bar', (tester) async {
       final routersNotifier =
           _FakeRoutersNotifier(routers: [_fakeRouter()]);

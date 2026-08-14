@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/voucher_format.dart';
 import '../../models/voucher.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/vouchers_provider.dart';
@@ -685,7 +686,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
   Widget _buildStep3CountPrice() {
     final limitText = _limitValueController.text.isNotEmpty
-        ? '${_limitValueController.text} $_limitUnit'
+        ? '${_limitValueController.text} ${localizedUnitLabel(context, _limitUnit)}'
         : '';
     final validityText = _validitySeconds == null
         ? context.tr('vouchers.openNoExpiry')
@@ -769,13 +770,13 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                 const SizedBox(height: AppSpacing.sm),
                 _buildSummaryRow(
                   context.tr('vouchers.price'),
-                  context.tr('vouchers.each', [price.toStringAsFixed(2)]),
+                  context.tr('vouchers.each', ['${price.toStringAsFixed(2)} ${context.tr('common.currencySymbol')}']),
                 ),
                 if (count > 1) ...[
                   const Divider(height: AppSpacing.lg),
                   _buildSummaryRow(
                     context.tr('vouchers.total'),
-                    totalPrice.toStringAsFixed(2),
+                    '${totalPrice.toStringAsFixed(2)} ${context.tr('common.currencySymbol')}',
                     bold: true,
                   ),
                 ],

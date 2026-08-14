@@ -35,12 +35,17 @@ class VoucherPdfJob {
   final Uint8List cairoRegular;
   final Uint8List cairoBold;
 
+  /// Optional PDF document title shown in viewer title bars and share sheets.
+  /// Defaults to `'Wasel Vouchers'` when `null`.
+  final String? docTitle;
+
   const VoucherPdfJob({
     required this.items,
     required this.businessName,
     required this.columns,
     required this.cairoRegular,
     required this.cairoBold,
+    this.docTitle,
   });
 }
 
@@ -56,7 +61,7 @@ Future<Uint8List> buildVouchersPdfJob(VoucherPdfJob job) {
       job.cairoBold.lengthInBytes,
     )),
   );
-  return builder.build(job.items, job.businessName, columns: job.columns);
+  return builder.build(job.items, job.businessName, columns: job.columns, docTitle: job.docTitle);
 }
 
 // Arabic Unicode block + Arabic Supplement + Arabic Extended-A + Arabic
@@ -81,8 +86,9 @@ class _VouchersPdfBuilder {
     List<VoucherPrintItem> items,
     String businessName, {
     int columns = 4,
+    String? docTitle,
   }) async {
-    final doc = pw.Document(title: 'Wasel Vouchers', author: 'Wasel');
+    final doc = pw.Document(title: docTitle ?? 'Wasel Vouchers', author: 'Wasel');
 
     const double marginH = 16;
     const double marginV = 16;
@@ -297,10 +303,16 @@ class PrintService {
   }
 
   /// Generate an A4 PDF with voucher cards arranged in a configurable grid.
+  ///
+  /// [docTitle] sets the PDF document title shown in viewer title bars and
+  /// share-sheet previews. When `null` (the default), falls back to the static
+  /// `'Wasel Vouchers'` string. Pass `context.tr('vouchers.pdfDocTitle')` from
+  /// the calling screen so the title is localised.
   Future<Uint8List> generateVouchersPdf(
     List<VoucherPrintItem> items,
     String businessName, {
     int columns = 4,
+    String? docTitle,
   }) async {
     await _ensureFontBytes();
     return compute(
@@ -311,6 +323,7 @@ class PrintService {
         columns: columns,
         cairoRegular: _cairoBytes!,
         cairoBold: _cairoBoldBytes!,
+        docTitle: docTitle,
       ),
       debugLabel: 'voucherPdf',
     );

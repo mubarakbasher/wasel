@@ -115,20 +115,24 @@ class _VoucherBatchHistoryScreenState
       return const Center(child: CircularProgressIndicator());
     }
     if (batchesState.error != null && batchesState.batches.isEmpty) {
-      return ErrorState(
-        message: batchesState.error!,
-        onRetry: () =>
-            ref.read(voucherBatchesProvider.notifier).load(widget.routerId),
-        retryLabel: context.tr('common.retry'),
+      return _refreshable(
+        ErrorState(
+          message: batchesState.error!,
+          onRetry: () =>
+              ref.read(voucherBatchesProvider.notifier).load(widget.routerId),
+          retryLabel: context.tr('common.retry'),
+        ),
       );
     }
     if (batchesState.batches.isEmpty) {
-      return EmptyState(
-        icon: Icons.history,
-        title: context.tr('vouchers.noBatches'),
-        message: routerName != null
-            ? context.tr('vouchers.noBatchesForRouter', [routerName])
-            : '',
+      return _refreshable(
+        EmptyState(
+          icon: Icons.history,
+          title: context.tr('vouchers.noBatches'),
+          message: routerName != null
+              ? context.tr('vouchers.noBatchesForRouter', [routerName])
+              : '',
+        ),
       );
     }
     return RefreshIndicator(
@@ -144,6 +148,23 @@ class _VoucherBatchHistoryScreenState
             onPrint: () => _onPrintBatch(batch),
           );
         },
+      ),
+    );
+  }
+
+  /// Empty/error views are dead ends without a scrollable — wrap them so
+  /// pull-to-refresh keeps working when there is nothing to scroll.
+  Widget _refreshable(Widget child) {
+    return RefreshIndicator(
+      onRefresh: () =>
+          ref.read(voucherBatchesProvider.notifier).load(widget.routerId),
+      child: LayoutBuilder(
+        builder: (context, constraints) => ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(height: constraints.maxHeight, child: child),
+          ],
+        ),
       ),
     );
   }
@@ -172,7 +193,7 @@ class _AppBarTitle extends StatelessWidget {
         Text(
           routerName!,
           style: AppTypography.caption1.copyWith(
-            color: AppColors.textInverse.withValues(alpha: 0.75),
+            color: AppColors.textSecondary,
           ),
         ),
       ],
@@ -197,7 +218,7 @@ class _BatchCard extends StatelessWidget {
     final detailParts = <String>[
       context.tr('vouchers.batchCount', [batch.count.toString()]),
       if (limitLabel.isNotEmpty) limitLabel,
-      if (batch.price != null) '${batch.price}',
+      if (batch.price != null) '${batch.price} ${context.tr('common.currencySymbol')}',
     ];
 
     return AppCard(
@@ -226,6 +247,13 @@ class _BatchCard extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: onPrint,
+            // The app-wide ElevatedButton theme sets an infinite minimum
+            // width, which is unbounded inside this Row slot and blanks the
+            // whole screen with a layout error — give it finite constraints.
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            ),
             child: Text(context.tr('vouchers.printVouchers')),
           ),
         ],

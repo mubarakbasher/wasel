@@ -224,6 +224,29 @@ void main() {
     });
   });
 
+  // ── New backend codes (voucher generation + router provisioning) ──────────
+  group('new backend error codes map to i18n keys', () {
+    void expectCode(String code, String key) {
+      test('$code => $key', () {
+        final result = errorToDisplay(_dio(
+          type: DioExceptionType.badResponse,
+          statusCode: 422,
+          data: {
+            'error': {'code': code, 'message': 'backend raw message'},
+          },
+        ));
+        expect(result, key,
+            reason: 'machine-readable code must take precedence over the '
+                'backend human message and map to the correct i18n key');
+      });
+    }
+
+    expectCode('USERNAME_TAKEN', 'error.USERNAME_TAKEN');
+    expectCode('USERNAME_GENERATION_FAILED', 'error.USERNAME_GENERATION_FAILED');
+    expectCode('ROUTER_NOT_READY', 'error.ROUTER_NOT_READY');
+    expectCode('RATE_LIMIT_EXCEEDED', 'error.RATE_LIMIT_EXCEEDED');
+  });
+
   // ── REGRESSION: verbose Dio timeout message must not leak ────────────────
   group('REGRESSION – verbose Dio timeout message is suppressed', () {
     const verboseMessage =

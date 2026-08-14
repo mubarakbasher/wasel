@@ -701,7 +701,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                                       final limitLabel =
                                           localizedLimitText(context, limitType: batch.limitType, limitValue: batch.limitValue, limitUnit: batch.limitUnit) ?? '';
                                       final priceLabel = batch.price != null
-                                          ? ' · ${batch.price}'
+                                          ? ' · ${batch.price} ${context.tr('common.currencySymbol')}'
                                           : '';
                                       return ListTile(
                                         leading: isActive

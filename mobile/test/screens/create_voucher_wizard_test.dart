@@ -7,6 +7,7 @@ import 'package:wasel/models/router_model.dart';
 import 'package:wasel/providers/routers_provider.dart';
 import 'package:wasel/providers/vouchers_provider.dart';
 import 'package:wasel/screens/vouchers/create_voucher_wizard.dart';
+import 'package:wasel/theme/app_theme.dart';
 
 // ---------------------------------------------------------------------------
 // Fake RoutersNotifier — records whether loadRouters() was called and starts
@@ -58,13 +59,20 @@ RouterModel _fakeRouter() => RouterModel(
 // Helper — pumps CreateVoucherWizard inside a full localization stack.
 // ---------------------------------------------------------------------------
 
-Widget _buildApp({required _FakeRoutersNotifier routersNotifier}) {
+Widget _buildApp({
+  required _FakeRoutersNotifier routersNotifier,
+  Locale? locale,
+}) {
   return ProviderScope(
     overrides: [
       routersProvider.overrideWith((ref) => routersNotifier),
       vouchersProvider.overrideWith((ref) => _FakeVouchersNotifier()),
     ],
     child: MaterialApp(
+      // The real app theme is load-bearing: it sets ElevatedButton minimumSize
+      // to an infinite width, which crashes unbounded-Row button slots.
+      theme: AppTheme.light,
+      locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -108,6 +116,61 @@ void main() {
       expect(notifier.loadRoutersCalled, isFalse,
           reason: 'wizard must not redundantly re-fetch when the router '
               'is already present in state');
+    });
+  });
+
+  // ── Arabic locale: Step 3 summary shows localised unit and currency ────────
+
+  group('CreateVoucherWizard Step 3 summary under Arabic locale', () {
+    testWidgets(
+        'shows ساعات (not raw "hours") and ج.س currency symbol in summary',
+        (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      // ── Step 0: Limit ─────────────────────────────────────────────────────
+      // Default state: limitType = 'time', limitUnit = 'hours'.
+      // Enter limit value so step-0 form validation passes.
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        '2',
+      );
+
+      // Tap "التالي" (Next) to advance to step 1 (Validity).
+      await tester.tap(find.widgetWithText(ElevatedButton, 'التالي'));
+      await tester.pumpAndSettle();
+
+      // ── Step 1: Validity ──────────────────────────────────────────────────
+      // Default is open-validity — no further input needed.
+      // Tap "التالي" again to reach step 2 (Count & Price / summary).
+      await tester.tap(find.widgetWithText(ElevatedButton, 'التالي'));
+      await tester.pumpAndSettle();
+
+      // ── Step 2: Summary assertions ────────────────────────────────────────
+      // The limit summary row should use the localised Arabic unit label.
+      expect(
+        find.textContaining('ساعات'),
+        findsAtLeastNWidgets(1),
+        reason: 'localizedUnitLabel must translate "hours" → "ساعات" in ar; '
+            'the raw English string must never appear in the summary',
+      );
+      expect(
+        find.textContaining('hours'),
+        findsNothing,
+        reason: 'raw English "hours" must not appear anywhere in the Arabic UI',
+      );
+
+      // The price row must include the localised currency symbol.
+      expect(
+        find.textContaining('ج.س'),
+        findsAtLeastNWidgets(1),
+        reason: 'common.currencySymbol (ج.س) must appear in the price row '
+            'of the Arabic summary',
+      );
     });
   });
 }

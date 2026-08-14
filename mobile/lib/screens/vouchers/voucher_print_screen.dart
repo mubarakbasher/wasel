@@ -42,6 +42,7 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
       items,
       widget.routerName,
       columns: _columnCount,
+      docTitle: context.tr('vouchers.pdfDocTitle'),
     );
   }
 
