@@ -209,7 +209,7 @@ export const listEmailLogQuerySchema = z.object({
 // Email templates
 // ---------------------------------------------------------------------------
 
-const EMAIL_TEMPLATE_TYPES = ['verification_otp', 'password_reset_otp', 'payment_submitted_admin', 'payment_approved', 'payment_rejected'] as const;
+const EMAIL_TEMPLATE_TYPES = ['verification_otp', 'password_reset_otp', 'payment_submitted_admin', 'payment_approved', 'payment_rejected', 'support_message_admin', 'support_reply_user'] as const;
 
 export const emailTemplateParamSchema = z.object({
   type: z.enum(EMAIL_TEMPLATE_TYPES),

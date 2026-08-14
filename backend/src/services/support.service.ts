@@ -2,6 +2,7 @@ import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import { notifySupportReply } from './notification.service';
+import * as emailService from './email.service';
 import { encodeCursor, decodeCursor, TimestampUuidCursor } from '../utils/cursor';
 
 export interface SupportMessage {
@@ -118,6 +119,12 @@ export async function sendUserMessage(userId: string, body: string): Promise<Sup
     [userId, body],
   );
   logger.info('Support message sent by user', { userId, messageId: result.rows[0].id });
+
+  // Fire-and-forget admin alert — never breaks the main flow.
+  void emailService
+    .sendSupportMessageAdminAlert(userId, body)
+    .catch((e) => logger.error('support admin alert email failed', { e }));
+
   return toMessage(result.rows[0]);
 }
 
@@ -280,6 +287,11 @@ export async function sendAdminMessage(
   notifySupportReply(userId, preview).catch((err) => {
     logger.error('Failed to send support_reply notification', { userId, err });
   });
+
+  // Fire reply email to the user — fire-and-forget.
+  void emailService
+    .sendSupportReplyEmail(userId, body)
+    .catch((e) => logger.error('support reply email failed', { e }));
 
   return message;
 }

@@ -133,6 +133,15 @@ Closes "I didn't get notified when a user paid" + adds bilingual editable emails
 - **E2E to run on staging:** register (verify email logged + localized when user lang=ar) · forgot-password · request sub + upload receipt → each active admin gets a localized "please approve" email + an `email_log` row · approve/reject → user gets the localized email · edit a template + Save → next send uses it · "Send test to me" → arrives in admin inbox · Email Log filters work. **Add to `docs/STAGING.md`:** "send a test of each type in each language; verify the subject renders without HTML entities."
 - **Ops notes:** migrations are idempotent (`ON CONFLICT DO NOTHING`) — **disabling/editing a seeded template in prod is a manual op and re-running migrations does NOT revert it**. `email_log` is pruned at 90 days (adjust the interval in `jobs/purgeEmailLog.ts` if a longer audit window is needed).
 
+## Support-chat email notifications — DONE (on `dev`, pending staging)
+Closes "admin isn't notified of contact messages / user isn't emailed on reply". Wires the existing in-app Contact/Support chat into the email system — backend only, **no mobile/admin-UI change** (new template types appear automatically in the Email Templates editor).
+- **2 new email types**, each en+ar (migration `039_support_email_templates.sql`, seeds only, idempotent): `support_message_admin` (tokens `{user_name} {user_email} {message}`) and `support_reply_user` (`{name} {message}`).
+- **User sends a support message** (`support.service.sendUserMessage`) → fire-and-forget email to every active admin in their own language, **deduped per user-thread via Redis (10 min, `email:supportalert:<userId>`)** so a chat burst can't fan out N emails. Sidebar badge behavior unchanged.
+- **Admin replies** (`support.service.sendAdminMessage`) → user gets the full reply body by email (alongside the existing push/inbox, which stay pref-gated; the email is unconditional like the payment emails). No dedupe — every reply mails.
+- `EMAIL_TEMPLATE_TYPES` widened in `admin.validators.ts` so the template editor + test-send accept the new types.
+- Verified: `tsc` clean + **775 tests** (21 new). Security-auditor pass: no blockers (nits noted: pre-existing subject control-char strip is `\r\n\t` only; multi-line messages render single-line in the HTML body).
+- **E2E to run on staging:** send a support message from the app → each active admin gets the localized alert with sender name/email/message + `email_log` row · send a second message within 10 min → deduped (no second email) · admin reply from `/messages/:userId` → user receives the localized reply email (ar user → Arabic) · edit both templates + test-send works.
+
 ## Admin Dashboard redesign — DONE (on `dev` `f89abb8`, pending staging)
 Replaced the flat 7-card dashboard with a data-dense operator console + real trend lines. Backend + admin; **no mobile change**.
 - **New table** (migration `029_metrics_daily.sql`): a once-per-day snapshot keyed by `snapshot_date` (upsert).

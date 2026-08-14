@@ -111,6 +111,31 @@ const DEFAULT_TEMPLATES: Record<string, { subject: string; body_html: string }> 
 <p>You can re-upload your receipt and resubmit your payment from the app.</p>
 </div>`,
   },
+  support_message_admin: {
+    subject: 'New support message from {user_name}',
+    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+<h2 style="color:#1a1a2e;">New Support Message</h2>
+<p>A user has sent a support message that requires your attention.</p>
+<p><strong>Name:</strong> {user_name}<br>
+<strong>Email:</strong> {user_email}</p>
+<div style="background:#f0f0f5;border-radius:8px;padding:16px;margin:16px 0;">
+  <p style="margin:0;color:#1a1a2e;">{message}</p>
+</div>
+<p>Reply from the Wasel admin panel.</p>
+</div>`,
+  },
+  support_reply_user: {
+    subject: 'Wasel support replied to your message',
+    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+<h2 style="color:#1a1a2e;">Support Reply</h2>
+<p>Hi {name},</p>
+<p>The Wasel support team has replied to your message:</p>
+<div style="background:#f0f0f5;border-radius:8px;padding:16px;margin:16px 0;">
+  <p style="margin:0;color:#1a1a2e;">{message}</p>
+</div>
+<p>Open the Wasel app (Settings &rarr; Contact) to continue the conversation.</p>
+</div>`,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -397,7 +422,7 @@ export async function sendPaymentRejected(
 // Test sender (admin panel "send test" button)
 // ---------------------------------------------------------------------------
 
-/** Fixed sample values that exercise every {token} across all 5 template types. */
+/** Fixed sample values that exercise every {token} across all template types. */
 const SAMPLE_PARAMS: Record<string, string> = {
   name: 'Jane Doe',
   otp: '123456',
@@ -408,6 +433,7 @@ const SAMPLE_PARAMS: Record<string, string> = {
   currency: 'SDG',
   reference: 'WSL-TEST-0001',
   reason: 'Sample reason — receipt image was unreadable',
+  message: 'This is a sample support message for preview purposes.',
 };
 
 /**
@@ -425,6 +451,83 @@ export async function sendTestEmail(
     language,
     params: SAMPLE_PARAMS,
     userId: null,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Support-chat notification senders
+// ---------------------------------------------------------------------------
+
+/**
+ * Alert every active admin by email when a user sends a support message.
+ * Deduped via Redis: at most one alert per userId per 10 minutes so chat
+ * bursts (user sends several messages rapidly) do not fan out N times.
+ */
+export async function sendSupportMessageAdminAlert(userId: string, message: string): Promise<void> {
+  // Dedupe: one alert per user-thread per 10 minutes.
+  const fresh = await redis.set(`email:supportalert:${userId}`, '1', 'EX', 600, 'NX');
+  if (fresh !== 'OK') {
+    logger.debug('support admin alert deduped', { userId });
+    return;
+  }
+
+  // 1. Load sender name and email.
+  const userResult = await pool.query<{ name: string; email: string }>(
+    `SELECT name, email FROM users WHERE id = $1 AND is_active = TRUE`,
+    [userId],
+  );
+  if (userResult.rows.length === 0) {
+    logger.warn('sendSupportMessageAdminAlert: user not found', { userId });
+    return;
+  }
+  const user = userResult.rows[0];
+  const emailParams: Record<string, string> = {
+    user_name: user.name,
+    user_email: user.email,
+    message,
+  };
+
+  // 2. Load all active admin users.
+  const adminResult = await pool.query<{ email: string; language: string | null }>(
+    `SELECT email, language FROM users WHERE role = 'admin' AND is_active = TRUE`,
+  );
+  if (adminResult.rows.length === 0) {
+    logger.warn('sendSupportMessageAdminAlert: no active admins found');
+    return;
+  }
+
+  // 3. Send to each admin in their own language (userId null for admin-alert log entries).
+  await Promise.all(
+    adminResult.rows.map((admin) =>
+      sendTemplatedEmail({
+        to: admin.email,
+        type: 'support_message_admin',
+        language: admin.language === 'ar' ? 'ar' : 'en',
+        params: emailParams,
+        userId: null,
+      }),
+    ),
+  );
+}
+
+/**
+ * Notify the user by email when an admin replies to their support thread.
+ * No dedupe — every reply gets its own email (replies are intentional
+ * admin actions, not user-triggered bursts).
+ */
+export async function sendSupportReplyEmail(userId: string, message: string): Promise<void> {
+  const userRow = await resolveUserEmailAndLanguage(userId);
+  if (!userRow) return;
+
+  await sendTemplatedEmail({
+    to: userRow.email,
+    type: 'support_reply_user',
+    language: userRow.language,
+    params: {
+      name: userRow.name,
+      message,
+    },
+    userId,
   });
 }
 
