@@ -10,6 +10,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wasel/services/print_service.dart';
 
@@ -117,6 +118,72 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   final svc = PrintService();
+
+  test(
+    'concurrent calls share one font-load (loads == 2, not 4)',
+    () async {
+      int loads = 0;
+      final spy = PrintService(
+        loadAsset: (key) {
+          loads++;
+          return rootBundle.load(key);
+        },
+      );
+
+      // Small fixture — enough for a valid PDF, fast enough for CI.
+      final items = [
+        const VoucherPrintItem(
+          code: 'WSL-0001',
+          limitText: '1 GB',
+          validityText: '3 days',
+        ),
+        const VoucherPrintItem(
+          code: 'WSL-0002',
+          limitText: null,
+          validityText: 'مفتوح',
+        ),
+        const VoucherPrintItem(
+          code: 'WSL-0003',
+          limitText: '30 دقيقة',
+          validityText: 'يوم واحد',
+        ),
+        const VoucherPrintItem(
+          code: 'WSL-0004',
+          limitText: 'Basic',
+          validityText: '7 days',
+        ),
+      ];
+
+      // Start both calls back-to-back without awaiting between them.
+      final f1 = spy.generateVouchersPdf(items, 'Test Router', columns: 4);
+      final f2 = spy.generateVouchersPdf(items, 'Test Router', columns: 4);
+
+      final results = await Future.wait([f1, f2]);
+
+      // Both must be valid PDF byte streams.
+      expect(
+        utf8.decode(results[0].sublist(0, 5)),
+        equals('%PDF-'),
+        reason: 'first call must produce a valid PDF',
+      );
+      expect(
+        utf8.decode(results[1].sublist(0, 5)),
+        equals('%PDF-'),
+        reason: 'second call must produce a valid PDF',
+      );
+
+      // The single-flight memo means Cairo-Regular + Cairo-Bold are loaded
+      // exactly once (2 loads total), not once per call (4 loads).
+      expect(
+        loads,
+        equals(2),
+        reason:
+            'concurrent generateVouchersPdf calls must share one font-load; '
+            'loads=$loads (expected 2, old racy code would hit 4)',
+      );
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 
   test(
     'generateVouchersPdf builds a multi-page document off the main isolate',

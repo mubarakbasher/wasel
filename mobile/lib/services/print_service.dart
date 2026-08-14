@@ -287,19 +287,36 @@ class _VouchersPdfBuilder {
 }
 
 class PrintService {
+  /// Optional [loadAsset] overrides the default [rootBundle.load], allowing
+  /// tests to inject a spy that counts actual asset-load calls.
+  PrintService({Future<ByteData> Function(String key)? loadAsset})
+      : _loadAsset = loadAsset ?? rootBundle.load;
+
+  final Future<ByteData> Function(String key) _loadAsset;
+
   Uint8List? _cairoBytes;
   Uint8List? _cairoBoldBytes;
 
-  Future<void> _ensureFontBytes() async {
-    if (_cairoBytes == null) {
-      final bd = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-      _cairoBytes = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
-    }
-    if (_cairoBoldBytes == null) {
-      final bd = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-      _cairoBoldBytes =
-          bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
-    }
+  // Single in-flight Future so concurrent callers share one load and the
+  // race-condition "check → await → assign → check" is impossible.
+  Future<void>? _fontLoad;
+
+  Future<void> _ensureFontBytes() {
+    return _fontLoad ??= _loadFontBytes().catchError((Object e, StackTrace s) {
+      // Transient asset failure stays retryable: clear the memo so the next
+      // caller attempts the load again rather than replaying the cached error.
+      _fontLoad = null;
+      Error.throwWithStackTrace(e, s);
+    });
+  }
+
+  Future<void> _loadFontBytes() async {
+    final regular = await _loadAsset('assets/fonts/Cairo-Regular.ttf');
+    final bold = await _loadAsset('assets/fonts/Cairo-Bold.ttf');
+    _cairoBytes = regular.buffer
+        .asUint8List(regular.offsetInBytes, regular.lengthInBytes);
+    _cairoBoldBytes =
+        bold.buffer.asUint8List(bold.offsetInBytes, bold.lengthInBytes);
   }
 
   /// Generate an A4 PDF with voucher cards arranged in a configurable grid.
