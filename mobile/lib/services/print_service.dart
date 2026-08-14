@@ -5,6 +5,86 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+// ---------------------------------------------------------------------------
+// Grid layout constants — shared by [voucherGridLayoutFor] and the PDF builder.
+// ---------------------------------------------------------------------------
+
+const double _kMarginH = 16;
+const double _kMarginV = 16;
+const double _kGutterH = 4;
+const double _kGutterV = 3;
+
+// ---------------------------------------------------------------------------
+// Public grid-math API
+// ---------------------------------------------------------------------------
+
+/// Computed voucher-card dimensions and row count for an A4 page with
+/// [columns] columns, using the standard Wasel print margins (16 pt all sides)
+/// and gutters (horizontal 4 pt, vertical 3 pt).
+///
+/// All measurements are in PDF user-space points (72 pt = 1 inch).
+class VoucherGridLayout {
+  /// Card width in points.
+  final double cardW;
+
+  /// Card height in points, clamped to the range [56, 150] pt.
+  final double cardH;
+
+  /// Number of card rows that fit on a single A4 page.
+  final int rows;
+
+  /// Column count used to construct this layout.
+  final int columns;
+
+  const VoucherGridLayout({
+    required this.cardW,
+    required this.cardH,
+    required this.rows,
+    required this.columns,
+  });
+
+  /// Number of voucher cards that fit on one A4 page.
+  int get perPage => rows * columns;
+}
+
+/// Returns the [VoucherGridLayout] for an A4 page with [columns] columns and
+/// the standard Wasel print margins and gutters.
+///
+/// This is the single source of truth for card/row math — both the preview
+/// page-cap logic and the PDF builder call this function.
+VoucherGridLayout voucherGridLayoutFor(int columns) {
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginLeft: _kMarginH,
+    marginRight: _kMarginH,
+    marginTop: _kMarginV,
+    marginBottom: _kMarginV,
+  );
+
+  final double usableW = pageFormat.availableWidth;
+  final double usableH = pageFormat.availableHeight;
+
+  final double cardW = (usableW - _kGutterH * (columns - 1)) / columns;
+  final double cardH = (cardW * 0.62).clamp(56.0, 150.0);
+  final int rows = ((usableH + _kGutterV) / (cardH + _kGutterV)).floor();
+
+  return VoucherGridLayout(
+    cardW: cardW,
+    cardH: cardH,
+    rows: rows,
+    columns: columns,
+  );
+}
+
+/// Returns the total number of A4 pages in a voucher PDF that contains
+/// [itemCount] items arranged in [columns] columns.
+///
+/// Returns 0 when [itemCount] is zero or negative.
+int voucherPdfPageCount(int itemCount, int columns) {
+  if (itemCount <= 0) return 0;
+  final perPage = voucherGridLayoutFor(columns).perPage;
+  return (itemCount / perPage).ceil();
+}
+
 /// Immutable data transfer object passed to [PrintService.generateVouchersPdf].
 ///
 /// Keeping the service context-free means callers resolve all l10n strings
@@ -90,26 +170,18 @@ class _VouchersPdfBuilder {
   }) async {
     final doc = pw.Document(title: docTitle ?? 'Wasel Vouchers', author: 'Wasel');
 
-    const double marginH = 16;
-    const double marginV = 16;
-    const double gutterH = 4;
-    const double gutterV = 3;
-
     final pageFormat = PdfPageFormat.a4.copyWith(
-      marginLeft: marginH,
-      marginRight: marginH,
-      marginTop: marginV,
-      marginBottom: marginV,
+      marginLeft: _kMarginH,
+      marginRight: _kMarginH,
+      marginTop: _kMarginV,
+      marginBottom: _kMarginV,
     );
 
-    final double usableW = pageFormat.availableWidth;
-    final double usableH = pageFormat.availableHeight;
-
-    final double cardW = (usableW - gutterH * (columns - 1)) / columns;
-    final double cardH = (cardW * 0.62).clamp(56.0, 150.0);
-
-    final int rows = ((usableH + gutterV) / (cardH + gutterV)).floor();
-    final int perPage = rows * columns;
+    final layout = voucherGridLayoutFor(columns);
+    final double cardW = layout.cardW;
+    final double cardH = layout.cardH;
+    final int rows = layout.rows;
+    final int perPage = layout.perPage;
 
     for (int p = 0; p * perPage < items.length; p++) {
       final start = p * perPage;
@@ -126,8 +198,8 @@ class _VouchersPdfBuilder {
             rows: rows,
             cardW: cardW,
             cardH: cardH,
-            gutterH: gutterH,
-            gutterV: gutterV,
+            gutterH: _kGutterH,
+            gutterV: _kGutterV,
           ),
         ),
       );

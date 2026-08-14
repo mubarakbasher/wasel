@@ -33,6 +33,12 @@ class VoucherPrintScreen extends StatefulWidget {
 }
 
 class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
+  /// Maximum number of pages rendered in the live preview.  Pages beyond this
+  /// cap are omitted from [PdfPreview] to avoid the native rasteriser allocating
+  /// ~12 MB per page for a 300-page PDF.  Print/share are unaffected — the full
+  /// PDF is handed directly to the OS without in-app rasterisation.
+  static const int _kMaxPreviewPages = 12;
+
   /// Live value shown by the slider thumb and the label next to it.
   /// Updated on every drag tick via [onChanged] so the UI feels responsive.
   int _sliderColumns = 4;
@@ -90,6 +96,10 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final totalPages =
+        voucherPdfPageCount(widget.vouchers.length, _previewColumns);
+    final previewTruncated = totalPages > _kMaxPreviewPages;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: Text(context.tr('vouchers.printVouchers'))),
@@ -108,6 +118,11 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
               });
             },
           ),
+          if (previewTruncated)
+            _PreviewPageCapNote(
+              firstPages: _kMaxPreviewPages,
+              totalPages: totalPages,
+            ),
           const Divider(height: 1, color: AppColors.border),
           Expanded(
             child: PdfPreview(
@@ -118,9 +133,42 @@ class _VoucherPrintScreenState extends State<VoucherPrintScreen> {
               canDebug: false,
               pdfFileName:
                   'wasel_vouchers_${DateTime.now().millisecondsSinceEpoch}.pdf',
+              pages: previewTruncated
+                  ? List<int>.generate(_kMaxPreviewPages, (i) => i)
+                  : null,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One-line footnote shown between the column-slider bar and the PDF preview
+/// when the preview is capped to the first [_kMaxPreviewPages] pages.
+class _PreviewPageCapNote extends StatelessWidget {
+  final int firstPages;
+  final int totalPages;
+
+  const _PreviewPageCapNote({
+    required this.firstPages,
+    required this.totalPages,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.surface,
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+      child: Text(
+        context.tr('vouchers.previewFirstPages', [
+          firstPages.toString(),
+          totalPages.toString(),
+        ]),
+        style: AppTypography.footnote.copyWith(
+          color: AppColors.textSecondary,
+        ),
       ),
     );
   }

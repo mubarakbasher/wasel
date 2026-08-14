@@ -117,6 +117,57 @@ List<VoucherPrintItem> _buildFixtures() {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // -------------------------------------------------------------------------
+  // Pure-math tests — no isolates, no assets, no Flutter binding needed.
+  // -------------------------------------------------------------------------
+
+  group('voucherGridLayoutFor / voucherPdfPageCount', () {
+    // Expected perPage values derived from the A4 math:
+    //   A4 595.28 × 841.89 pt; 16 pt margins → usableW 563.28, usableH 809.89
+    //   gutterH = 4, gutterV = 3
+    //   cardW = (usableW - gutterH*(c-1)) / c
+    //   cardH = (cardW * 0.62).clamp(56, 150)
+    //   rows  = floor((usableH + gutterV) / (cardH + gutterV))
+    const expectedPerPage = {2: 10, 3: 18, 4: 36, 5: 55, 6: 78};
+
+    for (final entry in expectedPerPage.entries) {
+      final c = entry.key;
+      final expected = entry.value;
+      test('voucherGridLayoutFor($c).perPage == $expected', () {
+        expect(voucherGridLayoutFor(c).perPage, equals(expected));
+      });
+    }
+
+    test('voucherPdfPageCount(3000, 2) == 300', () {
+      expect(voucherPdfPageCount(3000, 2), equals(300));
+    });
+
+    test('voucherPdfPageCount(3000, 4) == 84', () {
+      expect(voucherPdfPageCount(3000, 4), equals(84));
+    });
+
+    test('voucherPdfPageCount(3000, 6) == 39', () {
+      expect(voucherPdfPageCount(3000, 6), equals(39));
+    });
+
+    test('voucherPdfPageCount(0, 4) == 0', () {
+      expect(voucherPdfPageCount(0, 4), equals(0));
+    });
+
+    test('voucherPdfPageCount(1, 4) == 1', () {
+      expect(voucherPdfPageCount(1, 4), equals(1));
+    });
+
+    test('voucherPdfPageCount(72, 4) == 2 (exact multiple)', () {
+      // 72 / perPage(4==36) = 2.0 exactly — ceil must not over-count.
+      expect(voucherPdfPageCount(72, 4), equals(2));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Integration tests — real isolates + asset loading.
+  // -------------------------------------------------------------------------
+
   final svc = PrintService();
 
   test(

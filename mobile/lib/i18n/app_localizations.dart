@@ -680,6 +680,8 @@ class AppLocalizations {
     'vouchers.noBatches': 'No creation batches yet',
     'vouchers.noBatchesForRouter': 'No creation batches for "{0}" yet',
     'vouchers.pdfDocTitle': 'Wasel Vouchers',
+    'vouchers.previewFirstPages':
+        'Preview shows the first {0} of {1} pages — printing includes all pages',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'No active sessions',
@@ -1500,6 +1502,8 @@ class AppLocalizations {
     'vouchers.noBatches': 'لا توجد دفعات إنشاء بعد',
     'vouchers.noBatchesForRouter': 'لا توجد دفعات إنشاء للراوتر "{0}" بعد',
     'vouchers.pdfDocTitle': 'كروت واصل',
+    'vouchers.previewFirstPages':
+        'المعاينة تعرض أول {0} من {1} صفحة — الطباعة تشمل جميع الصفحات',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'لا توجد جلسات نشطة',
