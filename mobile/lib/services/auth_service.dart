@@ -5,13 +5,14 @@ class AuthService {
   final ApiClient _api = ApiClient();
 
   /// POST /auth/register
-  /// Body: { name, email, phone, password, businessName? }
+  /// Body: { name, email, phone, password, language, businessName? }
   /// Returns: { message: "Verification email sent" }
   Future<void> register({
     required String name,
     required String email,
     required String phone,
     required String password,
+    required String language,
     String? businessName,
   }) async {
     await _api.post('/auth/register', data: {
@@ -19,6 +20,7 @@ class AuthService {
       'email': email,
       'phone': phone,
       'password': password,
+      'language': language,
       if (businessName != null && businessName.isNotEmpty)
         'business_name': businessName,
     });

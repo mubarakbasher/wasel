@@ -96,6 +96,58 @@ describe('POST /api/v1/auth/register', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
+
+  it('should persist language: ar in the INSERT and forward it to the verification email', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // email check
+      .mockResolvedValueOnce({
+        rows: [{ id: '550e8400-e29b-41d4-a716-446655440000', name: 'Test User', email: 'test@example.com', language: 'ar' }],
+      }); // user insert
+
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send({ ...validBody, language: 'ar' });
+
+    expect(res.status).toBe(201);
+
+    // The INSERT params (call index 1, arg index 1) must include 'ar'
+    const insertParams = (mockQuery.mock.calls[1] as unknown[])[1] as unknown[];
+    expect(insertParams).toContain('ar');
+
+    // The email pipeline must have queried email_templates with language 'ar'
+    const emailTemplateCall = mockQuery.mock.calls.find(
+      (call) => typeof (call as unknown[])[0] === 'string' && ((call as unknown[])[0] as string).includes('email_templates'),
+    ) as unknown[] | undefined;
+    expect(emailTemplateCall).toBeDefined();
+    expect((emailTemplateCall![1] as unknown[])).toContain('ar');
+  });
+
+  it('should default language to en in the INSERT when not provided', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // email check
+      .mockResolvedValueOnce({
+        rows: [{ id: '550e8400-e29b-41d4-a716-446655440000', name: 'Test User', email: 'test@example.com', language: 'en' }],
+      }); // user insert
+
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send(validBody); // no language field
+
+    expect(res.status).toBe(201);
+
+    // INSERT params must include 'en' as the language value
+    const insertParams = (mockQuery.mock.calls[1] as unknown[])[1] as unknown[];
+    expect(insertParams).toContain('en');
+  });
+
+  it('should return 400 VALIDATION_ERROR for unsupported language code', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send({ ...validBody, language: 'xx' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
 });
 
 describe('POST /api/v1/auth/login', () => {

@@ -12,6 +12,7 @@ import '../services/secure_storage.dart';
 import '../utils/error_messages.dart';
 import 'dashboard_provider.dart';
 import 'hotspot_templates_provider.dart';
+import 'locale_provider.dart';
 import 'notification_prefs_provider.dart';
 import 'notifications_provider.dart';
 import 'reports_provider.dart';
@@ -271,12 +272,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      final language = effectiveLanguageCode(await _storage.getLocale());
       await _authService.register(
         name: name,
         email: email,
         phone: phone,
         password: password,
         businessName: businessName,
+        language: language,
       );
       // Stash the email so the verify screen can pick it up even if the
       // route argument is lost in navigation (release-mode cast / go-router
@@ -521,14 +524,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(clearError: true);
   }
 
-  /// Reads the locally persisted locale and pushes it to the backend so
-  /// server-generated push notifications can be localized. Fire-and-forget —
-  /// errors (offline, unauthenticated) are swallowed inside [AuthService.updateLanguage].
+  /// Reads the locally persisted locale and pushes the effective language to
+  /// the backend so server-generated push notifications can be localized.
+  /// When no locale has been explicitly chosen the device system locale is
+  /// used as the fallback (see [effectiveLanguageCode]).
+  /// Fire-and-forget — errors (offline, unauthenticated, storage) are swallowed.
   void _syncLocaleToBackend() {
     _storage.getLocale().then((code) {
-      if (code != null) {
-        _authService.updateLanguage(code);
-      }
+      final lang = effectiveLanguageCode(code);
+      _authService.updateLanguage(lang);
     }).catchError((_) {
       // Swallow storage errors — sync is best-effort.
     });

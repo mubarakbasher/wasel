@@ -212,6 +212,140 @@ void main() {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // _syncLocaleToBackend — always calls updateLanguage (language-sync fix)
+  // -------------------------------------------------------------------------
+
+  group('_syncLocaleToBackend — via tryRestoreSession', () {
+    // Shared stubs for a successful online restore so _syncLocaleToBackend fires.
+    setUp(() {
+      when(() => storage.hasTokens()).thenAnswer((_) async => true);
+      when(() => storage.getUserData()).thenAnswer((_) async => _userJson());
+      when(() => svc.getProfile()).thenAnswer((_) async => _kUser);
+      when(() => storage.setUserData(any())).thenAnswer((_) async {});
+      when(() => svc.updateLanguage(any())).thenAnswer((_) async {});
+    });
+
+    test(
+        'no stored locale → updateLanguage is called with system-derived code',
+        () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => null);
+
+      await notifier.tryRestoreSession();
+      // Pump the microtask queue so the fire-and-forget .then() callback runs.
+      await Future<void>.delayed(Duration.zero);
+
+      // The test-runner system locale varies; we only assert it was called once.
+      verify(() => svc.updateLanguage(any())).called(1);
+    });
+
+    test('stored ar locale → updateLanguage called with ar', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => 'ar');
+
+      await notifier.tryRestoreSession();
+      await Future<void>.delayed(Duration.zero);
+
+      verify(() => svc.updateLanguage('ar')).called(1);
+    });
+
+    test('stored en locale → updateLanguage called with en', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => 'en');
+
+      await notifier.tryRestoreSession();
+      await Future<void>.delayed(Duration.zero);
+
+      verify(() => svc.updateLanguage('en')).called(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // register — forwards effective language to AuthService
+  // -------------------------------------------------------------------------
+
+  group('AuthNotifier.register — sends effective language', () {
+    void stubRegister() {
+      when(
+        () => svc.register(
+          name: any(named: 'name'),
+          email: any(named: 'email'),
+          phone: any(named: 'phone'),
+          password: any(named: 'password'),
+          language: any(named: 'language'),
+          businessName: any(named: 'businessName'),
+        ),
+      ).thenAnswer((_) async {});
+    }
+
+    test('stored ar locale → register called with language: ar', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => 'ar');
+      stubRegister();
+
+      await notifier.register(
+        name: 'Ali Wasel',
+        email: 'ali@example.com',
+        phone: '+966501234567',
+        password: 'Abc@1234!',
+      );
+
+      verify(
+        () => svc.register(
+          name: 'Ali Wasel',
+          email: 'ali@example.com',
+          phone: '+966501234567',
+          password: 'Abc@1234!',
+          language: 'ar',
+          businessName: null,
+        ),
+      ).called(1);
+    });
+
+    test('stored en locale → register called with language: en', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => 'en');
+      stubRegister();
+
+      await notifier.register(
+        name: 'Bob Ops',
+        email: 'bob@example.com',
+        phone: '+966501234568',
+        password: 'Abc@1234!',
+      );
+
+      verify(
+        () => svc.register(
+          name: 'Bob Ops',
+          email: 'bob@example.com',
+          phone: '+966501234568',
+          password: 'Abc@1234!',
+          language: 'en',
+          businessName: null,
+        ),
+      ).called(1);
+    });
+
+    test('no stored locale → register called with system-derived code', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => null);
+      stubRegister();
+
+      await notifier.register(
+        name: 'Sam Op',
+        email: 'sam@example.com',
+        phone: '+966501234569',
+        password: 'Abc@1234!',
+      );
+
+      // We only assert language is non-null and register was called once.
+      verify(
+        () => svc.register(
+          name: 'Sam Op',
+          email: 'sam@example.com',
+          phone: '+966501234569',
+          password: 'Abc@1234!',
+          language: any(named: 'language'),
+        ),
+      ).called(1);
+    });
+  });
+
   group('AuthNotifier — session expiry via ApiClient.onSessionExpired', () {
     test(
         'onSessionExpired fires => isAuthenticated becomes false, '

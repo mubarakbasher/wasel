@@ -30,6 +30,7 @@ interface RegisterInput {
   phone?: string;
   password: string;
   business_name?: string;
+  language?: string;
 }
 
 interface AuthTokens {
@@ -56,10 +57,10 @@ export async function register(input: RegisterInput): Promise<RegisterResult> {
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
 
   const result = await pool.query(
-    `INSERT INTO users (name, email, phone, password_hash, business_name)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO users (name, email, phone, password_hash, business_name, language)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id, name, email, language`,
-    [input.name, input.email, input.phone || null, passwordHash, input.business_name || null],
+    [input.name, input.email, input.phone || null, passwordHash, input.business_name || null, input.language ?? 'en'],
   );
 
   const user = result.rows[0];
