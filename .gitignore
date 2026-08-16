@@ -33,3 +33,4 @@ CLAUDE_MD_ADDITION.md
 # Machine-local agent-tool mirrors (never commit)
 .agents/
 .codex/
+.playwright-mcp/

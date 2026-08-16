@@ -2,7 +2,8 @@
  * Tests for support-chat email senders in email.service:
  *  - sendSupportMessageAdminAlert: fan-out, Redis dedupe, zero admins, SMTP failure
  *  - sendSupportReplyEmail: language routing, SMTP failure (never throws)
- *  - Admin API: PUT /email-templates + POST /email-templates/test accept new types
+ *  - Admin API: PUT /email-templates + POST /email-templates/test accept new types,
+ *               GET /email-templates derives placeholders for them
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
@@ -350,6 +351,44 @@ describe('PUT /api/v1/admin/email-templates — new support types', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.type).toBe('support_reply_user');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Admin API — GET /email-templates carries placeholders for the support types
+// ---------------------------------------------------------------------------
+
+describe('GET /api/v1/admin/email-templates — support type placeholders', () => {
+  const savedRow = (type: string, language: string) => ({
+    id: `tpl-${type}-${language}`,
+    type,
+    language,
+    subject: 'Saved Subject',
+    body_html: '<p>Saved body</p>',
+    is_active: true,
+    updated_by: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  it('returns the support_message_admin and support_reply_user token sets', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [savedRow('support_message_admin', 'en'), savedRow('support_reply_user', 'ar')],
+    });
+
+    const res = await request(app)
+      .get('/api/v1/admin/email-templates')
+      .set(adminAuth());
+
+    expect(res.status).toBe(200);
+    const byType = Object.fromEntries(
+      (res.body.data as { type: string; placeholders: string[] }[]).map((t) => [
+        t.type,
+        t.placeholders,
+      ]),
+    );
+    expect(byType.support_message_admin).toEqual(['{user_name}', '{user_email}', '{message}']);
+    expect(byType.support_reply_user).toEqual(['{name}', '{message}']);
   });
 });
 

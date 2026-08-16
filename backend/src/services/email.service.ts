@@ -3,6 +3,7 @@ import { config } from '../config';
 import { pool } from '../config/database';
 import logger from '../config/logger';
 import { redis } from '../config/redis';
+import { getDefaultTemplate } from '../email-templates/manifest';
 import * as emailTemplateService from './emailTemplate.service';
 import * as emailLogService from './emailLog.service';
 
@@ -46,97 +47,36 @@ export function escapeHtml(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Hard-coded fallback templates (one per type, EN only).
-// These are used when the DB row is missing or inactive so email delivery
-// never silently fails due to a missing/deactivated template.
+// Placeholder derivation (admin panel "available placeholders" chips)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_TEMPLATES: Record<string, { subject: string; body_html: string }> = {
-  verification_otp: {
-    subject: 'Wasel - Verify Your Email',
-    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-<h2 style="color:#1a1a2e;">Welcome to Wasel!</h2>
-<p>Hi {name},</p>
-<p>Your email verification code is:</p>
-<div style="background:#f0f0f5;border-radius:8px;padding:16px;text-align:center;margin:24px 0;">
-  <span style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#1a1a2e;">{otp}</span>
-</div>
-<p>This code expires in <strong>24 hours</strong>.</p>
-<p style="color:#666;font-size:13px;">If you did not create a Wasel account, you can safely ignore this email.</p>
-</div>`,
-  },
-  password_reset_otp: {
-    subject: 'Wasel - Password Reset Code',
-    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-<h2 style="color:#1a1a2e;">Password Reset</h2>
-<p>You requested a password reset for your Wasel account.</p>
-<p>Your reset code is:</p>
-<div style="background:#f0f0f5;border-radius:8px;padding:16px;text-align:center;margin:24px 0;">
-  <span style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#1a1a2e;">{otp}</span>
-</div>
-<p>This code expires in <strong>15 minutes</strong>.</p>
-<p style="color:#666;font-size:13px;">If you did not request this, you can safely ignore this email. Your password will not change.</p>
-</div>`,
-  },
-  payment_submitted_admin: {
-    subject: '[Wasel Admin] New Payment Submission from {user_name}',
-    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-<h2 style="color:#1a1a2e;">New Payment Submission</h2>
-<p>A user has submitted a payment that requires your review.</p>
-<p><strong>Name:</strong> {user_name}<br>
-<strong>Email:</strong> {user_email}<br>
-<strong>Plan:</strong> {plan}<br>
-<strong>Amount:</strong> {amount} {currency}<br>
-<strong>Reference:</strong> {reference}</p>
-<p>Please log in to the admin panel to approve or reject this payment.</p>
-</div>`,
-  },
-  payment_approved: {
-    subject: 'Wasel - Your Payment Has Been Approved',
-    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-<h2 style="color:#1a1a2e;">Payment Approved</h2>
-<p>Hi {name},</p>
-<p>Your payment has been approved. Your <strong>{plan}</strong> subscription is now active.</p>
-<p>Amount paid: <strong>{amount} {currency}</strong></p>
-<p>Thank you for choosing Wasel.</p>
-</div>`,
-  },
-  payment_rejected: {
-    subject: 'Wasel - Payment Could Not Be Verified',
-    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-<h2 style="color:#1a1a2e;">Payment Rejected</h2>
-<p>Hi {name},</p>
-<p>Unfortunately your payment for the <strong>{plan}</strong> plan could not be verified.</p>
-<p><strong>Reason:</strong> {reason}</p>
-<p>You can re-upload your receipt and resubmit your payment from the app.</p>
-</div>`,
-  },
-  support_message_admin: {
-    subject: 'New support message from {user_name}',
-    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-<h2 style="color:#1a1a2e;">New Support Message</h2>
-<p>A user has sent a support message that requires your attention.</p>
-<p><strong>Name:</strong> {user_name}<br>
-<strong>Email:</strong> {user_email}</p>
-<div style="background:#f0f0f5;border-radius:8px;padding:16px;margin:16px 0;">
-  <p style="margin:0;color:#1a1a2e;">{message}</p>
-</div>
-<p>Reply from the Wasel admin panel.</p>
-</div>`,
-  },
-  support_reply_user: {
-    subject: 'Wasel support replied to your message',
-    body_html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-<h2 style="color:#1a1a2e;">Support Reply</h2>
-<p>Hi {name},</p>
-<p>The Wasel support team has replied to your message:</p>
-<div style="background:#f0f0f5;border-radius:8px;padding:16px;margin:16px 0;">
-  <p style="margin:0;color:#1a1a2e;">{message}</p>
-</div>
-<p>Open the Wasel app (Settings &rarr; Contact) to continue the conversation.</p>
-</div>`,
-  },
-};
+/** Same token grammar renderTemplate interpolates, matched whole. */
+const PLACEHOLDER_PATTERN = /\{\w+\}/g;
+
+/**
+ * List the {token} placeholders a template type supports, in first-seen order
+ * across subject then body_html, deduped and returned with braces.
+ *
+ * Derived from the canonical catalogue entry (EN — tokens are
+ * language-independent) so the chips stay complete even after an admin deletes
+ * a token from the saved DB copy. `fallback` — normally the row being served —
+ * is scanned only for types with no catalogue entry.
+ */
+export function derivePlaceholders(
+  type: string,
+  fallback?: { subject: string; body_html: string },
+): string[] {
+  const tpl = getDefaultTemplate(type) ?? fallback;
+  if (!tpl) return [];
+
+  const tokens = new Set<string>();
+  for (const source of [tpl.subject, tpl.body_html]) {
+    for (const match of String(source ?? '').matchAll(PLACEHOLDER_PATTERN)) {
+      tokens.add(match[0]);
+    }
+  }
+  return [...tokens];
+}
 
 // ---------------------------------------------------------------------------
 // Template rendering
@@ -146,14 +86,15 @@ const DEFAULT_TEMPLATES: Record<string, { subject: string; body_html: string }> 
  * Resolve and render a template. Resolution order:
  *   1. DB active row for (type, language)
  *   2. DB active row for (type, 'en')  [if language !== 'en']
- *   3. DEFAULT_TEMPLATES[type]          [hard-coded fallback]
+ *   3. the built-in catalogue entry    [hard-coded fallback]
  *
  * For body_html: user-controlled param values are HTML-escaped (XSS prevention).
  * For subject:   param values are control-char-stripped (CRLF header-injection
  *               prevention) but NOT HTML-escaped — subjects are plain text.
  *
- * Returns null only when no DB row AND no DEFAULT_TEMPLATES entry exist for the
- * given type (purely defensive; all 5 known types always have a DEFAULT entry).
+ * Returns null only when no DB row AND no catalogue entry exist for the given
+ * type (purely defensive — every catalogued type has a built-in entry by
+ * construction, so this only fires for a type invented at a call site).
  */
 export async function renderTemplate(
   type: string,
@@ -167,7 +108,7 @@ export async function renderTemplate(
   }
 
   if (!tpl) {
-    tpl = DEFAULT_TEMPLATES[type];
+    tpl = getDefaultTemplate(type) ?? null;
     if (!tpl) {
       logger.error('No template or default for type', { type });
       return null;
@@ -175,9 +116,11 @@ export async function renderTemplate(
   }
 
   // Interpolate {token} placeholders with per-destination escaping strategy.
+  // Own-property check, not `key in params`: a template author writing
+  // {constructor} must get the literal token back, not an inherited Object member.
   const interpolate = (s: string, opts: { escape: boolean }): string =>
     s.replace(/\{(\w+)\}/g, (_, key: string) => {
-      if (!(key in params)) return `{${key}}`;
+      if (!Object.prototype.hasOwnProperty.call(params, key)) return `{${key}}`;
       const raw = String(params[key] ?? '');
       return opts.escape ? escapeHtml(raw) : raw.replace(/[\r\n\t]+/g, ' ');
     });
