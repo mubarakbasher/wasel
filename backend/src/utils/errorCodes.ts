@@ -22,6 +22,8 @@
  *   REPORT_*       – report generation / export
  *   TEMPLATE_*     – hotspot captive-portal templates
  *   USERNAME_*     – RADIUS username allocation
+ *   UPLOAD_*       – receipt / image upload handling
+ *   RATE_LIMIT_*   – express-rate-limit responses (not AppError)
  *   NOT_FOUND      – generic not-found (prefer the domain-specific code)
  *   INTERNAL_ERROR – uncaught 500
  */
@@ -35,9 +37,13 @@ export const ErrorCodes = {
   ACCOUNT_SUSPENDED: 'ACCOUNT_SUSPENDED',
   ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
   RATE_LIMITED: 'RATE_LIMITED',
+  RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
+  AUTH_RATE_LIMIT_EXCEEDED: 'AUTH_RATE_LIMIT_EXCEEDED',
+  EMAIL_RATE_LIMIT_EXCEEDED: 'EMAIL_RATE_LIMIT_EXCEEDED',
   EMAIL_NOT_VERIFIED: 'EMAIL_NOT_VERIFIED',
   ALREADY_VERIFIED: 'ALREADY_VERIFIED',
   OTP_INVALID: 'OTP_INVALID',
+  OTP_LOCKED: 'OTP_LOCKED',
   EMAIL_EXISTS: 'EMAIL_EXISTS',
   EMAIL_UNCHANGED: 'EMAIL_UNCHANGED',
   EMAIL_CHANGE_INVALID: 'EMAIL_CHANGE_INVALID',
@@ -62,6 +68,13 @@ export const ErrorCodes = {
   SUBSCRIPTION_REQUIRED: 'SUBSCRIPTION_REQUIRED',
   SUBSCRIPTION_EXPIRED: 'SUBSCRIPTION_EXPIRED',
   SUBSCRIPTION_NOT_FOUND: 'SUBSCRIPTION_NOT_FOUND',
+  SUBSCRIPTION_ACTIVE: 'SUBSCRIPTION_ACTIVE',
+  SUBSCRIPTION_PENDING: 'SUBSCRIPTION_PENDING',
+  NO_ACTIVE_SUBSCRIPTION: 'NO_ACTIVE_SUBSCRIPTION',
+  CHANGE_PENDING: 'CHANGE_PENDING',
+  SAME_PLAN: 'SAME_PLAN',
+  INVALID_PLAN: 'INVALID_PLAN',
+  INVALID_DURATION: 'INVALID_DURATION',
 
   // ── Router ────────────────────────────────────────────────────────────────
   ROUTER_NOT_FOUND: 'ROUTER_NOT_FOUND',
@@ -96,6 +109,10 @@ export const ErrorCodes = {
   PAYMENT_ALREADY_REVIEWED: 'PAYMENT_ALREADY_REVIEWED',
   PAYMENT_NO_RECEIPT: 'PAYMENT_NO_RECEIPT',
   PAYMENT_UPLOAD_FAILED: 'PAYMENT_UPLOAD_FAILED',
+  PAYMENT_FORBIDDEN: 'PAYMENT_FORBIDDEN',
+  PAYMENT_NOT_CANCELLABLE: 'PAYMENT_NOT_CANCELLABLE',
+  PAYMENT_NOT_RESUBMITTABLE: 'PAYMENT_NOT_RESUBMITTABLE',
+  RECEIPT_FILE_REQUIRED: 'RECEIPT_FILE_REQUIRED',
 
   // ── Plan (admin) ──────────────────────────────────────────────────────────
   PLAN_NOT_FOUND: 'PLAN_NOT_FOUND',
@@ -103,6 +120,7 @@ export const ErrorCodes = {
 
   // ── Admin guards ──────────────────────────────────────────────────────────
   ADMIN_NOT_FOUND: 'ADMIN_NOT_FOUND',
+  ADMIN_REQUIRED: 'ADMIN_REQUIRED',
   CANNOT_MODIFY_SELF: 'CANNOT_MODIFY_SELF',
   CANNOT_DELETE_SELF: 'CANNOT_DELETE_SELF',
   CANNOT_MODIFY_ADMIN: 'CANNOT_MODIFY_ADMIN',
@@ -111,10 +129,19 @@ export const ErrorCodes = {
 
   // ── Report ────────────────────────────────────────────────────────────────
   INVALID_REPORT_TYPE: 'INVALID_REPORT_TYPE',
+  PDF_NOT_IMPLEMENTED: 'PDF_NOT_IMPLEMENTED',
 
   // ── Template ──────────────────────────────────────────────────────────────
   TEMPLATE_NOT_FOUND: 'TEMPLATE_NOT_FOUND',
   EMAIL_TEMPLATE_NOT_FOUND: 'EMAIL_TEMPLATE_NOT_FOUND',
+  NO_TEMPLATE: 'NO_TEMPLATE',
+
+  // ── Upload / file handling ────────────────────────────────────────────────
+  INVALID_FILE_TYPE: 'INVALID_FILE_TYPE',
+  INVALID_FILE_CONTENT: 'INVALID_FILE_CONTENT',
+  UPLOAD_DIR_UNWRITABLE: 'UPLOAD_DIR_UNWRITABLE',
+  UPLOAD_VERIFY_FAILED: 'UPLOAD_VERIFY_FAILED',
+  READ_ERROR: 'READ_ERROR',
 
   // ── Generic ───────────────────────────────────────────────────────────────
   NOT_FOUND: 'NOT_FOUND',

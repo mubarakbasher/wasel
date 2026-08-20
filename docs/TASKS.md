@@ -308,7 +308,7 @@ Each task is marked with a status: `[ ]` todo, `[~]` in progress, `[x]` done.
 - [ ] French translation — deferred
 - [ ] Portuguese translation — deferred
 - [ ] Swahili translation — deferred
-- [ ] Backend: Accept `Accept-Language` header, return localized error messages — deferred
+- [ ] Backend: Accept `Accept-Language` header, return localized error messages — deferred (superseded in practice: the client now derives an `error.<CODE>` i18n key from the backend's machine-readable code for all 82 codes and never renders the English `message`; see `mobile/lib/utils/error_messages.dart`)
 
 ---
 

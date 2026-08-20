@@ -18,6 +18,7 @@ void main() {
     'error.unknown',
     'error.security',
     'error.rateLimited',
+    'error.badRequest',
   ];
 
   for (final locale in [const Locale('en'), const Locale('ar')]) {
