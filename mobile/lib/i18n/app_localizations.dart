@@ -361,6 +361,9 @@ class AppLocalizations {
     'error.USERNAME_GENERATION_FAILED': 'Failed to generate unique voucher codes. Please try again.',
     'error.ROUTER_NOT_READY': 'Router is still being provisioned. Try again once it is online.',
     'error.RATE_LIMIT_EXCEEDED': 'Too many requests, please try again later.',
+    'error.HOTSPOT_TEMPLATE_FETCH_FAILED': 'The router could not download the login page files.',
+    'error.HOTSPOT_NOT_CONFIGURED': 'No hotspot is configured on this router. Run the hotspot setup first.',
+    'error.HOTSPOT_TEMPLATE_APPLY_FAILED': 'The router rejected the login page update.',
 
     // The block below covers EVERY error code the backend can emit, including
     // admin-panel- and portal-only codes the mobile app never surfaces. That is
@@ -1250,6 +1253,9 @@ class AppLocalizations {
     'error.USERNAME_GENERATION_FAILED': 'فشل توليد أكواد كروت فريدة. يرجى المحاولة مرة أخرى.',
     'error.ROUTER_NOT_READY': 'لا يزال الراوتر قيد التجهيز. حاول مرة أخرى عندما يصبح متصلاً.',
     'error.RATE_LIMIT_EXCEEDED': 'محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
+    'error.HOTSPOT_TEMPLATE_FETCH_FAILED': 'تعذّر على الراوتر تنزيل ملفات صفحة الدخول.',
+    'error.HOTSPOT_NOT_CONFIGURED': 'لا توجد نقطة اتصال (Hotspot) مُعدّة على هذا الراوتر. قم بإعداد الـ Hotspot أولاً.',
+    'error.HOTSPOT_TEMPLATE_APPLY_FAILED': 'رفض الراوتر تحديث صفحة الدخول.',
 
     // The block below covers EVERY error code the backend can emit, including
     // admin-panel- and portal-only codes the mobile app never surfaces. That is

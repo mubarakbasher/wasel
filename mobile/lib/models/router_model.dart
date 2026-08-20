@@ -16,6 +16,7 @@ class RouterModel {
   final String? hotspotTemplateId;
   final String? hotspotTemplateStatus; // pending | applied | failed
   final String? hotspotTemplateError;
+  final String? hotspotTemplateErrorCode;
   final String? hotspotAccentColor;
 
   const RouterModel({
@@ -35,6 +36,7 @@ class RouterModel {
     this.hotspotTemplateId,
     this.hotspotTemplateStatus,
     this.hotspotTemplateError,
+    this.hotspotTemplateErrorCode,
     this.hotspotAccentColor,
   });
 
@@ -62,6 +64,7 @@ class RouterModel {
       hotspotTemplateId: json['hotspotTemplateId'] as String?,
       hotspotTemplateStatus: json['hotspotTemplateStatus'] as String?,
       hotspotTemplateError: json['hotspotTemplateError'] as String?,
+      hotspotTemplateErrorCode: json['hotspotTemplateErrorCode'] as String?,
       hotspotAccentColor: json['hotspotAccentColor'] as String?,
     );
   }
@@ -83,6 +86,7 @@ class RouterModel {
     String? hotspotTemplateId,
     String? hotspotTemplateStatus,
     String? hotspotTemplateError,
+    String? hotspotTemplateErrorCode,
     String? hotspotAccentColor,
   }) {
     return RouterModel(
@@ -103,6 +107,8 @@ class RouterModel {
       hotspotTemplateStatus:
           hotspotTemplateStatus ?? this.hotspotTemplateStatus,
       hotspotTemplateError: hotspotTemplateError ?? this.hotspotTemplateError,
+      hotspotTemplateErrorCode:
+          hotspotTemplateErrorCode ?? this.hotspotTemplateErrorCode,
       hotspotAccentColor: hotspotAccentColor ?? this.hotspotAccentColor,
     );
   }
@@ -125,6 +131,7 @@ class RouterModel {
       'hotspotTemplateId': hotspotTemplateId,
       'hotspotTemplateStatus': hotspotTemplateStatus,
       'hotspotTemplateError': hotspotTemplateError,
+      'hotspotTemplateErrorCode': hotspotTemplateErrorCode,
       'hotspotAccentColor': hotspotAccentColor,
     };
   }

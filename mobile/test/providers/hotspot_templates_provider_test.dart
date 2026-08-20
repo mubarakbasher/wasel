@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wasel/i18n/app_localizations.dart';
 import 'package:wasel/models/router_model.dart';
 import 'package:wasel/providers/hotspot_templates_provider.dart';
 import 'package:wasel/providers/routers_provider.dart';
@@ -12,6 +14,7 @@ RouterModel _makeRouter({
   String? templateId,
   String? templateStatus,
   String? templateError,
+  String? templateErrorCode,
   String? accentColor,
 }) {
   return RouterModel(
@@ -24,6 +27,7 @@ RouterModel _makeRouter({
     hotspotTemplateId: templateId,
     hotspotTemplateStatus: templateStatus,
     hotspotTemplateError: templateError,
+    hotspotTemplateErrorCode: templateErrorCode,
     hotspotAccentColor: accentColor,
   );
 }
@@ -176,6 +180,94 @@ void main() {
       expect(json['hotspotTemplateId'], 'warm');
       expect(json['hotspotTemplateStatus'], 'pending');
       expect(json['hotspotTemplateError'], 'timeout');
+    });
+  });
+
+  // ── Error-code → i18n-key resolution logic ────────────────────────────────
+  //
+  // These tests mirror what HotspotTemplateNotifier.applyTemplate does in the
+  // status == 'failed' branch. We exercise the derivation logic directly so we
+  // don't need a live Dio/network layer.
+  group('hotspot failed-apply error-key derivation', () {
+    /// Replicates the key-selection logic from the notifier.
+    String resolveError(RouterModel router) {
+      final code = router.hotspotTemplateErrorCode;
+      final key = (code != null && code.isNotEmpty) ? 'error.$code' : null;
+      return (key != null && AppLocalizations.hasTranslationKey(key))
+          ? key
+          : 'routers.hotspotTemplate.applyFailed';
+    }
+
+    test('known code ROUTER_UNREACHABLE resolves to error.ROUTER_UNREACHABLE', () {
+      final router = _makeRouter(
+        templateStatus: 'failed',
+        templateErrorCode: 'ROUTER_UNREACHABLE',
+        templateError: 'Unable to reach the router — it may be offline or unreachable',
+      );
+      expect(resolveError(router), 'error.ROUTER_UNREACHABLE');
+    });
+
+    test('null code with English templateError resolves to applyFailed fallback', () {
+      final router = _makeRouter(
+        templateStatus: 'failed',
+        templateErrorCode: null,
+        templateError: 'Unable to reach the router — it may be offline or unreachable',
+      );
+      expect(resolveError(router), 'routers.hotspotTemplate.applyFailed');
+    });
+
+    test('unknown future code resolves to applyFailed fallback', () {
+      final router = _makeRouter(
+        templateStatus: 'failed',
+        templateErrorCode: 'SOME_FUTURE_CODE',
+        templateError: 'Some future error',
+      );
+      expect(resolveError(router), 'routers.hotspotTemplate.applyFailed');
+    });
+
+    test('HOTSPOT_TEMPLATE_FETCH_FAILED resolves to its i18n key', () {
+      final router = _makeRouter(
+        templateStatus: 'failed',
+        templateErrorCode: 'HOTSPOT_TEMPLATE_FETCH_FAILED',
+      );
+      expect(resolveError(router), 'error.HOTSPOT_TEMPLATE_FETCH_FAILED');
+    });
+
+    test('HOTSPOT_NOT_CONFIGURED resolves to its i18n key', () {
+      final router = _makeRouter(
+        templateStatus: 'failed',
+        templateErrorCode: 'HOTSPOT_NOT_CONFIGURED',
+      );
+      expect(resolveError(router), 'error.HOTSPOT_NOT_CONFIGURED');
+    });
+
+    test('HOTSPOT_TEMPLATE_APPLY_FAILED resolves to its i18n key', () {
+      final router = _makeRouter(
+        templateStatus: 'failed',
+        templateErrorCode: 'HOTSPOT_TEMPLATE_APPLY_FAILED',
+      );
+      expect(resolveError(router), 'error.HOTSPOT_TEMPLATE_APPLY_FAILED');
+    });
+
+    test('resolved error keys are fully bilingual', () {
+      final en = AppLocalizations(const Locale('en'));
+      final ar = AppLocalizations(const Locale('ar'));
+
+      for (final code in [
+        'HOTSPOT_TEMPLATE_FETCH_FAILED',
+        'HOTSPOT_NOT_CONFIGURED',
+        'HOTSPOT_TEMPLATE_APPLY_FAILED',
+      ]) {
+        final key = 'error.$code';
+        expect(AppLocalizations.hasTranslationKey(key), isTrue,
+            reason: '$key missing from _en');
+        expect(en.translate(key), isNot(equals(key)),
+            reason: '$key falls back to key in English');
+        expect(ar.translate(key), isNot(equals(key)),
+            reason: '$key falls back to key in Arabic');
+        expect(ar.translate(key), isNot(equals(en.translate(key))),
+            reason: '$key has no distinct Arabic string — Arabic user sees English');
+      }
     });
   });
 }

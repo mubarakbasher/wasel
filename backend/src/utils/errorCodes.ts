@@ -20,7 +20,7 @@
  *   ADMIN_*        – admin-panel-specific guards
  *   CURSOR_*       – pagination cursor
  *   REPORT_*       – report generation / export
- *   TEMPLATE_*     – hotspot captive-portal templates
+ *   TEMPLATE_*     – hotspot captive-portal templates (incl. HOTSPOT_TEMPLATE_FETCH_FAILED, HOTSPOT_NOT_CONFIGURED, HOTSPOT_TEMPLATE_APPLY_FAILED)
  *   USERNAME_*     – RADIUS username allocation
  *   UPLOAD_*       – receipt / image upload handling
  *   RATE_LIMIT_*   – express-rate-limit responses (not AppError)
@@ -135,6 +135,9 @@ export const ErrorCodes = {
   TEMPLATE_NOT_FOUND: 'TEMPLATE_NOT_FOUND',
   EMAIL_TEMPLATE_NOT_FOUND: 'EMAIL_TEMPLATE_NOT_FOUND',
   NO_TEMPLATE: 'NO_TEMPLATE',
+  HOTSPOT_TEMPLATE_FETCH_FAILED: 'HOTSPOT_TEMPLATE_FETCH_FAILED',
+  HOTSPOT_NOT_CONFIGURED: 'HOTSPOT_NOT_CONFIGURED',
+  HOTSPOT_TEMPLATE_APPLY_FAILED: 'HOTSPOT_TEMPLATE_APPLY_FAILED',
 
   // ── Upload / file handling ────────────────────────────────────────────────
   INVALID_FILE_TYPE: 'INVALID_FILE_TYPE',

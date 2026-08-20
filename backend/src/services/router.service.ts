@@ -39,6 +39,7 @@ export interface RouterRow {
   hotspot_template_status: string | null;
   hotspot_template_applied_at: Date | null;
   hotspot_template_error: string | null;
+  hotspot_template_error_code: string | null;
   hotspot_accent_color: string | null;
 }
 
@@ -62,6 +63,7 @@ export interface RouterInfo {
   hotspotTemplateStatus: string | null;
   hotspotTemplateAppliedAt: string | null;
   hotspotTemplateError: string | null;
+  hotspotTemplateErrorCode: string | null;
   hotspotAccentColor: string | null;
 }
 
@@ -92,6 +94,7 @@ function toRouterInfo(row: RouterRow): RouterInfo {
       ? new Date(row.hotspot_template_applied_at).toISOString()
       : null,
     hotspotTemplateError: row.hotspot_template_error ?? null,
+    hotspotTemplateErrorCode: row.hotspot_template_error_code ?? null,
     hotspotAccentColor: row.hotspot_accent_color ?? null,
   };
 }

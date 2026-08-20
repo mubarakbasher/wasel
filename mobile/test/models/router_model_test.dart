@@ -107,6 +107,30 @@ void main() {
       expect(round.hotspotAccentColor, '#be123c');
     });
 
+    test('fromJson parses hotspotTemplateErrorCode', () {
+      final router = RouterModel.fromJson({
+        ...validJson,
+        'hotspotTemplateStatus': 'failed',
+        'hotspotTemplateErrorCode': 'HOTSPOT_TEMPLATE_FETCH_FAILED',
+      });
+      expect(router.hotspotTemplateErrorCode, 'HOTSPOT_TEMPLATE_FETCH_FAILED');
+    });
+
+    test('fromJson defaults hotspotTemplateErrorCode to null when absent', () {
+      final router = RouterModel.fromJson(validJson);
+      expect(router.hotspotTemplateErrorCode, isNull);
+    });
+
+    test('toJson round-trips hotspotTemplateErrorCode', () {
+      final router = RouterModel.fromJson({
+        ...validJson,
+        'hotspotTemplateStatus': 'failed',
+        'hotspotTemplateErrorCode': 'HOTSPOT_NOT_CONFIGURED',
+      });
+      final round = RouterModel.fromJson(router.toJson());
+      expect(round.hotspotTemplateErrorCode, 'HOTSPOT_NOT_CONFIGURED');
+    });
+
     test('copyWith preserves existing fields and updates hotspotAccentColor', () {
       final router = RouterModel.fromJson({
         ...validJson,
