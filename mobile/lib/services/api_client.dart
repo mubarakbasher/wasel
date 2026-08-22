@@ -326,8 +326,15 @@ class ApiClient {
     try {
       final refreshToken = await _storage.getRefreshToken();
       if (refreshToken == null) {
+        // A 401 with no refresh token is only a *session expiry* if a session
+        // existed (access token present but refresh lost/corrupt). With no
+        // tokens at all — fresh install, logged out — the 401 came from an
+        // unauthenticated call (pre-login FCM token registration, a wrong
+        // password on /auth/login, …). Firing onSessionExpired there paints
+        // "Session expired" onto a pristine login screen.
+        final hadSession = await _storage.getAccessToken() != null;
         await _storage.clearSession();
-        onSessionExpired?.call();
+        if (hadSession) onSessionExpired?.call();
         throw error;
       }
 
