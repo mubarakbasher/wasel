@@ -74,7 +74,7 @@ flowchart TB
   end
 
   LOGIN -->|"login success"| DASH
-  VERIFY -->|"verified"| LOGIN
+  VERIFY -->|"verified, signed in"| DASH
   RESET -->|"password reset"| LOGIN
 
   subgraph RSTACK["Router stack - pushed over shell"]
@@ -162,9 +162,9 @@ Code: `mobile/lib/screens/auth/*`, `backend/src/routes/auth.routes.ts`, `backend
 
 | Step | Screen | User action | API call | Result |
 |---|---|---|---|---|
-| 1 | `/register` (`register_screen.dart`) | Enter name, email, password | `POST /auth/register` | Account created (unverified), a 6-digit OTP is emailed (`createVerificationOtp`, 24 h TTL in Redis). App pushes `/verify-email?email=…` (`register_screen.dart:58`). |
-| 2 | `/verify-email` (`verify_email_screen.dart`) | Enter OTP from email | `POST /auth/verify-email` | Email marked verified. A resend countdown timer runs on-screen; resending calls `POST /auth/resend-verification`. Invalid/expired code → `OTP_INVALID`. |
-| 3 | `/login` (`login_screen.dart`) | Enter credentials | `POST /auth/login` | Backend returns access (15 m) + refresh (7 d) JWT pair; refresh JTI stored in Redis (`refresh:{userId}:{jti}`). Tokens persisted in `flutter_secure_storage` (`mobile/lib/services/secure_storage.dart`). GoRouter redirect lands on `/dashboard`. `auth_provider.dart` fire-and-forgets `_loadUserScopedProviders()` so subscription state is warm before any tab reads it. |
+| 1 | `/register` (`register_screen.dart`) | Enter name, email, password | `POST /auth/register` | Account created (unverified) — **no tokens are issued** — and a 6-digit OTP is emailed (`createVerificationOtp`, 24 h TTL in Redis). App pushes `/verify-email?email=…` (`register_screen.dart:58`). |
+| 2 | `/verify-email` (`verify_email_screen.dart`) | Enter OTP from email | `POST /auth/verify-email` | Email marked verified **and the session is issued**: the response carries the same `{ user, accessToken, refreshToken }` body as login (access 15 m, refresh 7 d, JTI in Redis `refresh:{userId}:{jti}`). The app persists the pair in `flutter_secure_storage`, flips `isAuthenticated`, and `context.go('/dashboard')` — a new user never sees the login screen. A resend countdown timer runs on-screen; resending calls `POST /auth/resend-verification`. Invalid/expired code → `OTP_INVALID`; suspended account → `ACCOUNT_SUSPENDED`. |
+| 3 | `/login` (`login_screen.dart`) | Returning user: enter credentials | `POST /auth/login` | Backend returns the same JWT pair. An unverified account gets 403 `EMAIL_NOT_VERIFIED`: the app resends the OTP and pushes `/verify-email`, which then lands on `/dashboard` exactly as in step 2. Tokens persisted in `flutter_secure_storage` (`mobile/lib/services/secure_storage.dart`). GoRouter redirect lands on `/dashboard`. `auth_provider.dart` fire-and-forgets `_loadUserScopedProviders()` so subscription state is warm before any tab reads it. |
 | 4 | — | (forgot password) | `POST /auth/forgot-password` → `POST /auth/reset-password` | `/forgot-password` sends a reset OTP (15 m TTL); `/reset-password` receives the email via `extra` and submits OTP + new password. |
 
 Guard rails (verified in `auth.service.ts` and `backend/src/middleware/rateLimiter.ts`):

@@ -158,19 +158,19 @@ All endpoints are prefixed `/api/v1` (`backend/src/routes/index.ts`). Auth legen
 |----|-------------|
 | TRD-AUTH-01 | Users register with name, email, phone, and password; passwords are hashed with bcrypt cost 12 (`BCRYPT_ROUNDS = 12`, `backend/src/services/auth.service.ts`). |
 | TRD-AUTH-02 | Registration sends a 6-digit OTP by email; the OTP is stored in Redis with a 24 h TTL (`OTP_VERIFY_TTL_SECONDS`, `backend/src/services/token.service.ts`). Unverified accounts are purged by an hourly job (`backend/src/jobs/purgeUnverified.ts`). |
-| TRD-AUTH-03 | Login issues a JWT access token (15 min) and refresh token (7 days) with rotation; each refresh token carries a JTI stored in Redis under `refresh:{userId}:{jti}` and is revoked on rotation/logout (`backend/src/services/token.service.ts`). |
+| TRD-AUTH-03 | Login and successful email verification (`POST /auth/verify-email`) issue a JWT access token (15 min) and refresh token (7 days) with rotation; each refresh token carries a JTI stored in Redis under `refresh:{userId}:{jti}` and is revoked on rotation/logout (`backend/src/services/token.service.ts`). |
 | TRD-AUTH-04 | Account lockout after 5 consecutive failed logins, 15-minute cooldown (`MAX_LOGIN_ATTEMPTS = 5`, `LOCKOUT_MINUTES = 15`, `auth.service.ts`). |
-| TRD-AUTH-05 | Password reset uses a 15-minute OTP (`OTP_RESET_TTL_SECONDS`); both OTP flows lock after 5 wrong attempts within 1 h, invalidating the code (`OTP_MAX_ATTEMPTS`, `token.service.ts`). |
+| TRD-AUTH-05 | Password reset uses a 15-minute OTP (`OTP_RESET_TTL_SECONDS`); every OTP flow validates atomically in one Redis Lua script (lock check, read, compare, count) and locks after 5 wrong attempts within 1 h, invalidating the code **and locking the flow for 15 minutes** (`OTP_MAX_ATTEMPTS`, `OTP_LOCK_SECONDS`, `token.service.ts`) — a resend does not clear the lock, and guesses against a flow with no live code are not counted (so a flow cannot be pre-locked). OTP sends are capped at 5 per fixed one-hour window per subject — verification resends and password-reset requests per email, email-change requests per user — independently of the IP rate limiter (`EMAIL_RATE_LIMIT_EXCEEDED`). Standalone Redis only: the validate script uses three un-tagged keys. |
 | TRD-AUTH-06 | All auth endpoints are rate-limited to 10 req/min (Redis-backed `authLimiter`, `backend/src/middleware/rateLimiter.ts`). |
 | TRD-AUTH-07 | Authenticated users can read/update their profile and change their password in-app. |
 | TRD-AUTH-08 | Tokens are stored on-device in platform secure storage (`flutter_secure_storage`). |
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/auth/register` | Public (rate-limited) | Create account, send verification OTP |
+| POST | `/auth/register` | Public (rate-limited) | Create account (unverified, no tokens issued), send verification OTP |
 | POST | `/auth/login` | Public (rate-limited) | Authenticate, issue JWT pair |
 | POST | `/auth/refresh` | Public (rate-limited) | Rotate refresh token, new access token |
-| POST | `/auth/verify-email` | Public (rate-limited) | Verify 6-digit OTP |
+| POST | `/auth/verify-email` | Public (rate-limited) | Verify 6-digit OTP; issues the JWT pair (signs the user in) |
 | POST | `/auth/resend-verification` | Public (rate-limited) | Re-send verification OTP |
 | POST | `/auth/forgot-password` | Public (rate-limited) | Send password-reset OTP |
 | POST | `/auth/reset-password` | Public (rate-limited) | Set new password with OTP |

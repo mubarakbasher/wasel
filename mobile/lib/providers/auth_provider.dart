@@ -226,23 +226,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         email: email,
         password: password,
       );
-
-      await _storage.setTokens(result.accessToken, result.refreshToken);
-      await _storage.setUserData(json.encode(result.user.toJson()));
-
-      state = state.copyWith(
-        isAuthenticated: true,
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        user: result.user,
-        isLoading: false,
-        clearPendingVerificationEmail: true,
-      );
-      _loadUserScopedProviders();
-      _syncLocaleToBackend();
-      // Register this device's FCM token now that we're authenticated — the
-      // pre-login registration attempt (if any) 401'd and never persisted.
-      PushNotificationService().registerCurrentToken();
+      await _completeSignIn(result);
     } catch (e) {
       final code = _extractErrorCode(e);
       state = state.copyWith(
@@ -307,33 +291,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      await _authService.verifyEmail(email: email, otp: otp);
-      // Update the local user if already authenticated.
-      if (state.user != null) {
-        final updatedUser = User(
-          id: state.user!.id,
-          name: state.user!.name,
-          email: state.user!.email,
-          phone: state.user!.phone,
-          businessName: state.user!.businessName,
-          isVerified: true,
-        );
-        await _storage.setUserData(json.encode(updatedUser.toJson()));
-        state = state.copyWith(
-          user: updatedUser,
-          isLoading: false,
-          clearPendingVerificationEmail: true,
-        );
-      } else {
-        state = state.copyWith(
-          isLoading: false,
-          clearPendingVerificationEmail: true,
-        );
-      }
+      final result = await _authService.verifyEmail(email: email, otp: otp);
+      await _completeSignIn(result);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
         error: _extractErrorMessage(e),
+        errorCode: _extractErrorCode(e),
       );
       rethrow;
     }
@@ -522,6 +486,35 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Clear the current error (e.g. when the user dismisses an error dialog).
   void clearError() {
     state = state.copyWith(clearError: true);
+  }
+
+  /// Persists tokens + user from a successful sign-in (login or verifyEmail),
+  /// updates state to authenticated, and fires the post-sign-in side-effects.
+  /// Shared by [login] and [verifyEmail] to guarantee a single code path.
+  Future<void> _completeSignIn(LoginResult result) async {
+    await _storage.setTokens(result.accessToken, result.refreshToken);
+    try {
+      await _storage.setUserData(json.encode(result.user.toJson()));
+    } catch (e) {
+      // The server has already verified the email / issued tokens by this
+      // point (they're on disk above) — never let a cached-profile write
+      // failure strand the user signed-out. tryRestoreSession/getProfile
+      // rebuild the cached copy on the next launch or profile fetch.
+      debugPrint('[AuthNotifier] cached-profile write failed: $e');
+    }
+    state = state.copyWith(
+      isAuthenticated: true,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: result.user,
+      isLoading: false,
+      clearPendingVerificationEmail: true,
+    );
+    _loadUserScopedProviders();
+    _syncLocaleToBackend();
+    // Register this device's FCM token now that we're authenticated — the
+    // pre-login registration attempt (if any) 401'd and never persisted.
+    PushNotificationService().registerCurrentToken();
   }
 
   /// Reads the locally persisted locale and pushes the effective language to

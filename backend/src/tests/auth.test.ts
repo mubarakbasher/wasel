@@ -1,12 +1,26 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import * as tokenService from '../services/token.service';
+import * as emailService from '../services/email.service';
+import { redis } from '../config/redis';
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof vi.fn>;
+// TTL bookkeeping from the Redis mock: the in-memory store has no real TTLs, so
+// these are the only way to pin "armed with EX 900" and "the window was set once".
+const mockRedisTtls = (globalThis as Record<string, unknown>).__mockRedisTtls as Map<
+  string,
+  { mode: string; ttl: number }
+>;
+const mockRedisExpireCalls = (globalThis as Record<string, unknown>)
+  .__mockRedisExpireCalls as Map<string, number>;
 
 beforeEach(() => {
   mockQuery.mockReset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('POST /api/v1/auth/register', () => {
@@ -18,7 +32,8 @@ describe('POST /api/v1/auth/register', () => {
     business_name: 'Test Biz',
   };
 
-  it('should register a new user and return tokens', async () => {
+  it('registers a new user without issuing tokens', async () => {
+    const issueTokenPairSpy = vi.spyOn(tokenService, 'issueTokenPair');
     mockQuery
       .mockResolvedValueOnce({ rows: [] }) // email check
       .mockResolvedValueOnce({
@@ -30,8 +45,9 @@ describe('POST /api/v1/auth/register', () => {
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.user.email).toBe('test@example.com');
-    expect(res.body.data.accessToken).toBeDefined();
-    expect(res.body.data.refreshToken).toBeDefined();
+    expect(res.body.data.accessToken).toBeUndefined();
+    expect(res.body.data.refreshToken).toBeUndefined();
+    expect(issueTokenPairSpy).not.toHaveBeenCalled();
   });
 
   it('should return 409 for duplicate email', async () => {
@@ -245,10 +261,10 @@ describe('POST /api/v1/auth/refresh', () => {
 });
 
 describe('POST /api/v1/auth/verify-email', () => {
-  it('should return 400 for invalid UUID', async () => {
+  it('should return 400 for invalid email', async () => {
     const res = await request(app)
       .post('/api/v1/auth/verify-email')
-      .send({ userId: 'not-a-uuid', otp: '123456' });
+      .send({ email: 'not-an-email', otp: '123456' });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
@@ -257,10 +273,272 @@ describe('POST /api/v1/auth/verify-email', () => {
   it('should return 400 for wrong OTP length', async () => {
     const res = await request(app)
       .post('/api/v1/auth/verify-email')
-      .send({ userId: '550e8400-e29b-41d4-a716-446655440000', otp: '123' });
+      .send({ email: 'test@example.com', otp: '123' });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('verifies the email and signs the user in', async () => {
+    const userId = '550e8400-e29b-41d4-a716-446655440001';
+    const otp = await tokenService.createVerificationOtp(userId);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: userId, name: 'Test User', email: 'test@example.com', role: 'user', is_active: true }] }) // SELECT
+      .mockResolvedValueOnce({ rows: [{ id: userId }] }); // UPDATE
+
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: 'test@example.com', otp });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.user).toEqual({ id: userId, name: 'Test User', email: 'test@example.com', role: 'user' });
+    expect(res.body.data.accessToken).toBeDefined();
+    expect(res.body.data.refreshToken).toBeDefined();
+    expect(tokenService.verifyAccessToken(res.body.data.accessToken as string).userId).toBe(userId);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect((mockQuery.mock.calls[1] as unknown[])[0]).toContain('is_verified = TRUE');
+    expect((mockQuery.mock.calls[1] as unknown[])[0]).toContain('is_active = TRUE');
+    expect((mockQuery.mock.calls[1] as unknown[])[0]).toContain("role = 'user'");
+    // Body mode only — verify-email must never set the admin refresh cookie.
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('refuses a suspended account before issuing tokens', async () => {
+    const userId = '550e8400-e29b-41d4-a716-446655440002';
+    const issueTokenPairSpy = vi.spyOn(tokenService, 'issueTokenPair');
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: userId, name: 'Test User', email: 'test@example.com', role: 'user', is_active: false }] });
+
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: 'test@example.com', otp: '123456' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('ACCOUNT_SUSPENDED');
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(issueTokenPairSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 OTP_INVALID for a wrong code and issues no tokens', async () => {
+    const userId = '550e8400-e29b-41d4-a716-446655440003';
+    const issueTokenPairSpy = vi.spyOn(tokenService, 'issueTokenPair');
+    await tokenService.createVerificationOtp(userId);
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: userId, name: 'Test User', email: 'test@example.com', role: 'user', is_active: true }] });
+
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: 'test@example.com', otp: '000000' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('OTP_INVALID');
+    expect(res.body.data).toBeUndefined();
+    expect(issueTokenPairSpy).not.toHaveBeenCalled();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 400 ALREADY_VERIFIED when the account is already verified', async () => {
+    const userId = '550e8400-e29b-41d4-a716-446655440004';
+    const otp = await tokenService.createVerificationOtp(userId);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: userId, name: 'Test User', email: 'test@example.com', role: 'user', is_active: true }] }) // SELECT
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE returns empty — already verified
+
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: 'test@example.com', otp });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ALREADY_VERIFIED');
+    expect(res.body.data).toBeUndefined();
+  });
+
+  it('returns 404 for an unknown email', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email: 'unknown@example.com', otp: '123456' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('USER_NOT_FOUND');
+  });
+
+  // ── OTP guess-budget hardening ──────────────────────────────────────────
+  // The wrong-code lockout must be DURABLE: it outlives the OTP it was earned
+  // on, so the "5 guesses -> 429 -> resend -> 5 fresh guesses" loop cannot be
+  // used to mine a 6-digit code (authLimiter is per-IP only and rotates away).
+
+  it('locks the flow after 5 wrong codes and keeps it locked for the correct code', async () => {
+    const userId = '550e8400-e29b-41d4-a716-446655440010';
+    const email = 'lockout@example.com';
+    const correctOtp = await tokenService.createVerificationOtp(userId);
+    const issueTokenPairSpy = vi.spyOn(tokenService, 'issueTokenPair');
+    const redisEvalSpy = vi.spyOn(redis, 'eval');
+    const userRow = {
+      rows: [{ id: userId, name: 'Test User', email, role: 'user', is_active: true }],
+    };
+
+    const results: { status: number; code: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      mockQuery.mockResolvedValueOnce(userRow); // every attempt does its own SELECT
+      const attempt = await request(app)
+        .post('/api/v1/auth/verify-email')
+        .send({ email, otp: '000000' });
+      results.push({ status: attempt.status, code: attempt.body.error.code });
+    }
+
+    expect(results.slice(0, 4)).toEqual(
+      Array.from({ length: 4 }, () => ({ status: 400, code: 'OTP_INVALID' })),
+    );
+    expect(results[4]).toEqual({ status: 429, code: 'OTP_LOCKED' });
+
+    // Pin the lock's TTL args. The lock is now armed INSIDE the validate Lua
+    // script (redis.set never fires), so we assert on what the script actually
+    // wrote: a typo (wrong mode, missing ttl, wrong seconds) would otherwise
+    // silently ship a permanent lock without any test noticing.
+    expect(mockRedisTtls.get(`otp-lock:${userId}:verify`)).toEqual({ mode: 'EX', ttl: 900 });
+
+    // ...and that the lock TTL really travelled as the script's last ARGV.
+    const validateCalls = redisEvalSpy.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && (call[0] as string).startsWith('-- otp-validate'),
+    );
+    expect(validateCalls).toHaveLength(5);
+    for (const call of validateCalls) {
+      expect(call[call.length - 1]).toBe(String(900));
+    }
+
+    // The CORRECT code is worthless while the lock stands.
+    mockQuery.mockResolvedValueOnce(userRow);
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email, otp: correctOtp });
+
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('OTP_LOCKED');
+    expect(issueTokenPairSpy).not.toHaveBeenCalled();
+    const updates = mockQuery.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && (call[0] as string).includes('UPDATE users'),
+    );
+    expect(updates).toHaveLength(0);
+  });
+
+  it('a resend during the lock is refused and does not clear it', async () => {
+    const userId = '550e8400-e29b-41d4-a716-446655440011';
+    const email = 'lockout-resend@example.com';
+    await tokenService.createVerificationOtp(userId);
+    const userRow = {
+      rows: [{ id: userId, name: 'Test User', email, role: 'user', is_active: true }],
+    };
+    for (let i = 0; i < 5; i++) {
+      mockQuery.mockResolvedValueOnce(userRow);
+      await request(app).post('/api/v1/auth/verify-email').send({ email, otp: '000000' });
+    }
+
+    const sendOtpSpy = vi
+      .spyOn(emailService, 'sendVerificationOtp')
+      .mockResolvedValue(undefined);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: userId, name: 'Test User', is_verified: false, language: 'en' }],
+    }); // the SELECT resendVerification makes
+
+    const resend = await request(app)
+      .post('/api/v1/auth/resend-verification')
+      .send({ email });
+
+    expect(resend.status).toBe(429);
+    expect(resend.body.error.code).toBe('OTP_LOCKED');
+    expect(sendOtpSpy).not.toHaveBeenCalled();
+
+    // Even a code minted out-of-band during the lock stays unusable.
+    const freshOtp = await tokenService.createVerificationOtp(userId);
+    mockQuery.mockResolvedValueOnce(userRow);
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email, otp: freshOtp });
+
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('OTP_LOCKED');
+  });
+
+  it('guesses with no live code are not counted and cannot pre-lock the flow', async () => {
+    const userId = '550e8400-e29b-41d4-a716-446655440012';
+    const email = 'no-live-code@example.com';
+    const userRow = {
+      rows: [{ id: userId, name: 'Test User', email, role: 'user', is_active: true }],
+    };
+
+    // Nothing seeded. Six wrong guesses — one past the lock threshold — must all
+    // be plain 400s: counting a guess made against a non-existent code would let
+    // anyone keep a stranger's verify flow permanently locked (M-A, denial half).
+    for (let i = 0; i < 6; i++) {
+      mockQuery.mockResolvedValueOnce(userRow);
+      const attempt = await request(app)
+        .post('/api/v1/auth/verify-email')
+        .send({ email, otp: '000000' });
+
+      expect(attempt.status).toBe(400);
+      expect(attempt.body.error.code).toBe('OTP_INVALID');
+    }
+    expect(mockRedisExpireCalls.get(`otp-attempts:${userId}:verify`) ?? 0).toBe(0);
+
+    // The real code still works — the flow was never pre-locked.
+    const otp = await tokenService.createVerificationOtp(userId);
+    mockQuery
+      .mockResolvedValueOnce(userRow) // SELECT
+      .mockResolvedValueOnce({ rows: [{ id: userId }] }); // UPDATE
+
+    const res = await request(app)
+      .post('/api/v1/auth/verify-email')
+      .send({ email, otp });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.accessToken).toBeDefined();
+    expect(res.body.data.refreshToken).toBeDefined();
+  });
+
+  it('resend-verification is capped per email even when the account does not exist', async () => {
+    const email = 'ghost-resend@example.com';
+
+    for (let i = 0; i < 5; i++) {
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // unknown email -> silent 200
+      const allowed = await request(app)
+        .post('/api/v1/auth/resend-verification')
+        .send({ email });
+      expect(allowed.status).toBe(200);
+    }
+    expect(mockQuery).toHaveBeenCalledTimes(5);
+
+    const res = await request(app)
+      .post('/api/v1/auth/resend-verification')
+      .send({ email });
+
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('EMAIL_RATE_LIMIT_EXCEEDED');
+    // The cap fires before the lookup, so known and unknown emails are
+    // indistinguishable — no enumeration signal and no wasted DB round-trip.
+    expect(mockQuery).toHaveBeenCalledTimes(5);
+  });
+
+  it('the resend cap window is fixed, not sliding', async () => {
+    const email = 'fixed-window-resend@example.com';
+
+    for (let i = 0; i < 5; i++) {
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // unknown email -> silent 200
+      const allowed = await request(app)
+        .post('/api/v1/auth/resend-verification')
+        .send({ email });
+      expect(allowed.status).toBe(200);
+    }
+
+    const res = await request(app)
+      .post('/api/v1/auth/resend-verification')
+      .send({ email });
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('EMAIL_RATE_LIMIT_EXCEEDED');
+
+    // The TTL is armed exactly once, when the counter is created. A sliding
+    // window re-EXPIREs on every call — including the refused ones — so one
+    // request per hour would keep the budget exhausted forever (M-A).
+    expect(mockRedisExpireCalls.get(`otp-send:${email}:verify`)).toBe(1);
   });
 });
 
@@ -283,6 +561,29 @@ describe('POST /api/v1/auth/forgot-password', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('forgot-password is capped per email even when the account does not exist', async () => {
+    const email = 'ghost-forgot@example.com';
+
+    for (let i = 0; i < 5; i++) {
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // unknown email -> silent 200
+      const allowed = await request(app)
+        .post('/api/v1/auth/forgot-password')
+        .send({ email });
+      expect(allowed.status).toBe(200);
+    }
+    expect(mockQuery).toHaveBeenCalledTimes(5);
+
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email });
+
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('EMAIL_RATE_LIMIT_EXCEEDED');
+    // The cap fires before the SELECT, so a known and an unknown address are
+    // indistinguishable — the 429 leaks nothing and costs no DB round-trip.
+    expect(mockQuery).toHaveBeenCalledTimes(5);
   });
 });
 

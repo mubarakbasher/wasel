@@ -40,7 +40,6 @@ interface AuthTokens {
 
 interface RegisterResult {
   user: { id: string; name: string; email: string; role: string };
-  tokens: AuthTokens;
 }
 
 interface LoginResult {
@@ -68,10 +67,9 @@ export async function register(input: RegisterInput): Promise<RegisterResult> {
   const otp = await tokenService.createVerificationOtp(user.id);
   await emailService.sendVerificationOtp(user.email, user.name, otp, user.language ?? 'en');
 
-  const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name, 'user');
-
+  // Tokens are NOT issued at registration — they are issued upon email verification.
   logger.info('User registered', { userId: user.id, email: user.email });
-  return { user: { id: user.id, name: user.name, email: user.email, role: 'user' }, tokens };
+  return { user: { id: user.id, name: user.name, email: user.email, role: 'user' } };
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {
@@ -171,21 +169,35 @@ export async function refresh(refreshTokenStr: string): Promise<AuthTokens> {
   return tokenService.issueTokenPair(user.id, user.email, user.name, user.role);
 }
 
-export async function verifyEmail(email: string, otp: string): Promise<void> {
-  const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+export async function verifyEmail(email: string, otp: string): Promise<LoginResult> {
+  const userResult = await pool.query(
+    'SELECT id, name, email, role, is_active FROM users WHERE email = $1',
+    [email],
+  );
   if (userResult.rows.length === 0) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
 
-  const userId = userResult.rows[0].id;
+  const user = userResult.rows[0] as Pick<UserRow, 'id' | 'name' | 'email' | 'role' | 'is_active'>;
+  const userId = user.id;
+
+  if (!user.is_active) {
+    throw new AppError(403, 'Account is suspended', 'ACCOUNT_SUSPENDED');
+  }
 
   const valid = await tokenService.validateVerificationOtp(userId, otp);
   if (!valid) {
     throw new AppError(400, 'Invalid or expired verification code', 'OTP_INVALID');
   }
 
+  // Re-assert every precondition inside the write: the row must still be
+  // unverified, still active (suspension mid-request loses the race, not us)
+  // and still a plain user — this endpoint must never mint a pair for an
+  // admin-role row. 0 rows -> ALREADY_VERIFIED, same as before.
   const result = await pool.query(
-    'UPDATE users SET is_verified = TRUE WHERE id = $1 AND is_verified = FALSE RETURNING id',
+    `UPDATE users SET is_verified = TRUE
+     WHERE id = $1 AND is_verified = FALSE AND is_active = TRUE AND role = 'user'
+     RETURNING id`,
     [userId],
   );
 
@@ -193,10 +205,19 @@ export async function verifyEmail(email: string, otp: string): Promise<void> {
     throw new AppError(400, 'User not found or already verified', 'ALREADY_VERIFIED');
   }
 
-  logger.info('Email verified', { userId });
+  const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name, user.role);
+
+  logger.info('Email verified and user signed in', { userId });
+  return { user: { id: user.id, name: user.name, email: user.email, role: user.role }, tokens };
 }
 
 export async function resendVerification(email: string): Promise<void> {
+  // Per-email cap FIRST, before the lookup: known and unknown addresses must
+  // burn the same budget and take the same path, or the 429 itself becomes an
+  // enumeration oracle. This is independent of the per-IP authLimiter, which a
+  // distributed attacker rotates away.
+  await tokenService.enforceOtpSendCap('verify', email.trim().toLowerCase());
+
   const result = await pool.query(
     'SELECT id, name, is_verified, language FROM users WHERE email = $1 AND is_active = TRUE',
     [email],
@@ -208,17 +229,33 @@ export async function resendVerification(email: string): Promise<void> {
   }
 
   const user = result.rows[0];
+
+  // Already-verified check comes first: it is the more useful response for a
+  // verified-but-locked user, and there is nothing left to lock-check for an
+  // account that will never receive another verification OTP.
   if (user.is_verified) {
     throw new AppError(400, 'Email is already verified', 'ALREADY_VERIFIED');
   }
 
+  // Locks only ever exist for real users, so checking here (after the row is
+  // found, keyed on the user id) leaks nothing. A fresh code during a lockout
+  // is useless — it cannot be redeemed — so refuse instead of emailing it.
+  await tokenService.assertOtpNotLocked('verify', user.id);
+
   const otp = await tokenService.createVerificationOtp(user.id);
   await emailService.sendVerificationOtp(email, user.name, otp, user.language ?? 'en');
 
-  logger.info('Verification OTP resent', { email });
+  logger.info('Verification OTP resent', { userId: user.id });
 }
 
 export async function forgotPassword(email: string): Promise<void> {
+  // Per-email cap FIRST, before the lookup — same reasoning as resendVerification:
+  // this endpoint mints and mails an OTP, so without a per-subject cap it is a
+  // mail bomb and an OTP-rotation oracle from any IP. Running it ahead of the
+  // SELECT also keeps unknown and known addresses on an identical path, so the
+  // 429 itself never becomes an enumeration signal.
+  await tokenService.enforceOtpSendCap('reset', email.trim().toLowerCase());
+
   const result = await pool.query(
     'SELECT id, name, language FROM users WHERE email = $1 AND is_active = TRUE',
     [email],
@@ -352,6 +389,15 @@ export async function changeEmail(userId: string, newEmail: string): Promise<{ p
   if (existing.rows.length > 0) {
     throw new AppError(409, 'Email already registered', 'EMAIL_EXISTS');
   }
+
+  // Keyed on the AUTHENTICATED user, not the target address: the caller picks
+  // newEmail freely, so capping per-address would let one session mail an
+  // unlimited number of victims one code each. Enumeration is not a concern
+  // here (the route is behind auth), so the cap runs right before the send —
+  // after the lookup and the unchanged/existing-email checks — so a request
+  // that fails EMAIL_UNCHANGED or EMAIL_EXISTS (which sends nothing) never
+  // burns the user's hourly budget on a typo.
+  await tokenService.enforceOtpSendCap('email-change', userId);
 
   const otp = await tokenService.createEmailChangeOtp(userId, newEmail);
   await emailService.sendVerificationOtp(newEmail, user.name, otp, user.language ?? 'en');

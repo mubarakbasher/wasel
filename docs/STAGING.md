@@ -421,8 +421,11 @@ Run this checklist in order after every staging deploy. All items must pass befo
 - [ ] Open the staging app (debug APK pointing at `https://api.wa-sel.cloud/api/v1`)
 - [ ] Register a new account with a real or MailHog email address
 - [ ] OTP email arrives (check MailHog at `http://<STAGING_VPS_IP>:8025` if using MailHog SMTP)
-- [ ] Enter OTP on the verify screen — account becomes verified
-- [ ] Login succeeds, app reaches Dashboard
+- [ ] Enter OTP on the verify screen — welcome snackbar, app lands on Dashboard **already signed in** (the login screen is never shown)
+- [ ] Kill and relaunch the app — still signed in (session persisted)
+- [ ] Register a second account, skip the OTP, then Login with it — `EMAIL_NOT_VERIFIED` → verify screen → OTP → Dashboard
+- [ ] Wrong OTP stays on the verify screen with a localized error; Logout then Login with the first account still works
+- [ ] Five wrong codes → "wait 15 minutes" error; the correct code and Resend are both refused during the lock (`OTP_LOCKED`); the 6th Resend within an hour is refused (`EMAIL_RATE_LIMIT_EXCEEDED`)
 
 PASS: Dashboard loads with no errors in `docker compose logs backend`.
 

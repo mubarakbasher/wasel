@@ -1,12 +1,46 @@
+import 'package:dio/dio.dart';
+
 import '../models/user.dart';
 import 'api_client.dart';
 
 class AuthService {
   final ApiClient _api = ApiClient();
 
+  LoginResult _parseLoginResult(Response<dynamic> response) {
+    // Validate the shape explicitly before casting — a captive portal / proxy
+    // or a backend contract drift can return a 2xx with an unexpected body,
+    // and a blind cast would throw a NoSuchMethodError that bypasses the
+    // ApiFailure error mapping. Mirrors the /auth/refresh guard in
+    // api_client.dart.
+    final body = response.data;
+    final data = body is Map ? body['data'] : null;
+    final user = data is Map ? data['user'] : null;
+    if (data is! Map ||
+        data['accessToken'] is! String ||
+        (data['accessToken'] as String).isEmpty ||
+        data['refreshToken'] is! String ||
+        (data['refreshToken'] as String).isEmpty ||
+        user is! Map ||
+        user['id'] is! String ||
+        user['name'] is! String ||
+        user['email'] is! String) {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+        message: 'Malformed sign-in response',
+      );
+    }
+    return LoginResult(
+      accessToken: data['accessToken'] as String,
+      refreshToken: data['refreshToken'] as String,
+      user: User.fromJson((data['user'] as Map).cast<String, dynamic>()),
+    );
+  }
+
   /// POST /auth/register
   /// Body: { name, email, phone, password, language, businessName? }
-  /// Returns: { message: "Verification email sent" }
+  /// Returns 201 `{ user }` — no tokens; the session is issued by verifyEmail.
   Future<void> register({
     required String name,
     required String email,
@@ -37,24 +71,21 @@ class AuthService {
       'email': email,
       'password': password,
     });
-    final data = response.data['data'] as Map<String, dynamic>;
-    return LoginResult(
-      accessToken: data['accessToken'] as String,
-      refreshToken: data['refreshToken'] as String,
-      user: User.fromJson(data['user'] as Map<String, dynamic>),
-    );
+    return _parseLoginResult(response);
   }
 
   /// POST /auth/verify-email
   /// Body: { email, otp }
-  Future<void> verifyEmail({
+  /// Returns: { accessToken, refreshToken, user } — same shape as login.
+  Future<LoginResult> verifyEmail({
     required String email,
     required String otp,
   }) async {
-    await _api.post('/auth/verify-email', data: {
+    final response = await _api.post('/auth/verify-email', data: {
       'email': email,
       'otp': otp,
     });
+    return _parseLoginResult(response);
   }
 
   /// POST /auth/resend-verification

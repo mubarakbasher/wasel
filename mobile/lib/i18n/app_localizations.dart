@@ -374,11 +374,11 @@ class AppLocalizations {
 
     // Auth / session / rate limiting
     'error.AUTH_RATE_LIMIT_EXCEEDED': 'Too many attempts. Please wait a minute and try again.',
-    'error.EMAIL_RATE_LIMIT_EXCEEDED': 'Too many email requests. Please wait a minute and try again.',
+    'error.EMAIL_RATE_LIMIT_EXCEEDED': 'Too many code requests. Please wait a while before requesting another.',
     'error.RATE_LIMITED': 'Too many attempts. Please wait a moment and try again.',
     'error.ACCOUNT_LOCKED': 'Too many failed attempts. Your account is temporarily locked. Please try again in a few minutes.',
     'error.ACCOUNT_SUSPENDED': 'This account has been suspended. Please contact support.',
-    'error.OTP_LOCKED': 'Too many incorrect codes. Please request a new code and start again.',
+    'error.OTP_LOCKED': 'Too many incorrect codes. Please wait 15 minutes and try again.',
     'error.USER_NOT_FOUND': 'Account not found.',
     'error.ALREADY_VERIFIED': 'This email is already verified. You can sign in now.',
     'error.INVALID_PASSWORD': 'The current password is incorrect.',
@@ -471,7 +471,7 @@ class AppLocalizations {
     'auth.confirmNewPassword': 'Confirm New Password',
     'auth.currentPasswordRequired': 'Current password is required',
     'auth.resetPasswordSuccess': 'Password reset successfully! Please log in.',
-    'auth.emailVerifiedSuccess': 'Email verified successfully! Please log in.',
+    'auth.emailVerifiedSuccess': 'Email verified. Welcome to Wasel!',
     'auth.verificationResent': 'Verification code resent',
     'auth.passwordChangedRelogin': 'Password changed — please sign in again',
 
@@ -1266,11 +1266,11 @@ class AppLocalizations {
 
     // Auth / session / rate limiting
     'error.AUTH_RATE_LIMIT_EXCEEDED': 'محاولات كثيرة جدًا. يرجى الانتظار دقيقة ثم المحاولة مرة أخرى.',
-    'error.EMAIL_RATE_LIMIT_EXCEEDED': 'طلبات بريد كثيرة جدًا. يرجى الانتظار دقيقة ثم المحاولة مرة أخرى.',
+    'error.EMAIL_RATE_LIMIT_EXCEEDED': 'طلبات رموز كثيرة جدًا. يرجى الانتظار بعض الوقت قبل طلب رمز آخر.',
     'error.RATE_LIMITED': 'محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
     'error.ACCOUNT_LOCKED': 'محاولات فاشلة كثيرة. تم قفل حسابك مؤقتًا. يرجى المحاولة بعد بضع دقائق.',
     'error.ACCOUNT_SUSPENDED': 'تم تعليق هذا الحساب. يرجى التواصل مع الدعم.',
-    'error.OTP_LOCKED': 'أدخلت رموزًا خاطئة عدة مرات. يرجى طلب رمز جديد والبدء من جديد.',
+    'error.OTP_LOCKED': 'أدخلت رموزًا خاطئة عدة مرات. يرجى الانتظار 15 دقيقة ثم المحاولة مرة أخرى.',
     'error.USER_NOT_FOUND': 'الحساب غير موجود.',
     'error.ALREADY_VERIFIED': 'تم تأكيد هذا البريد الإلكتروني مسبقًا. يمكنك تسجيل الدخول الآن.',
     'error.INVALID_PASSWORD': 'كلمة المرور الحالية غير صحيحة.',
@@ -1363,7 +1363,7 @@ class AppLocalizations {
     'auth.confirmNewPassword': 'تأكيد كلمة المرور الجديدة',
     'auth.currentPasswordRequired': 'كلمة المرور الحالية مطلوبة',
     'auth.resetPasswordSuccess': 'تم إعادة تعيين كلمة المرور بنجاح! يرجى تسجيل الدخول.',
-    'auth.emailVerifiedSuccess': 'تم تأكيد البريد الإلكتروني بنجاح! يرجى تسجيل الدخول.',
+    'auth.emailVerifiedSuccess': 'تم تأكيد البريد الإلكتروني. أهلاً بك في واصل!',
     'auth.verificationResent': 'تم إعادة إرسال رمز التحقق',
     'auth.passwordChangedRelogin': 'تم تغيير كلمة المرور — يرجى تسجيل الدخول مجدداً',
 
