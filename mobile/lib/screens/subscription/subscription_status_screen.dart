@@ -324,18 +324,22 @@ class _SubscriptionStatusScreenState
       final isCurrentPlan = state.subscription?.planTier == plan.tier &&
           state.subscription?.isActive == true;
       final hasPendingChange = state.pendingChange != null;
+      // A first purchase awaiting payment blocks a second one server-side
+      // (409 SUBSCRIPTION_PENDING) — don't leave the plan looking tappable.
+      final hasPendingPayment = state.subscription?.isPending == true;
       return PlanCard(
         plan: plan,
         isCurrentPlan: isCurrentPlan,
         isLoading: state.isLoading,
         hasPendingChange: hasPendingChange,
+        hasPendingPayment: hasPendingPayment,
         selectedDuration: _getDuration(plan),
         onDurationChanged: (duration) {
           setState(() {
             _selectedDurations[plan.tier] = duration;
           });
         },
-        onSelect: isCurrentPlan || hasPendingChange
+        onSelect: isCurrentPlan || hasPendingChange || hasPendingPayment
             ? null
             : () => _handleSelectPlan(plan),
       );
@@ -393,9 +397,17 @@ class _SubscriptionStatusScreenState
       );
     }
 
-    if (success && mounted) {
-      context.push('/subscription/payment');
+    if (!mounted) return;
+    if (!success) {
+      // A 409 (e.g. SUBSCRIPTION_PENDING) used to be rendered only when the
+      // plan list was empty, so the tap just looked dead.
+      final error = ref.read(subscriptionProvider).error;
+      if (error != null) {
+        AppSnackbar.error(context, error);
+      }
+      return;
     }
+    context.push('/subscription/payment');
   }
 
   Color _statusColor(String status) {

@@ -13,6 +13,7 @@ import '../../i18n/app_localizations.dart';
 import '../../i18n/plan_format.dart';
 import '../../i18n/status_format.dart';
 import '../../models/bank_info.dart';
+import '../../models/payment_record.dart';
 import '../../providers/subscription_provider.dart';
 import '../../services/subscription_service.dart';
 import '../../theme/app_colors.dart';
@@ -199,18 +200,58 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     }
   }
 
-  /// Resolve the id of the payment we're uploading a receipt for. Prefers the
-  /// in-memory request from this session; falls back to the current pending
-  /// payment from the loaded list so upload still works after an app restart
-  /// (where `lastRequest` is gone).
+  /// The payment this screen is about.
+  ///
+  /// Prefers the in-memory request from this session; falls back to the first
+  /// pending payment from the loaded list, then to the first rejected one (the
+  /// backend accepts a re-upload for both). The fallback is what makes the
+  /// screen complete after an app restart, where `lastRequest` is gone.
+  _PayablePayment? _payable(SubscriptionState state) {
+    final SubscriptionRequestResult? request = state.lastRequest;
+    if (request != null) {
+      return _PayablePayment(
+        id: request.paymentId,
+        amount: request.amount,
+        currency: request.currency,
+        referenceCode: request.referenceCode,
+        planName: request.subscription.planName,
+        planNameAr: request.subscription.planNameAr,
+      );
+    }
+
+    PaymentRecord? record;
+    for (final p in state.payments) {
+      if (p.isPending) {
+        record = p;
+        break;
+      }
+    }
+    if (record == null) {
+      // Relies on the backend returning payments newest-first (`ORDER BY
+      // created_at DESC`); pending deliberately wins over a newer rejected row.
+      for (final p in state.payments) {
+        if (p.isRejected) {
+          record = p;
+          break;
+        }
+      }
+    }
+    if (record == null) return null;
+
+    return _PayablePayment(
+      id: record.id,
+      amount: record.amount,
+      currency: record.currency,
+      referenceCode: record.referenceCode,
+      planName: record.planName,
+      planNameAr: record.planNameAr,
+    );
+  }
+
+  /// Id of the payment a receipt upload targets.
   String? _resolvePendingPaymentId() {
     final state = ref.read(subscriptionProvider);
-    final fromRequest = state.lastRequest?.paymentId;
-    if (fromRequest != null) return fromRequest;
-    for (final p in state.payments) {
-      if (p.isPending) return p.id;
-    }
-    return null;
+    return _payable(state)?.id;
   }
 
   Future<void> _handleBack() async {
@@ -247,6 +288,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   /// so the payment is never silently orphaned.
   Future<bool> _confirmLeaveIfPending() async {
     if (_currentStep >= 2) return true;
+
+    // A re-opened instructions screen (no fresh request this session, still
+    // on the bank-details step) leaves silently; the guard is for the
+    // fresh-request flow where the user might orphan a payment they just
+    // created.
+    if (_currentStep == 0 && ref.read(subscriptionProvider).lastRequest == null) {
+      return true;
+    }
 
     final state = ref.read(subscriptionProvider);
     String? pendingId = state.lastRequest?.paymentId;
@@ -305,8 +354,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(subscriptionProvider);
-    final request = state.lastRequest;
-    final sub = state.subscription;
 
     return PopScope(
       // Intercept the Android system back / swipe so a pending, receipt-less
@@ -324,7 +371,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                 onPressed: _handleBack,
               ),
             ),
-            body: _buildStepper(state, request, sub),
+            body: _buildStepper(state),
           ),
           // iOS: blur the screen when app becomes inactive (switcher thumbnail).
           if (_obscured)
@@ -339,11 +386,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     );
   }
 
-  Widget _buildStepper(
-    SubscriptionState state,
-    SubscriptionRequestResult? request,
-    dynamic sub,
-  ) {
+  Widget _buildStepper(SubscriptionState state) {
+    final payable = _payable(state);
+
     return Stepper(
       currentStep: _currentStep,
       type: StepperType.vertical,
@@ -412,12 +457,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
           isActive: _currentStep >= 0,
           state: _currentStep > 0 ? StepState.complete : StepState.indexed,
           content: _buildBankDetails(
-            sub != null
-                ? pickPlanName(context,
-                    name: sub.planName, nameAr: sub.planNameAr)
-                : null,
-            request,
-            state.bankInfo,
+            planName: _displayPlanName(state, payable),
+            amount: payable?.amount,
+            currency: payable?.currency,
+            referenceCode: payable?.referenceCode,
+            bankInfo: state.bankInfo,
           ),
         ),
         Step(
@@ -441,11 +485,32 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     );
   }
 
-  Widget _buildBankDetails(
+  /// Plan name for the details block: prefers the plan recorded on the
+  /// payment itself. During a plan CHANGE the backend keeps the old
+  /// subscription row active and creates a separate `pending_change` payment,
+  /// so `state.subscription` would still show the old plan next to the new
+  /// plan's amount — the payable's own plan is always the correct one to show
+  /// here. Falls back to `state.subscription` only when there is no payable
+  /// (e.g. bank info loaded before the payments list resolves).
+  String? _displayPlanName(SubscriptionState state, _PayablePayment? payable) {
+    final payableName = payable?.planName;
+    if (payableName != null) {
+      return pickPlanName(context, name: payableName, nameAr: payable?.planNameAr);
+    }
+    final sub = state.subscription;
+    if (sub != null) {
+      return pickPlanName(context, name: sub.planName, nameAr: sub.planNameAr);
+    }
+    return null;
+  }
+
+  Widget _buildBankDetails({
     String? planName,
-    SubscriptionRequestResult? request,
+    double? amount,
+    String? currency,
+    String? referenceCode,
     BankInfo? bankInfo,
-  ) {
+  }) {
     final hasBankInfo = bankInfo != null && bankInfo.isConfigured;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -478,17 +543,21 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         const SizedBox(height: AppSpacing.md),
         if (planName != null)
           _DetailRow(label: context.tr('payment.plan'), value: planName),
-        if (request != null) ...[
-          const SizedBox(height: AppSpacing.md),
+        if (amount != null) ...[
+          // Skip the leading gap when there's no plan row above — the
+          // headline already leaves an AppSpacing.md gap, so adding another
+          // here would double it.
+          if (planName != null) const SizedBox(height: AppSpacing.md),
           _DetailRow(
             label: context.tr('payment.amount'),
-            value:
-                localizedCurrency(context, request.amount, request.currency),
+            value: localizedCurrency(context, amount, currency),
           ),
+        ],
+        if (referenceCode != null && referenceCode.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
           _CopyableRow(
             label: context.tr('payment.referenceCode'),
-            value: request.referenceCode,
+            value: referenceCode,
           ),
         ],
         const SizedBox(height: AppSpacing.lg),
@@ -730,6 +799,26 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       ),
     );
   }
+}
+
+/// The payment currently being paid for, flattened from either the in-memory
+/// [SubscriptionRequestResult] or a [PaymentRecord] off the payments list.
+class _PayablePayment {
+  final String id;
+  final double amount;
+  final String currency;
+  final String? referenceCode;
+  final String? planName;
+  final String? planNameAr;
+
+  const _PayablePayment({
+    required this.id,
+    required this.amount,
+    required this.currency,
+    required this.referenceCode,
+    required this.planName,
+    required this.planNameAr,
+  });
 }
 
 class _DetailRow extends StatelessWidget {

@@ -480,6 +480,7 @@ class AppLocalizations {
     'dashboard.addRouterFirst': 'Add a router first',
     'dashboard.noActiveSubscription': 'No active subscription',
     'dashboard.viewPlans': 'View Plans',
+    'dashboard.paymentPending': 'Payment pending for {0}',
     'dashboard.vouchersUsed': 'Vouchers Used',
     'dashboard.unlimited': 'Unlimited',
     'dashboard.dailyRevenue': 'Daily Revenue',
@@ -830,6 +831,8 @@ class AppLocalizations {
     'subscription.perMonth': '/month',
     'subscription.perNMonths': '/{0} months',
     'subscription.changePending': 'Change Pending',
+    'subscription.pendingPaymentBlocksPlans':
+        'Complete your pending payment first',
     'subscription.selectPlan': 'Select {0}',
     'subscription.confirmBody': 'You are requesting the {0} plan for {1} at {2}. After confirmation, you will receive payment instructions.',
 
@@ -896,7 +899,8 @@ class AppLocalizations {
     'payments.uploadReceipt': 'Upload receipt',
     'payments.replaceReceipt': 'Replace receipt',
     'payments.pendingUploadHint':
-        'Upload your receipt so the admin can verify your payment.',
+        'Transfer the amount to the bank account shown in the payment '
+        'instructions, then upload your receipt here.',
     'payments.awaitingReviewNote':
         'Your receipt is awaiting admin review. You can replace it or cancel this payment.',
     'payment.leaveTitle': 'Leave without uploading?',
@@ -1372,6 +1376,7 @@ class AppLocalizations {
     'dashboard.addRouterFirst': 'أضف راوتر أولاً',
     'dashboard.noActiveSubscription': 'لا يوجد اشتراك نشط',
     'dashboard.viewPlans': 'عرض الباقات',
+    'dashboard.paymentPending': 'دفعة معلقة لباقة {0}',
     'dashboard.vouchersUsed': 'الكروت المستخدمة',
     'dashboard.unlimited': 'غير محدود',
     'dashboard.dailyRevenue': 'إيرادات اليوم',
@@ -1737,6 +1742,7 @@ class AppLocalizations {
     'subscription.perMonth': '/شهر',
     'subscription.perNMonths': '/{0} أشهر',
     'subscription.changePending': 'التغيير معلق',
+    'subscription.pendingPaymentBlocksPlans': 'أكمل دفعتك المعلقة أولاً',
     'subscription.selectPlan': 'اختر {0}',
     'subscription.confirmBody': 'أنت تطلب باقة {0} لمدة {1} بسعر {2}. بعد التأكيد، ستتلقى تعليمات الدفع.',
 
@@ -1794,7 +1800,8 @@ class AppLocalizations {
     'payments.uploadReceipt': 'رفع الإيصال',
     'payments.replaceReceipt': 'استبدال الإيصال',
     'payments.pendingUploadHint':
-        'ارفع إيصالك حتى يتمكن المسؤول من التحقق من دفعتك.',
+        'حوّل المبلغ إلى الحساب البنكي الموضح في تعليمات الدفع، ثم ارفع '
+        'إيصالك هنا.',
     'payments.awaitingReviewNote':
         'إيصالك قيد مراجعة المسؤول. يمكنك استبداله أو إلغاء هذه الدفعة.',
     'payment.leaveTitle': 'المغادرة دون رفع الإيصال؟',

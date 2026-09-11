@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:wasel/models/bank_info.dart';
+import 'package:wasel/models/payment_record.dart';
 import 'package:wasel/models/plan.dart';
 import 'package:wasel/models/subscription.dart';
 import 'package:wasel/providers/subscription_provider.dart';
@@ -36,6 +38,20 @@ void main() {
     'maxRouters': 1,
     'startDate': '2026-03-01T00:00:00.000Z',
     'endDate': '2026-04-01T00:00:00.000Z',
+  });
+
+  final mockPayment = PaymentRecord.fromJson({
+    'id': 'pay-1',
+    'planTier': 'starter',
+    'planName': 'Starter',
+    'amount': 5,
+    'currency': 'SDG',
+    'referenceCode': 'WAS-ABC123',
+    'receiptUrl': null,
+    'status': 'pending',
+    'rejectionReason': null,
+    'reviewedAt': null,
+    'createdAt': '2026-06-01T00:00:00.000Z',
   });
 
   setUpAll(() {
@@ -171,6 +187,100 @@ void main() {
       expect(notifier.state.subscription, isNull);
       expect(notifier.state.plans, isEmpty);
       expect(notifier.state.lastRequest, isNull);
+    });
+
+    // ── Recovery path: payments list, bank details, cancel ──────────────────
+
+    test('loadPayments stores the returned records', () async {
+      when(() => mockService.getUserPayments())
+          .thenAnswer((_) async => [mockPayment]);
+
+      await notifier.loadPayments();
+
+      expect(notifier.state.payments, hasLength(1));
+      expect(notifier.state.payments.first.referenceCode, 'WAS-ABC123');
+      expect(notifier.state.isLoadingPayments, false);
+      expect(notifier.state.error, isNull);
+    });
+
+    test('loadPayments sets error on failure', () async {
+      when(() => mockService.getUserPayments()).thenThrow(Exception('boom'));
+
+      await notifier.loadPayments();
+
+      expect(notifier.state.payments, isEmpty);
+      expect(notifier.state.isLoadingPayments, false);
+      expect(notifier.state.error, isNotNull);
+    });
+
+    test('loadBankInfo stores the bank details', () async {
+      when(() => mockService.getBankInfo()).thenAnswer(
+        (_) async => const BankInfo(
+          bankName: 'Bank of Khartoum',
+          accountNumber: '1234567890',
+          accountHolder: 'Wasel Ltd',
+          instructions: 'Reference required',
+        ),
+      );
+
+      await notifier.loadBankInfo();
+
+      expect(notifier.state.bankInfo?.bankName, 'Bank of Khartoum');
+      expect(notifier.state.bankInfo?.isConfigured, true);
+      expect(notifier.state.error, isNull);
+    });
+
+    test('loadBankInfo swallows failures and leaves no error banner', () async {
+      when(() => mockService.getBankInfo()).thenThrow(Exception('502'));
+
+      await notifier.loadBankInfo();
+
+      expect(notifier.state.bankInfo, isNull);
+      expect(notifier.state.error, isNull,
+          reason: 'the payment screen falls back to the contact-admin '
+              'placeholder instead of showing an error');
+    });
+
+    test('cancelPayment refreshes payments + subscription and drops lastRequest',
+        () async {
+      // Seed a lastRequest the way requestSubscription would.
+      when(() => mockService.requestSubscription(planTier: 'starter'))
+          .thenAnswer((_) async => SubscriptionRequestResult(
+                subscription: mockSubscription,
+                paymentId: 'pay-1',
+                amount: 5.0,
+                currency: 'SDG',
+                referenceCode: 'WAS-ABC123',
+              ));
+      await notifier.requestSubscription('starter');
+      expect(notifier.state.lastRequest, isNotNull);
+
+      when(() => mockService.cancelPayment('pay-1')).thenAnswer((_) async {});
+      when(() => mockService.getUserPayments()).thenAnswer((_) async => []);
+      when(() => mockService.getSubscription())
+          .thenAnswer((_) async => const SubscriptionResponse());
+
+      final ok = await notifier.cancelPayment('pay-1');
+
+      expect(ok, true);
+      expect(notifier.state.payments, isEmpty);
+      expect(notifier.state.subscription, isNull);
+      expect(notifier.state.lastRequest, isNull,
+          reason: 'a cancelled payment must not keep steering the payment '
+              'screen at a dead reference code');
+      expect(notifier.state.isLoading, false);
+    });
+
+    test('cancelPayment returns false and surfaces an error on failure',
+        () async {
+      when(() => mockService.cancelPayment('pay-1'))
+          .thenThrow(Exception('409'));
+
+      final ok = await notifier.cancelPayment('pay-1');
+
+      expect(ok, false);
+      expect(notifier.state.error, isNotNull);
+      expect(notifier.state.isLoading, false);
     });
   });
 }

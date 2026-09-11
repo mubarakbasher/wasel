@@ -13,6 +13,11 @@ class PlanCard extends StatelessWidget {
   final bool isCurrentPlan;
   final bool isLoading;
   final bool hasPendingChange;
+
+  /// A first purchase is already awaiting payment/approval. Distinct from
+  /// [hasPendingChange] (a plan change on an ACTIVE subscription) because the
+  /// way out is different: finish or cancel the payment, not wait for admin.
+  final bool hasPendingPayment;
   final int selectedDuration;
   final ValueChanged<int> onDurationChanged;
   final VoidCallback? onSelect;
@@ -23,6 +28,7 @@ class PlanCard extends StatelessWidget {
     required this.isCurrentPlan,
     required this.isLoading,
     required this.hasPendingChange,
+    required this.hasPendingPayment,
     required this.selectedDuration,
     required this.onDurationChanged,
     this.onSelect,
@@ -161,7 +167,9 @@ class PlanCard extends StatelessWidget {
                                 context.tr('subscription.currentPlan')),
                           )
                         : ElevatedButton(
-                            onPressed: isLoading || hasPendingChange
+                            onPressed: isLoading ||
+                                    hasPendingChange ||
+                                    hasPendingPayment
                                 ? null
                                 : onSelect,
                             child: isLoading
@@ -177,13 +185,19 @@ class PlanCard extends StatelessWidget {
                                     hasPendingChange
                                         ? context.tr(
                                             'subscription.changePending')
-                                        : context.tr(
-                                            'subscription.selectPlan',
-                                            [
-                                              pickPlanName(context,
-                                                  name: plan.name,
-                                                  nameAr: plan.nameAr)
-                                            ]),
+                                        : hasPendingPayment
+                                            ? context.tr(
+                                                'subscription.pendingPaymentBlocksPlans')
+                                            : context.tr(
+                                                'subscription.selectPlan',
+                                                [
+                                                  pickPlanName(context,
+                                                      name: plan.name,
+                                                      nameAr: plan.nameAr)
+                                                ]),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                           ),
                   ),
