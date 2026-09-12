@@ -23,8 +23,8 @@ Uptodown is the interim distribution channel for the signed release APK while th
 |---|---|
 | Package name | `com.wasel.wasel` |
 | App name | Wasel / واصل |
-| Version name | 1.0.0 |
-| Version code | 1 |
+| Version name | 1.0.3 |
+| Version code | 4 |
 | APK type | Universal (all ABIs) |
 | Minimum Android | 8.0 (API 26) |
 | Signing keystore | `android/wasel-release.jks` |
