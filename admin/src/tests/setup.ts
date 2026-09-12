@@ -3,7 +3,15 @@
 // available at runtime and type-check under `tsc -b`.
 import '@testing-library/jest-dom/vitest'
 import { afterEach } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
+
+// Vitest runs the page suites in parallel, so more test files than cores means
+// a worker can be descheduled mid-render. The 1s default left `findBy*` racing
+// that contention rather than the code under test. Raising only the ceiling
+// keeps every assertion intact — an element that never appears still fails.
+// Kept under the testTimeout set in vitest.config.ts so a real miss reports the
+// DOM dump from testing-library rather than a bare test-level timeout.
+configure({ asyncUtilTimeout: 3000 })
 
 // Node 25 exposes an experimental global `localStorage`/`sessionStorage` backed
 // by `--localstorage-file`. Under Vitest that flag has no valid path, so the

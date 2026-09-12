@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../i18n/app_localizations.dart';
 import '../i18n/plan_format.dart';
 import '../i18n/status_format.dart';
+import '../models/subscription.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/notifications_provider.dart';
 import '../providers/subscription_provider.dart';
@@ -61,8 +62,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(dashboardProvider);
-    final isActive =
-        ref.watch(subscriptionProvider).subscription?.isActive ?? false;
+    final subState = ref.watch(subscriptionProvider);
+    final isActive = subState.subscription?.isActive ?? false;
+    // GET /dashboard only ever returns an ACTIVE subscription, so a pending
+    // first purchase looks like "no subscription" in the payload. The
+    // subscription provider is the only place that knows about it.
+    final pendingSub =
+        subState.subscription?.isPending == true ? subState.subscription : null;
 
     final unreadCount = ref.watch(notificationsProvider).unreadCount;
 
@@ -78,7 +84,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const SizedBox(width: AppSpacing.sm),
         ],
       ),
-      body: _buildBody(state, isActive),
+      body: _buildBody(state, isActive, pendingSub),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _onQuickCreate(state),
         icon: const Icon(Icons.add),
@@ -134,7 +140,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildBody(DashboardState state, bool isActive) {
+  Widget _buildBody(
+      DashboardState state, bool isActive, Subscription? pendingSub) {
     if (state.isLoading && state.data == null) {
       return _buildLoadingSkeleton();
     }
@@ -148,14 +155,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     return RefreshIndicator(
-      onRefresh: () => ref.read(dashboardProvider.notifier).loadDashboard(),
+      // Also reload the subscription so an approval/cancel while the user was
+      // away is reflected deterministically (the pending card otherwise only
+      // updates on the next full navigation, not on pull-to-refresh).
+      onRefresh: () => Future.wait([
+        ref.read(dashboardProvider.notifier).loadDashboard(),
+        ref.read(subscriptionProvider.notifier).loadSubscription(),
+      ]),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSubscriptionCard(state),
+            _buildSubscriptionCard(state, pendingSub),
             const SizedBox(height: AppSpacing.lg),
             _buildQuickStatsRow(state, isActive),
             const SizedBox(height: AppSpacing.md),
@@ -176,9 +189,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // ---------------------------------------------------------------------------
   // Subscription Status Card
   // ---------------------------------------------------------------------------
-  Widget _buildSubscriptionCard(DashboardState state) {
+  Widget _buildSubscriptionCard(
+      DashboardState state, Subscription? pendingSub) {
     final sub = state.subscription;
     if (sub == null) {
+      // A payment is waiting on the operator — tell them, and give them the
+      // one button that gets them unstuck.
+      if (pendingSub != null) {
+        return PaymentPendingCard(
+          planName: pickPlanName(context,
+              name: pendingSub.planName, nameAr: pendingSub.planNameAr),
+          onViewInstructions: () => context.push('/subscription/payment'),
+        );
+      }
       return AppCard(
         child: Column(
           children: [
@@ -527,6 +550,43 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const SkeletonCard(height: 120),
           const SizedBox(height: AppSpacing.lg),
           const SkeletonCard(height: 100),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Payment pending" state of the dashboard's subscription slot.
+///
+/// Kept public and pure (no provider / router access) so the state can be
+/// widget-tested without standing up the whole dashboard harness.
+class PaymentPendingCard extends StatelessWidget {
+  final String planName;
+  final VoidCallback onViewInstructions;
+
+  const PaymentPendingCard({
+    super.key,
+    required this.planName,
+    required this.onViewInstructions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Column(
+        children: [
+          const Icon(Icons.hourglass_top, size: 40, color: AppColors.warning),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            context.tr('dashboard.paymentPending', [planName]),
+            style: AppTypography.headline,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          FilledButton(
+            onPressed: onViewInstructions,
+            child: Text(context.tr('subscription.viewPaymentInstructions')),
+          ),
         ],
       ),
     );

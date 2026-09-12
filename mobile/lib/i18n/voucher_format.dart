@@ -21,6 +21,77 @@ String localizedVoucherStatus(BuildContext c, String status) {
   return status[0].toUpperCase() + status.substring(1);
 }
 
+/// Returns the localized display label for a raw limit unit string.
+///
+/// Recognised values:
+/// - `'minutes'` / `'hours'` / `'days'` → vouchers.minutes / .hours / .days
+/// - `'MB'` / `'GB'` / `'KB'` → vouchers.unitMb / .unitGb / .unitKb
+///
+/// Any unrecognised value is returned unchanged so callers always get a
+/// human-readable string rather than an empty fallback.
+String localizedUnitLabel(BuildContext c, String unit) {
+  switch (unit) {
+    case 'minutes':
+      return c.tr('vouchers.minutes');
+    case 'hours':
+      return c.tr('vouchers.hours');
+    case 'days':
+      return c.tr('vouchers.days');
+    case 'MB':
+      return c.tr('vouchers.unitMb');
+    case 'GB':
+      return c.tr('vouchers.unitGb');
+    case 'KB':
+      return c.tr('vouchers.unitKb');
+    default:
+      return unit;
+  }
+}
+
+/// Localized limit string from raw limit fields, or `null` when any field is
+/// missing.
+///
+/// Contains the canonical unit-normalization switch used by both
+/// [voucherLimitTextOrNull] and any call-site that holds raw batch fields
+/// (e.g. the batch picker and batch history card) rather than a [Voucher].
+///
+/// Unit label rendering is delegated to [localizedUnitLabel].
+String? localizedLimitText(
+  BuildContext c, {
+  required String? limitType,
+  required int? limitValue,
+  required String? limitUnit,
+}) {
+  if (limitType == null || limitValue == null || limitUnit == null) {
+    return null;
+  }
+
+  int displayValue;
+
+  switch (limitUnit) {
+    case 'minutes':
+      displayValue = limitValue ~/ 60;
+      break;
+    case 'hours':
+      displayValue = limitValue ~/ 3600;
+      break;
+    case 'days':
+      displayValue = limitValue ~/ 86400;
+      break;
+    case 'MB':
+      displayValue = limitValue ~/ (1024 * 1024);
+      break;
+    case 'GB':
+      displayValue = limitValue ~/ (1024 * 1024 * 1024);
+      break;
+    default:
+      // best-effort fallback: return raw value with MB label
+      return '$limitValue ${c.tr('vouchers.unitMb')}';
+  }
+
+  return '$displayValue ${localizedUnitLabel(c, limitUnit)}';
+}
+
 /// Returns a localized, human-readable limit string for [v], or `null` when
 /// [v] has no limit type and no meaningful profile name.
 ///
@@ -28,44 +99,19 @@ String localizedVoucherStatus(BuildContext c, String status) {
 /// non-empty, otherwise `null` (useful on print cards where 'Unknown' is
 /// unhelpful).
 ///
-/// Replicates the numeric normalization of [Voucher.limitDisplayText] but
-/// emits translated unit labels instead of hard-coded English ones.
+/// Delegates unit normalization to [localizedLimitText].
 String? voucherLimitTextOrNull(BuildContext c, Voucher v) {
   if (v.limitType == null || v.limitValue == null || v.limitUnit == null) {
     final name = v.profileName?.trim();
     return (name != null && name.isNotEmpty) ? name : null;
   }
 
-  int displayValue;
-  String unitKey;
-
-  switch (v.limitUnit) {
-    case 'minutes':
-      displayValue = v.limitValue! ~/ 60;
-      unitKey = 'vouchers.minutes';
-      break;
-    case 'hours':
-      displayValue = v.limitValue! ~/ 3600;
-      unitKey = 'vouchers.hours';
-      break;
-    case 'days':
-      displayValue = v.limitValue! ~/ 86400;
-      unitKey = 'vouchers.days';
-      break;
-    case 'MB':
-      displayValue = v.limitValue! ~/ (1024 * 1024);
-      unitKey = 'vouchers.unitMb';
-      break;
-    case 'GB':
-      displayValue = v.limitValue! ~/ (1024 * 1024 * 1024);
-      unitKey = 'vouchers.unitGb';
-      break;
-    default:
-      displayValue = v.limitValue!;
-      unitKey = 'vouchers.unitMb'; // best-effort fallback
-  }
-
-  return '$displayValue ${c.tr(unitKey)}';
+  return localizedLimitText(
+    c,
+    limitType: v.limitType,
+    limitValue: v.limitValue,
+    limitUnit: v.limitUnit,
+  );
 }
 
 /// Returns a localized, human-readable limit string for [v].

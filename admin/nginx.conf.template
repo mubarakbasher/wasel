@@ -5,6 +5,13 @@ server {
 
     add_header X-Frame-Options "DENY" always;
     add_header X-Content-Type-Options "nosniff" always;
+    # TLS is terminated by the host nginx in front of this container; the header
+    # still reaches the browser over HTTPS, and browsers ignore HSTS delivered
+    # over plain HTTP. No `preload` — that is a domain-wide, hard-to-reverse
+    # commitment the operator has not opted into.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
     # CSP NOTE: `style-src` keeps `'unsafe-inline'` because Tailwind (and some
     # third-party React libs like lucide-react) emit inline <style> blocks and
     # inline style attributes at runtime. `script-src` is strict ('self' only) —
@@ -23,7 +30,40 @@ server {
     # per-environment origin lives in this repo file.
     add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ${API_ORIGIN}; img-src 'self' ${API_ORIGIN} data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
 
+    # Vite content-hashed bundles: safe to cache forever, and `immutable` skips
+    # revalidation even on reload.
+    # NOTE: this block defines its own add_header, which drops EVERY inherited
+    # add_header above — so the security header set has to be repeated verbatim.
+    # (`expires 1y` would inherit them, as landing/nginx.conf does, but it
+    # cannot emit `public`/`immutable`.) Keep this list in sync with the server
+    # block above.
+    location /assets/ {
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+        add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ${API_ORIGIN}; img-src 'self' ${API_ORIGIN} data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+        # Deliberately NOT `always`: that would put a year-long immutable cache
+        # on 404s too, so a bundle briefly missing during a partial deploy would
+        # stay 404 in that browser long after the deploy finished. Without it,
+        # add_header is limited to 2xx/3xx (304 included, so revalidation still
+        # carries the policy).
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        # A missing bundle must 404, not fall through to the SPA fallback and
+        # return index.html under a .js request (nosniff then rejects it).
+        try_files $uri =404;
+    }
+
+    # SPA shell, the /index.html fallback for client-side routes, and the
+    # unhashed root files (favicons, icons.svg) — none are content-hashed, so
+    # they must revalidate: a heuristically cached index.html can reference an
+    # asset bundle that no longer exists after a rebuild, which blanks the panel
+    # until a hard refresh.
+    # `expires -1` (Cache-Control: no-cache) rather than an add_header, so the
+    # security headers above stay inherited here.
     location / {
+        expires -1;
         try_files $uri $uri/ /index.html;
     }
 }

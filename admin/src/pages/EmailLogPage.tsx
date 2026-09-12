@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import api from '../lib/api';
+import {
+  EMAIL_TEMPLATES_KEY,
+  fetchEmailTemplates,
+  templateTypeLabel,
+  templateTypesFrom,
+} from '../lib/emailTemplates';
 import { formatDateTime } from '../lib/datetime';
 import DataTable, { type Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
@@ -20,23 +26,7 @@ interface EmailLog {
   [key: string]: unknown;
 }
 
-const TYPE_OPTIONS = [
-  'all',
-  'verification_otp',
-  'password_reset_otp',
-  'payment_submitted_admin',
-  'payment_approved',
-  'payment_rejected',
-] as const;
-
-const TYPE_LABELS: Record<string, string> = {
-  all: 'All Types',
-  verification_otp: 'Verification OTP',
-  password_reset_otp: 'Password Reset OTP',
-  payment_submitted_admin: 'Payment Submitted (Admin)',
-  payment_approved: 'Payment Approved',
-  payment_rejected: 'Payment Rejected',
-};
+const ALL_TYPES = 'all';
 
 const STATUS_TABS = ['all', 'sent', 'failed'] as const;
 type StatusTab = (typeof STATUS_TABS)[number];
@@ -53,7 +43,7 @@ function truncate(text: string, maxLen: number): string {
 
 export default function EmailLogPage() {
   const [page, setPage] = useState(1);
-  const [type, setType] = useState<string>('all');
+  const [type, setType] = useState<string>(ALL_TYPES);
   const [status, setStatus] = useState<StatusTab>('all');
   const [recipientSearch, setRecipientSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -69,11 +59,24 @@ export default function EmailLogPage() {
     }, 400);
   };
 
+  // Same key + fetcher as the Email Templates page, so the type catalogue is
+  // usually served from cache. A failure here only costs the type filter its
+  // options, so the log itself still renders.
+  const { data: templates } = useQuery({
+    queryKey: EMAIL_TEMPLATES_KEY,
+    queryFn: fetchEmailTemplates,
+  });
+
+  const typeOptions = useMemo(
+    () => [ALL_TYPES, ...templateTypesFrom(templates ?? [])],
+    [templates],
+  );
+
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['email-log', page, type, status, debouncedSearch, fromDate, toDate],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 20 };
-      if (type !== 'all') params.type = type;
+      if (type !== ALL_TYPES) params.type = type;
       if (status !== 'all') params.status = status;
       if (debouncedSearch) params.search = debouncedSearch;
       if (fromDate) params.from = fromDate;
@@ -155,9 +158,9 @@ export default function EmailLogPage() {
             }}
             className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            {TYPE_OPTIONS.map((opt) => (
+            {typeOptions.map((opt) => (
               <option key={opt} value={opt}>
-                {TYPE_LABELS[opt]}
+                {opt === ALL_TYPES ? 'All Types' : templateTypeLabel(opt)}
               </option>
             ))}
           </select>

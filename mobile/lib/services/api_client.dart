@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../config/app_config.dart';
+import '../i18n/app_localizations.dart';
 import '../navigation/app_router.dart' show appNavigatorKey;
 import '../utils/error_messages.dart';
 import 'cert_pinning.dart' show kPinPrimary, kPinBackup, spkiSha256;
@@ -218,15 +219,16 @@ class ApiClient {
       if (errorObj is! Map) return;
 
       final code = errorObj['code'];
-      if (!_kPaywallCodes.contains(code)) return;
+      if (code is! String || !_kPaywallCodes.contains(code)) return;
 
       final navigatorState = appNavigatorKey.currentState;
       if (navigatorState == null) return;
+      final ctx = navigatorState.context;
 
       // Skip the redirect on unauthenticated routes (a stale in-flight 403 or a
       // forged one must not bounce the login/splash screens to /subscription)
       // and when already on /subscription (avoids redirect loops).
-      final currentRoute = GoRouter.of(navigatorState.context)
+      final currentRoute = GoRouter.of(ctx)
           .routerDelegate
           .currentConfiguration
           .fullPath;
@@ -249,30 +251,16 @@ class ApiClient {
       }
       _lastPaywallRedirect = now;
 
-      // Derive a human-friendly message from the code.
-      final String message;
-      switch (code) {
-        case 'SUBSCRIPTION_REQUIRED':
-          message = 'A subscription is required to do that.';
-          break;
-        case 'SUBSCRIPTION_EXPIRED':
-          message = 'Your subscription has expired. Please renew to continue.';
-          break;
-        case 'QUOTA_EXCEEDED':
-          message = 'You have reached your voucher quota for this plan.';
-          break;
-        case 'ROUTER_LIMIT_REACHED':
-          message = 'You have reached the router limit for your plan.';
-          break;
-        default:
-          message = 'Subscription required.';
-      }
-
-      ScaffoldMessenger.maybeOf(navigatorState.context)?.showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      // Every paywall code has an `error.<CODE>` translation; trOrRaw resolves
+      // it against the ACTIVE locale so Arabic users get Arabic here.
+      ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
+        SnackBar(
+          content: Text(ctx.trOrRaw('error.$code')),
+          duration: const Duration(seconds: 3),
+        ),
       );
 
-      GoRouter.of(navigatorState.context).push('/subscription');
+      GoRouter.of(ctx).push('/subscription');
     } catch (_) {
       // Never crash the caller — paywall redirect is best-effort.
     }
@@ -338,8 +326,15 @@ class ApiClient {
     try {
       final refreshToken = await _storage.getRefreshToken();
       if (refreshToken == null) {
+        // A 401 with no refresh token is only a *session expiry* if a session
+        // existed (access token present but refresh lost/corrupt). With no
+        // tokens at all — fresh install, logged out — the 401 came from an
+        // unauthenticated call (pre-login FCM token registration, a wrong
+        // password on /auth/login, …). Firing onSessionExpired there paints
+        // "Session expired" onto a pristine login screen.
+        final hadSession = await _storage.getAccessToken() != null;
         await _storage.clearSession();
-        onSessionExpired?.call();
+        if (hadSession) onSessionExpired?.call();
         throw error;
       }
 

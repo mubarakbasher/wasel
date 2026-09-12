@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/hotspot_template.dart';
 import '../models/router_model.dart';
 import '../services/router_service.dart';
+import '../i18n/app_localizations.dart';
 import '../utils/error_messages.dart';
 import 'routers_provider.dart';
 
@@ -75,11 +77,27 @@ class HotspotTemplateNotifier extends Notifier<HotspotApplyState> {
       // persists hotspotTemplateStatus='failed' rather than throwing. Surface
       // that as a real failure so the operator sees the error instead of a
       // false "applied" (e.g. when the router can't be reached over the tunnel).
+      //
+      // We derive an i18n key from hotspotTemplateErrorCode and never store the
+      // raw English hotspotTemplateError string; the UI always renders the
+      // operator's language.
       if (updated.hotspotTemplateStatus == 'failed') {
+        final code = updated.hotspotTemplateErrorCode;
+        final key =
+            (code != null && code.isNotEmpty) ? 'error.$code' : null;
+        assert(() {
+          if (updated.hotspotTemplateError?.isNotEmpty ?? false) {
+            debugPrint(
+              '[HotspotTemplate] backend message (not rendered): '
+              '${updated.hotspotTemplateError}',
+            );
+          }
+          return true;
+        }());
         state = state.copyWith(
           status: HotspotApplyStatus.failed,
-          error: (updated.hotspotTemplateError?.isNotEmpty ?? false)
-              ? updated.hotspotTemplateError
+          error: (key != null && AppLocalizations.hasTranslationKey(key))
+              ? key
               : 'routers.hotspotTemplate.applyFailed',
         );
         return updated;

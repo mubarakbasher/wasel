@@ -92,6 +92,8 @@ import {
 } from './helpers';
 import { HOTSPOT_TEMPLATES, HOTSPOT_TEMPLATE_DIR } from '../hotspot-templates/manifest';
 import { connectToRouter } from '../services/routerOs.service';
+import { AppError } from '../middleware/errorHandler';
+import { ErrorCodes } from '../utils/errorCodes';
 import * as fs from 'fs';
 
 // ---------------------------------------------------------------------------
@@ -124,6 +126,7 @@ const MOCK_ROUTER_ROW = {
   hotspot_template_status: null,
   hotspot_template_applied_at: null,
   hotspot_template_error: null,
+  hotspot_template_error_code: null,
   hotspot_accent_color: null,
 };
 
@@ -554,6 +557,7 @@ describe('PUT /api/v1/routers/:id/hotspot-template — service status transition
         hotspot_template_status: 'failed',
         hotspot_template_applied_at: null,
         hotspot_template_error: '/tool/fetch failed for login.html (status=failed)',
+        hotspot_template_error_code: ErrorCodes.HOTSPOT_TEMPLATE_FETCH_FAILED,
       }],
     });
 
@@ -581,6 +585,15 @@ describe('PUT /api/v1/routers/:id/hotspot-template — service status transition
     expect(res.body.success).toBe(true);
     expect(res.body.data.hotspotTemplateStatus).toBe('failed');
     expect(res.body.data.hotspotTemplateError).toMatch(/status=failed/);
+    expect(res.body.data.hotspotTemplateErrorCode).toBe(ErrorCodes.HOTSPOT_TEMPLATE_FETCH_FAILED);
+
+    // persistStatus must write the error code to the DB
+    const failedUpdateCall = mockQuery.mock.calls.find(
+      (call) => typeof call[0] === 'string' &&
+        (call[0] as string).includes('hotspot_template_error_code') &&
+        (call[1] as unknown[]).includes(ErrorCodes.HOTSPOT_TEMPLATE_FETCH_FAILED),
+    );
+    expect(failedUpdateCall).toBeDefined();
   });
 
   it('returns status=failed when router is unreachable (connectToRouter throws)', async () => {
@@ -597,10 +610,13 @@ describe('PUT /api/v1/routers/:id/hotspot-template — service status transition
         hotspot_template_id: 'clean',
         hotspot_template_status: 'failed',
         hotspot_template_error: 'Unable to reach the router',
+        hotspot_template_error_code: ErrorCodes.ROUTER_UNREACHABLE,
       }],
     });
 
-    vi.mocked(connectToRouter).mockRejectedValueOnce(new Error('Unable to reach the router'));
+    vi.mocked(connectToRouter).mockRejectedValueOnce(
+      new AppError(502, 'Unable to reach the router', 'ROUTER_UNREACHABLE'),
+    );
 
     const res = await request(app)
       .put(`/api/v1/routers/${TEST_ROUTER_ID}/hotspot-template`)
@@ -610,6 +626,7 @@ describe('PUT /api/v1/routers/:id/hotspot-template — service status transition
     expect(res.status).toBe(200);
     expect(res.body.data.hotspotTemplateStatus).toBe('failed');
     expect(res.body.data.hotspotTemplateError).toMatch(/reach/i);
+    expect(res.body.data.hotspotTemplateErrorCode).toBe(ErrorCodes.ROUTER_UNREACHABLE);
   });
 
   it('returns 404 when router belongs to a different user', async () => {
@@ -640,6 +657,7 @@ describe('PUT /api/v1/routers/:id/hotspot-template — service status transition
         ...MOCK_ROUTER_ROW,
         hotspot_template_status: 'failed',
         hotspot_template_error: 'No hotspot configured on this router',
+        hotspot_template_error_code: ErrorCodes.HOTSPOT_NOT_CONFIGURED,
       }],
     });
 
@@ -665,6 +683,56 @@ describe('PUT /api/v1/routers/:id/hotspot-template — service status transition
     expect(res.status).toBe(200);
     expect(res.body.data.hotspotTemplateStatus).toBe('failed');
     expect(res.body.data.hotspotTemplateError).toMatch(/No hotspot configured/);
+    expect(res.body.data.hotspotTemplateErrorCode).toBe(ErrorCodes.HOTSPOT_NOT_CONFIGURED);
+  });
+
+  it('returns HOTSPOT_TEMPLATE_APPLY_FAILED when a RouterOS call rejects with a plain Error', async () => {
+    mockSubscriptionQuery(mockQuery);
+
+    // Ownership check
+    mockQuery.mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] });
+    // UPDATE → pending
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...MOCK_ROUTER_ROW, hotspot_template_status: 'pending' }] });
+    // UPDATE → failed
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        ...MOCK_ROUTER_ROW,
+        hotspot_template_status: 'failed',
+        hotspot_template_error: 'no such command',
+        hotspot_template_error_code: ErrorCodes.HOTSPOT_TEMPLATE_APPLY_FAILED,
+      }],
+    });
+
+    const mockMenuChain = {
+      get: vi.fn(),
+      exec: vi.fn().mockRejectedValue(new Error('no such command')),
+      where: vi.fn(),
+      update: vi.fn(),
+    };
+    mockMenuChain.where.mockReturnValue(mockMenuChain);
+
+    vi.mocked(connectToRouter).mockResolvedValueOnce({
+      client: { disconnect: vi.fn().mockResolvedValue(undefined) } as unknown as import('routeros-client').RouterOSClient,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      api: { menu: vi.fn().mockReturnValue(mockMenuChain) } as any,
+    });
+
+    const res = await request(app)
+      .put(`/api/v1/routers/${TEST_ROUTER_ID}/hotspot-template`)
+      .set(authHeader())
+      .send({ templateId: 'clean' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.hotspotTemplateStatus).toBe('failed');
+    expect(res.body.data.hotspotTemplateErrorCode).toBe(ErrorCodes.HOTSPOT_TEMPLATE_APPLY_FAILED);
+
+    // persistStatus must write the error code to the DB
+    const failedUpdateCall = mockQuery.mock.calls.find(
+      (call) => typeof call[0] === 'string' &&
+        (call[0] as string).includes('hotspot_template_error_code') &&
+        (call[1] as unknown[]).includes(ErrorCodes.HOTSPOT_TEMPLATE_APPLY_FAILED),
+    );
+    expect(failedUpdateCall).toBeDefined();
   });
 });
 

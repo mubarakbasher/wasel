@@ -3,10 +3,10 @@ name: Mobile CI
 on:
   push:
     branches: [main, dev]
-    paths: ['mobile/**']
+    paths: ['mobile/**', 'backend/src/utils/errorCodes.ts']
   pull_request:
     branches: [main, dev]
-    paths: ['mobile/**']
+    paths: ['mobile/**', 'backend/src/utils/errorCodes.ts']
   workflow_dispatch:
 
 jobs:

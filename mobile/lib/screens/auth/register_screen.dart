@@ -170,7 +170,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _businessNameController,
                   textInputAction: TextInputAction.done,
                   textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration(labelText: context.tr('auth.businessNameOptional'), prefixIcon: const Icon(Icons.business_outlined)),
+                  decoration: InputDecoration(labelText: context.tr('auth.businessNameOptional'), prefixIcon: const Icon(Icons.wifi_outlined)),
                   onFieldSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: AppSpacing.xxl),

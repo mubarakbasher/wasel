@@ -6,6 +6,15 @@ import { AppError } from '../middleware/errorHandler';
 import { connectToRouter, ensureHotspotRadiusSettings } from './routerOs.service';
 import { HOTSPOT_TEMPLATE_DIR, getTemplate } from '../hotspot-templates/manifest';
 import { RouterRow, RouterInfo } from './router.service';
+import { ErrorCodes } from '../utils/errorCodes';
+
+/** Typed error for RouterOS-level failures during template apply. */
+class HotspotApplyError extends Error {
+  constructor(message: string, public readonly code: string) {
+    super(message);
+    this.name = 'HotspotApplyError';
+  }
+}
 
 // VPS wg0 address — the router reaches the backend over the WireGuard tunnel at
 // this IP (the same constant used in router.service.ts for the RADIUS server).
@@ -43,6 +52,7 @@ function toRouterInfo(row: RouterRow): RouterInfo {
       ? new Date(row.hotspot_template_applied_at).toISOString()
       : null,
     hotspotTemplateError: row.hotspot_template_error ?? null,
+    hotspotTemplateErrorCode: row.hotspot_template_error_code ?? null,
     hotspotAccentColor: row.hotspot_accent_color ?? null,
   };
 }
@@ -54,16 +64,18 @@ async function persistStatus(
     templateId?: string;
     accentColor?: string;
     error?: string | null;
+    errorCode?: string | null;
     setAppliedAt?: boolean;
   },
 ): Promise<RouterRow> {
   const setClauses: string[] = [
     'hotspot_template_status = $1',
     'hotspot_template_error = $2',
+    'hotspot_template_error_code = $3',
     'updated_at = NOW()',
   ];
-  const values: unknown[] = [patch.status, patch.error ?? null];
-  let paramIndex = 3;
+  const values: unknown[] = [patch.status, patch.error ?? null, patch.errorCode ?? null];
+  let paramIndex = 4;
 
   if (patch.templateId !== undefined) {
     setClauses.push(`hotspot_template_id = $${paramIndex++}`);
@@ -147,8 +159,14 @@ export async function applyHotspotTemplate(
     ({ client, api } = await connectToRouter(routerId, userId));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const errorCode =
+      err instanceof AppError
+        ? (err.code ?? ErrorCodes.HOTSPOT_TEMPLATE_APPLY_FAILED)
+        : err instanceof HotspotApplyError
+          ? err.code
+          : ErrorCodes.HOTSPOT_TEMPLATE_APPLY_FAILED;
     logger.warn('applyHotspotTemplate: could not connect to router', { routerId, error: msg });
-    const row = await persistStatus(routerId, { status: 'failed', error: msg });
+    const row = await persistStatus(routerId, { status: 'failed', error: msg, errorCode });
     return toRouterInfo(row);
   }
 
@@ -195,7 +213,10 @@ export async function applyHotspotTemplate(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updates = Array.isArray(fetchResult) ? (fetchResult as any[]) : [];
       if (updates.some((u) => String(u?.status ?? '') === 'failed')) {
-        throw new Error(`/tool/fetch failed for ${file} (status=failed)`);
+        throw new HotspotApplyError(
+          `/tool/fetch failed for ${file} (status=failed)`,
+          ErrorCodes.HOTSPOT_TEMPLATE_FETCH_FAILED,
+        );
       }
     }
 
@@ -218,7 +239,7 @@ export async function applyHotspotTemplate(
     const servers = (await (api as any).menu('/ip/hotspot').get()) as Array<Record<string, unknown>>;
 
     if (!servers || servers.length === 0) {
-      throw new Error('No hotspot configured on this router');
+      throw new HotspotApplyError('No hotspot configured on this router', ErrorCodes.HOTSPOT_NOT_CONFIGURED);
     }
 
     const serverProfileNames = [
@@ -238,7 +259,7 @@ export async function applyHotspotTemplate(
       targetProfiles = fallback ? [fallback] : [];
     }
     if (targetProfiles.length === 0) {
-      throw new Error('No hotspot configured on this router');
+      throw new HotspotApplyError('No hotspot configured on this router', ErrorCodes.HOTSPOT_NOT_CONFIGURED);
     }
 
     for (const profile of targetProfiles) {
@@ -266,8 +287,14 @@ export async function applyHotspotTemplate(
     return toRouterInfo(row);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const errorCode =
+      err instanceof AppError
+        ? (err.code ?? ErrorCodes.HOTSPOT_TEMPLATE_APPLY_FAILED)
+        : err instanceof HotspotApplyError
+          ? err.code
+          : ErrorCodes.HOTSPOT_TEMPLATE_APPLY_FAILED;
     logger.warn('applyHotspotTemplate: RouterOS operation failed', { routerId, templateId, error: msg });
-    const row = await persistStatus(routerId, { status: 'failed', error: msg });
+    const row = await persistStatus(routerId, { status: 'failed', error: msg, errorCode });
     return toRouterInfo(row);
   } finally {
     try {

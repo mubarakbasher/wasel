@@ -681,7 +681,15 @@ export async function listEmailTemplates(
 ): Promise<void> {
   try {
     const templates = await emailTemplateService.listEmailTemplates();
-    res.status(200).json({ success: true, data: templates });
+    // Placeholders are joined on here, not in emailTemplate.service — that
+    // module deliberately does not import email.service (circular dependency).
+    res.status(200).json({
+      success: true,
+      data: templates.map((template) => ({
+        ...template,
+        placeholders: emailService.derivePlaceholders(template.type, template),
+      })),
+    });
   } catch (error) {
     next(error);
   }
@@ -694,7 +702,7 @@ export async function updateEmailTemplate(
 ): Promise<void> {
   try {
     const { type, language } = req.params as { type: string; language: string };
-    const template = await emailTemplateService.updateEmailTemplate(
+    const { row, created } = await emailTemplateService.updateEmailTemplate(
       type,
       language,
       req.body as { subject?: string; body_html?: string; is_active?: boolean },
@@ -703,6 +711,8 @@ export async function updateEmailTemplate(
     const bodyRecord = req.body as Record<string, unknown>;
     await auditService.logAction({
       adminId: req.user!.id,
+      // One action for both halves of the upsert — `created` separates them.
+      // Renaming it for inserts would fragment the existing audit history.
       action: 'email_template.update',
       targetEntity: 'email_template',
       targetId: `${type}:${language}`,
@@ -712,10 +722,11 @@ export async function updateEmailTemplate(
         fields: Object.keys(bodyRecord),
         subject_changed: 'subject' in bodyRecord,
         body_changed: 'body_html' in bodyRecord,
+        created,
       },
       ipAddress: Array.isArray(req.ip) ? req.ip[0] : req.ip || '',
     });
-    res.status(200).json({ success: true, data: template });
+    res.status(200).json({ success: true, data: row });
   } catch (error) {
     next(error);
   }

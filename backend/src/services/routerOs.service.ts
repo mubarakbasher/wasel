@@ -125,6 +125,11 @@ const MAC_COOKIE_TIMEOUT = '30d';
  * - Retried twice with exponential back-off (500 ms, 1 500 ms).
  * - Per-router in-memory circuit breaker: after 3 failures within 60 s the
  *   call is rejected immediately for 30 s without touching the device.
+ * - An 'error' listener is attached to the client immediately after construction
+ *   (before connect()) so that socket-timeout events re-emitted after login do
+ *   not produce an uncaughtException that crashes the process.
+ * - Failed connect attempts call client.disconnect() before the backoff sleep to
+ *   release the underlying socket.
  *
  * IMPORTANT: The caller is responsible for disconnecting the client when done.
  */
@@ -156,12 +161,25 @@ export async function connectToRouter(
       timeout: 30, // seconds
     });
 
+    // Attach error listener immediately — before connect() — so that any socket
+    // timeout events re-emitted by routeros-client after a successful login do
+    // not produce an uncaughtException that crashes the process.
+    client.on('error', (error: unknown) => {
+      logger.warn('RouterOS connection error after connect', {
+        routerId,
+        tunnelIp: router.tunnel_ip,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      recordCircuitFailure(routerId);
+    });
+
     try {
       const api = await client.connect();
       recordCircuitSuccess(routerId);
       return { client, api };
     } catch (err: unknown) {
       lastError = err;
+      await client.disconnect().catch(() => {});
 
       if (attempt < RETRY_DELAYS.length) {
         const delay = RETRY_DELAYS[attempt];

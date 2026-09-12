@@ -1,5 +1,29 @@
 import { z } from 'zod';
 
+/**
+ * µs-precision batch key: 2026-08-09T10:11:12.123456Z
+ * Matches only 6-digit microsecond precision with uppercase Z suffix — the format
+ * produced by CREATED_AT_US_SQL (to_char with .US format mask).
+ */
+const batchKey = z
+  .string()
+  .regex(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/,
+    'Invalid batch key — expected µs-precision UTC timestamp (e.g. 2026-08-09T10:11:12.123456Z)',
+  )
+  // The regex alone admits out-of-range fields (month 13, hour 25, Feb 31…)
+  // which would blow up at the ::timestamptz cast as a 500. Date.parse alone
+  // is not enough either — it silently normalizes calendar overflow (Feb 31 →
+  // Mar 3) — so require an exact round-trip of the ms-truncated prefix.
+  .refine(
+    (s) => {
+      const msPrefix = s.slice(0, 23) + 'Z';
+      const t = Date.parse(msPrefix);
+      return !Number.isNaN(t) && new Date(t).toISOString() === msPrefix;
+    },
+    'Invalid batch key — not a valid timestamp',
+  );
+
 export const routerIdParamSchema = z.object({
   id: z.string().uuid('Invalid router ID'),
 });
@@ -58,6 +82,13 @@ export const listVouchersQuerySchema = z.object({
   search: z.string().max(64).optional(),
   /** Opaque keyset cursor from a previous response `meta.nextCursor`. */
   cursor: z.string().max(512).optional(),
+  /** µs-precision batch key — restricts results to a single creation group. */
+  batch: batchKey.optional(),
+});
+
+/** Query schema for GET /routers/:id/vouchers/batches */
+export const listVoucherBatchesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(100),
 });
 
 export const bulkDeleteVouchersSchema = z.object({
@@ -67,6 +98,8 @@ export const bulkDeleteVouchersSchema = z.object({
     limitType: z.enum(['time', 'data']).optional(),
     search: z.string().max(64).optional(),
     all: z.boolean().optional(),
+    /** µs-precision batch key — restricts delete to a single creation group. */
+    batch: batchKey.optional(),
   }).optional(),
 }).refine(
   (data) => data.ids || data.filter,

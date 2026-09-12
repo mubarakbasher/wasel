@@ -18,6 +18,7 @@ export const registerSchema = z.object({
     .optional(),
   password: passwordSchema,
   business_name: z.string().max(200).optional(),
+  language: z.enum(['en', 'ar']).optional(),
 });
 
 export const loginSchema = z.object({

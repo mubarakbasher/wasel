@@ -126,6 +126,12 @@ async function processRouter(
     timeout: 5,
   });
 
+  // Prevent uncaughtException if routeros-client re-emits a socket timeout
+  // after connect() succeeds.
+  client.on('error', (err: unknown) => {
+    console.warn(`[backfill] RouterOS error event for router ${row.id}:`, err);
+  });
+
   let api: Api;
   try {
     api = await client.connect();

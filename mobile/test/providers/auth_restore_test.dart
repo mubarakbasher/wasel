@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:wasel/models/user.dart';
@@ -59,6 +60,22 @@ void main() {
     // other via the shared singleton.
     ApiClient().onSessionExpired = null;
   });
+
+  /// Stubs a successful POST /auth/register call matching any args.
+  /// Shared by the `register` and `verifyEmail` groups (both need a
+  /// register() call to succeed) to avoid duplicating the same matcher stub.
+  void stubRegisterSuccess() {
+    when(
+      () => svc.register(
+        name: any(named: 'name'),
+        email: any(named: 'email'),
+        phone: any(named: 'phone'),
+        password: any(named: 'password'),
+        language: any(named: 'language'),
+        businessName: any(named: 'businessName'),
+      ),
+    ).thenAnswer((_) async {});
+  }
 
   group('AuthNotifier.tryRestoreSession — offline resilience', () {
     test(
@@ -209,6 +226,284 @@ void main() {
       expect(notifier.state.isAuthenticated, isFalse,
           reason: 'no tokens == no session');
       verifyNever(() => svc.getProfile());
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // _syncLocaleToBackend — always calls updateLanguage (language-sync fix)
+  // -------------------------------------------------------------------------
+
+  group('_syncLocaleToBackend — via tryRestoreSession', () {
+    // Shared stubs for a successful online restore so _syncLocaleToBackend fires.
+    setUp(() {
+      when(() => storage.hasTokens()).thenAnswer((_) async => true);
+      when(() => storage.getUserData()).thenAnswer((_) async => _userJson());
+      when(() => svc.getProfile()).thenAnswer((_) async => _kUser);
+      when(() => storage.setUserData(any())).thenAnswer((_) async {});
+      when(() => svc.updateLanguage(any())).thenAnswer((_) async {});
+    });
+
+    test(
+        'no stored locale → updateLanguage is called with system-derived code',
+        () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => null);
+
+      await notifier.tryRestoreSession();
+      // Pump the microtask queue so the fire-and-forget .then() callback runs.
+      await Future<void>.delayed(Duration.zero);
+
+      // The test-runner system locale varies; we only assert it was called once.
+      verify(() => svc.updateLanguage(any())).called(1);
+    });
+
+    test('stored ar locale → updateLanguage called with ar', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => 'ar');
+
+      await notifier.tryRestoreSession();
+      await Future<void>.delayed(Duration.zero);
+
+      verify(() => svc.updateLanguage('ar')).called(1);
+    });
+
+    test('stored en locale → updateLanguage called with en', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => 'en');
+
+      await notifier.tryRestoreSession();
+      await Future<void>.delayed(Duration.zero);
+
+      verify(() => svc.updateLanguage('en')).called(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // register — forwards effective language to AuthService
+  // -------------------------------------------------------------------------
+
+  group('AuthNotifier.register — sends effective language', () {
+    test('stored ar locale → register called with language: ar', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => 'ar');
+      stubRegisterSuccess();
+
+      await notifier.register(
+        name: 'Ali Wasel',
+        email: 'ali@example.com',
+        phone: '+966501234567',
+        password: 'Abc@1234!',
+      );
+
+      verify(
+        () => svc.register(
+          name: 'Ali Wasel',
+          email: 'ali@example.com',
+          phone: '+966501234567',
+          password: 'Abc@1234!',
+          language: 'ar',
+          businessName: null,
+        ),
+      ).called(1);
+    });
+
+    test('stored en locale → register called with language: en', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => 'en');
+      stubRegisterSuccess();
+
+      await notifier.register(
+        name: 'Bob Ops',
+        email: 'bob@example.com',
+        phone: '+966501234568',
+        password: 'Abc@1234!',
+      );
+
+      verify(
+        () => svc.register(
+          name: 'Bob Ops',
+          email: 'bob@example.com',
+          phone: '+966501234568',
+          password: 'Abc@1234!',
+          language: 'en',
+          businessName: null,
+        ),
+      ).called(1);
+    });
+
+    test('no stored locale → register called with system-derived code', () async {
+      when(() => storage.getLocale()).thenAnswer((_) async => null);
+      stubRegisterSuccess();
+
+      await notifier.register(
+        name: 'Sam Op',
+        email: 'sam@example.com',
+        phone: '+966501234569',
+        password: 'Abc@1234!',
+      );
+
+      // We only assert language is non-null and register was called once.
+      verify(
+        () => svc.register(
+          name: 'Sam Op',
+          email: 'sam@example.com',
+          phone: '+966501234569',
+          password: 'Abc@1234!',
+          language: any(named: 'language'),
+        ),
+      ).called(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // verifyEmail — signs the user in
+  // -------------------------------------------------------------------------
+
+  group('AuthNotifier.verifyEmail — signs the user in', () {
+    // Built via User.fromJson from the real verify-email/login response shape
+    // ({id, name, email, role}) rather than the User(...) constructor, so
+    // isVerified defaults to false exactly like production — that endpoint's
+    // payload carries no is_verified field (unlike the /auth/me profile).
+    final kUser = User.fromJson({
+      'id': 'u-1',
+      'name': 'Ali Wasel',
+      'email': 'ali@example.com',
+      'role': 'user',
+    });
+    final kLoginResult = LoginResult(
+      accessToken: 'at',
+      refreshToken: 'rt',
+      user: kUser,
+    );
+
+    DioException otpInvalidError() => DioException(
+          requestOptions: RequestOptions(path: '/auth/verify-email'),
+          response: Response(
+            requestOptions: RequestOptions(path: '/auth/verify-email'),
+            statusCode: 400,
+            data: {
+              'error': {
+                'code': 'OTP_INVALID',
+                'message': 'Invalid or expired OTP',
+              },
+            },
+          ),
+          type: DioExceptionType.badResponse,
+        );
+
+    // getLocale is stubbed here ONLY — it backs both register()'s language
+    // lookup and _completeSignIn's fire-and-forget _syncLocaleToBackend(), so
+    // a single stub is load-bearing for every test in this group (call this
+    // before any register()/login()/verifyEmail() invocation).
+    void stubSignInDeps() {
+      when(() => storage.setTokens(any(), any())).thenAnswer((_) async {});
+      when(() => storage.setUserData(any())).thenAnswer((_) async {});
+      when(() => storage.getLocale()).thenAnswer((_) async => 'en');
+      when(() => svc.updateLanguage(any())).thenAnswer((_) async {});
+    }
+
+    test(
+        'success: persists tokens + user, sets isAuthenticated, '
+        'clears pendingVerificationEmail', () async {
+      // Arrange: stubSignInDeps() also covers getLocale for the register()
+      // precondition call below. Register first so pendingVerificationEmail
+      // is set.
+      stubSignInDeps();
+      stubRegisterSuccess();
+      await notifier.register(
+        name: 'Ali Wasel',
+        email: 'ali@example.com',
+        phone: '+966501234567',
+        password: 'Abc@1234!',
+      );
+      expect(notifier.state.pendingVerificationEmail, 'ali@example.com',
+          reason: 'pre-condition: register must set pendingVerificationEmail');
+
+      when(() => svc.verifyEmail(
+            email: any(named: 'email'),
+            otp: any(named: 'otp'),
+          )).thenAnswer((_) async => kLoginResult);
+
+      // Act
+      await notifier.verifyEmail(email: 'ali@example.com', otp: '123456');
+      await Future<void>.delayed(Duration.zero);
+
+      // Assert
+      expect(notifier.state.isAuthenticated, isTrue);
+      expect(notifier.state.accessToken, 'at');
+      expect(notifier.state.user, isNotNull);
+      expect(notifier.state.user?.email, kUser.email);
+      expect(notifier.state.pendingVerificationEmail, isNull);
+      expect(notifier.state.isLoading, isFalse);
+      verify(() => storage.setTokens('at', 'rt')).called(1);
+      verify(() => storage.setUserData(json.encode(kUser.toJson())))
+          .called(1);
+      verify(() => svc.updateLanguage('en')).called(1);
+    });
+
+    test(
+        'OTP_INVALID: rethrows, leaves user signed out, '
+        'errorCode set, no tokens persisted', () async {
+      when(() => svc.verifyEmail(
+            email: any(named: 'email'),
+            otp: any(named: 'otp'),
+          )).thenThrow(otpInvalidError());
+
+      await expectLater(
+        () => notifier.verifyEmail(email: 'ali@example.com', otp: '000000'),
+        throwsA(isA<DioException>()),
+      );
+
+      expect(notifier.state.isAuthenticated, isFalse);
+      expect(notifier.state.isLoading, isFalse);
+      expect(notifier.state.error, isNotNull);
+      expect(notifier.state.errorCode, 'OTP_INVALID');
+      verifyNever(() => storage.setTokens(any(), any()));
+      verifyNever(() => storage.setUserData(any()));
+    });
+
+    test(
+        'setUserData throws (cached-profile write failure) => sign-in still '
+        'completes: tokens persisted, isAuthenticated true '
+        '(guards _completeSignIn surviving a cached-write failure)',
+        () async {
+      when(() => svc.verifyEmail(
+            email: any(named: 'email'),
+            otp: any(named: 'otp'),
+          )).thenAnswer((_) async => kLoginResult);
+      when(() => storage.setTokens(any(), any())).thenAnswer((_) async {});
+      when(() => storage.setUserData(any()))
+          .thenThrow(PlatformException(code: 'write_failed'));
+      when(() => storage.getLocale()).thenAnswer((_) async => 'en');
+      when(() => svc.updateLanguage(any())).thenAnswer((_) async {});
+
+      await notifier.verifyEmail(email: 'ali@example.com', otp: '123456');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifier.state.isAuthenticated, isTrue,
+          reason: 'a cached-profile write failure must not strand the user '
+              'signed-out — the server already verified the email and '
+              'burned the OTP by this point');
+      expect(notifier.state.accessToken, 'at');
+      verify(() => storage.setTokens('at', 'rt')).called(1);
+    });
+
+    test(
+        'login() success: uses the same persistence path '
+        '(guards the _completeSignIn refactor)', () async {
+      when(() => svc.login(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          )).thenAnswer((_) async => kLoginResult);
+      stubSignInDeps();
+
+      await notifier.login(email: 'ali@example.com', password: 'Abc@1234!');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifier.state.isAuthenticated, isTrue);
+      expect(notifier.state.accessToken, 'at');
+      expect(notifier.state.user, isNotNull);
+      expect(notifier.state.user?.email, kUser.email);
+      expect(notifier.state.isLoading, isFalse);
+      verify(() => storage.setTokens('at', 'rt')).called(1);
+      verify(() => storage.setUserData(json.encode(kUser.toJson())))
+          .called(1);
+      verify(() => svc.updateLanguage('en')).called(1);
     });
   });
 

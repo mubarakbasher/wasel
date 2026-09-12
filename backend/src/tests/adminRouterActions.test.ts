@@ -298,6 +298,7 @@ describe('GET /api/v1/admin/routers (projection safety)', () => {
     hotspot_template_status: 'applied',
     hotspot_template_applied_at: new Date().toISOString(),
     hotspot_template_error: null,
+    hotspot_template_error_code: null,
     hotspot_accent_color: '#1d4ed8',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

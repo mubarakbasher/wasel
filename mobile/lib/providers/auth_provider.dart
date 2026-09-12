@@ -12,6 +12,7 @@ import '../services/secure_storage.dart';
 import '../utils/error_messages.dart';
 import 'dashboard_provider.dart';
 import 'hotspot_templates_provider.dart';
+import 'locale_provider.dart';
 import 'notification_prefs_provider.dart';
 import 'notifications_provider.dart';
 import 'reports_provider.dart';
@@ -19,6 +20,7 @@ import 'routers_provider.dart';
 import 'sessions_provider.dart';
 import 'subscription_provider.dart';
 import 'support_provider.dart';
+import 'voucher_batches_provider.dart';
 import 'vouchers_provider.dart';
 
 // ---------------------------------------------------------------------------
@@ -129,6 +131,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     safeReset(() => ref.read(subscriptionProvider.notifier).clearSubscription());
     safeReset(() => ref.read(routersProvider.notifier).reset());
     safeReset(() => ref.read(vouchersProvider.notifier).reset());
+    safeReset(() => ref.read(voucherBatchesProvider.notifier).reset());
     safeReset(() => ref.read(sessionsProvider.notifier).reset());
     safeReset(() => ref.read(dashboardProvider.notifier).reset());
     safeReset(() => ref.read(reportsProvider.notifier).reset());
@@ -223,23 +226,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         email: email,
         password: password,
       );
-
-      await _storage.setTokens(result.accessToken, result.refreshToken);
-      await _storage.setUserData(json.encode(result.user.toJson()));
-
-      state = state.copyWith(
-        isAuthenticated: true,
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        user: result.user,
-        isLoading: false,
-        clearPendingVerificationEmail: true,
-      );
-      _loadUserScopedProviders();
-      _syncLocaleToBackend();
-      // Register this device's FCM token now that we're authenticated — the
-      // pre-login registration attempt (if any) 401'd and never persisted.
-      PushNotificationService().registerCurrentToken();
+      await _completeSignIn(result);
     } catch (e) {
       final code = _extractErrorCode(e);
       state = state.copyWith(
@@ -269,12 +256,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
+      final language = effectiveLanguageCode(await _storage.getLocale());
       await _authService.register(
         name: name,
         email: email,
         phone: phone,
         password: password,
         businessName: businessName,
+        language: language,
       );
       // Stash the email so the verify screen can pick it up even if the
       // route argument is lost in navigation (release-mode cast / go-router
@@ -302,33 +291,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      await _authService.verifyEmail(email: email, otp: otp);
-      // Update the local user if already authenticated.
-      if (state.user != null) {
-        final updatedUser = User(
-          id: state.user!.id,
-          name: state.user!.name,
-          email: state.user!.email,
-          phone: state.user!.phone,
-          businessName: state.user!.businessName,
-          isVerified: true,
-        );
-        await _storage.setUserData(json.encode(updatedUser.toJson()));
-        state = state.copyWith(
-          user: updatedUser,
-          isLoading: false,
-          clearPendingVerificationEmail: true,
-        );
-      } else {
-        state = state.copyWith(
-          isLoading: false,
-          clearPendingVerificationEmail: true,
-        );
-      }
+      final result = await _authService.verifyEmail(email: email, otp: otp);
+      await _completeSignIn(result);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
         error: _extractErrorMessage(e),
+        errorCode: _extractErrorCode(e),
       );
       rethrow;
     }
@@ -519,14 +488,44 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(clearError: true);
   }
 
-  /// Reads the locally persisted locale and pushes it to the backend so
-  /// server-generated push notifications can be localized. Fire-and-forget —
-  /// errors (offline, unauthenticated) are swallowed inside [AuthService.updateLanguage].
+  /// Persists tokens + user from a successful sign-in (login or verifyEmail),
+  /// updates state to authenticated, and fires the post-sign-in side-effects.
+  /// Shared by [login] and [verifyEmail] to guarantee a single code path.
+  Future<void> _completeSignIn(LoginResult result) async {
+    await _storage.setTokens(result.accessToken, result.refreshToken);
+    try {
+      await _storage.setUserData(json.encode(result.user.toJson()));
+    } catch (e) {
+      // The server has already verified the email / issued tokens by this
+      // point (they're on disk above) — never let a cached-profile write
+      // failure strand the user signed-out. tryRestoreSession/getProfile
+      // rebuild the cached copy on the next launch or profile fetch.
+      debugPrint('[AuthNotifier] cached-profile write failed: $e');
+    }
+    state = state.copyWith(
+      isAuthenticated: true,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: result.user,
+      isLoading: false,
+      clearPendingVerificationEmail: true,
+    );
+    _loadUserScopedProviders();
+    _syncLocaleToBackend();
+    // Register this device's FCM token now that we're authenticated — the
+    // pre-login registration attempt (if any) 401'd and never persisted.
+    PushNotificationService().registerCurrentToken();
+  }
+
+  /// Reads the locally persisted locale and pushes the effective language to
+  /// the backend so server-generated push notifications can be localized.
+  /// When no locale has been explicitly chosen the device system locale is
+  /// used as the fallback (see [effectiveLanguageCode]).
+  /// Fire-and-forget — errors (offline, unauthenticated, storage) are swallowed.
   void _syncLocaleToBackend() {
     _storage.getLocale().then((code) {
-      if (code != null) {
-        _authService.updateLanguage(code);
-      }
+      final lang = effectiveLanguageCode(code);
+      _authService.updateLanguage(lang);
     }).catchError((_) {
       // Swallow storage errors — sync is best-effort.
     });

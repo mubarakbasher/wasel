@@ -7,6 +7,7 @@ import '../../i18n/voucher_format.dart';
 import '../../models/voucher.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/subscription_provider.dart';
+import '../../providers/voucher_batches_provider.dart';
 import '../../providers/vouchers_provider.dart';
 import '../../services/voucher_service.dart';
 import '../../theme/app_colors.dart';
@@ -269,6 +270,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
     final status = vState.filterStatus;
     final limitType = vState.filterLimitType;
     final search = vState.searchQuery;
+    final batch = vState.filterBatch?.batchKey;
 
     setState(() => _isPrintLoading = true);
 
@@ -279,6 +281,7 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
         status: status,
         limitType: limitType,
         search: search,
+        batch: batch,
       );
 
       if (!mounted) return;
@@ -338,6 +341,13 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
           : AppBar(
               title: Text(context.tr('vouchers.title')),
               actions: [
+                if (_selectedRouterId != null)
+                  IconButton(
+                    icon: const Icon(Icons.history),
+                    tooltip: context.tr('vouchers.batchHistory'),
+                    onPressed: () =>
+                        context.push('/vouchers/batches', extra: _selectedRouterId),
+                  ),
                 if (_selectedRouterId != null && vouchersState.total > 0)
                   IconButton(
                     icon: const Icon(Icons.print),
@@ -438,6 +448,8 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
                       ),
                       const SizedBox(width: AppSpacing.sm),
                       _buildStatusFilterChip(),
+                      const SizedBox(width: AppSpacing.sm),
+                      _buildBatchFilterChip(vouchersState),
                     ],
                   ),
                 ),
@@ -552,6 +564,184 @@ class _VoucherListScreenState extends ConsumerState<VoucherListScreen>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBatchFilterChip(VouchersState vouchersState) {
+    final activeBatch = vouchersState.filterBatch;
+    String label;
+    if (activeBatch != null) {
+      final d = activeBatch.createdAt.toLocal();
+      label = '${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} (${activeBatch.count})';
+    } else {
+      label = context.tr('vouchers.batchFilter');
+    }
+    return GestureDetector(
+      onTap: () => _showBatchPicker(),
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        decoration: BoxDecoration(
+          color: activeBatch != null ? AppColors.primaryLight : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(
+            color: activeBatch != null ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.layers,
+              size: 18,
+              color: activeBatch != null
+                  ? AppColors.primary
+                  : AppColors.textSecondary,
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              label,
+              style: AppTypography.caption1.copyWith(
+                color: activeBatch != null
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
+                fontWeight:
+                    activeBatch != null ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBatchPicker() {
+    if (_selectedRouterId == null) return;
+    // Trigger load before showing the sheet
+    ref.read(voucherBatchesProvider.notifier).load(_selectedRouterId!);
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetCtx) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final batchesState = ref.watch(voucherBatchesProvider);
+            final activeBatch = ref.watch(vouchersProvider).filterBatch;
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.5,
+              maxChildSize: 0.9,
+              builder: (_, scrollCtrl) => Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Text(
+                      context.tr('vouchers.selectBatch'),
+                      style: AppTypography.title2,
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: batchesState.isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : batchesState.error != null
+                            ? Center(
+                                child: Text(
+                                  batchesState.error!,
+                                  style: AppTypography.subhead.copyWith(
+                                      color: AppColors.error),
+                                  textAlign: TextAlign.center,
+                                ),
+                              )
+                            : ListView(
+                                controller: scrollCtrl,
+                                children: [
+                                  // "All batches" row
+                                  ListTile(
+                                    leading: activeBatch == null
+                                        ? const Icon(Icons.check,
+                                            color: AppColors.primary)
+                                        : const SizedBox(width: 24),
+                                    title:
+                                        Text(context.tr('vouchers.allBatches')),
+                                    onTap: () {
+                                      ref
+                                          .read(vouchersProvider.notifier)
+                                          .setBatchFilter(null);
+                                      if (_selectedRouterId != null) {
+                                        ref
+                                            .read(vouchersProvider.notifier)
+                                            .loadVouchers(_selectedRouterId!,
+                                                refresh: true);
+                                      }
+                                      Navigator.of(context).pop();
+                                    },
+                                  ),
+                                  if (batchesState.batches.isEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.all(
+                                          AppSpacing.xxxl),
+                                      child: Text(
+                                        context.tr('vouchers.noBatches'),
+                                        style: AppTypography.subhead.copyWith(
+                                            color: AppColors.textSecondary),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    )
+                                  else
+                                    ...batchesState.batches.map((batch) {
+                                      final isActive =
+                                          activeBatch?.batchKey ==
+                                              batch.batchKey;
+                                      final d = batch.createdAt.toLocal();
+                                      final dateLabel =
+                                          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+                                          '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+                                      final limitLabel =
+                                          localizedLimitText(context, limitType: batch.limitType, limitValue: batch.limitValue, limitUnit: batch.limitUnit) ?? '';
+                                      final priceLabel = batch.price != null
+                                          ? ' · ${batch.price} ${context.tr('common.currencySymbol')}'
+                                          : '';
+                                      return ListTile(
+                                        leading: isActive
+                                            ? const Icon(Icons.check,
+                                                color: AppColors.primary)
+                                            : const SizedBox(width: 24),
+                                        title: Text(dateLabel),
+                                        subtitle: Text(
+                                          context.tr('vouchers.batchCount',
+                                              [batch.count.toString()])
+                                          + (limitLabel.isNotEmpty
+                                              ? ' · $limitLabel'
+                                              : '')
+                                          + priceLabel,
+                                        ),
+                                        onTap: () {
+                                          ref
+                                              .read(vouchersProvider.notifier)
+                                              .setBatchFilter(batch);
+                                          if (_selectedRouterId != null) {
+                                            ref
+                                                .read(
+                                                    vouchersProvider.notifier)
+                                                .loadVouchers(
+                                                    _selectedRouterId!,
+                                                    refresh: true);
+                                          }
+                                          Navigator.of(context).pop();
+                                        },
+                                      );
+                                    }),
+                                ],
+                              ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

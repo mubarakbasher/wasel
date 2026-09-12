@@ -40,8 +40,28 @@ class AppLocalizations {
     Locale('ar'),
   ];
 
-  /// Returns true when [key] exists in the English (canonical) map.
-  bool hasKey(String key) => _en.containsKey(key);
+  /// Returns true when [key] can be resolved for THIS locale — the locale's own
+  /// map first, then the English canonical map.
+  ///
+  /// Consulting the locale map matters for keys that exist only in a non-English
+  /// map, e.g. the Arabic CLDR plural categories (`.two` / `.few` / `.many`) that
+  /// English has no equivalent for. Checking `_en` alone made [trPlural] fall
+  /// through to `.other` and silently drop every Arabic dual/few/many form.
+  bool hasKey(String key) =>
+      (_localizedValues[locale.languageCode]?.containsKey(key) ?? false) ||
+      _en.containsKey(key);
+
+  /// Static form of [hasKey] against the canonical English map.
+  ///
+  /// Lets context-free code — notably `utils/error_messages.dart`, which runs
+  /// inside providers with no [BuildContext] — ask whether a derived key such as
+  /// `error.ACCOUNT_LOCKED` is translatable before returning it.
+  static bool hasTranslationKey(String key) => _en.containsKey(key);
+
+  /// Every canonical key. Test-only: lets the i18n coverage tests enumerate the
+  /// `error.*` namespace without reaching into the private maps.
+  @visibleForTesting
+  static Iterable<String> get canonicalKeys => _en.keys;
 
   /// Return the translated value for [key], falling back first to English
   /// then to the raw key itself if not found.
@@ -106,7 +126,7 @@ class AppLocalizations {
     'auth.forgotPassword': 'Forgot Password?',
     'auth.fullName': 'Full Name',
     'auth.phone': 'Phone Number',
-    'auth.businessName': 'Business Name',
+    'auth.businessName': 'Network Name',
     'auth.verifyEmail': 'Verify Your Email',
     'auth.enterOtp': 'Enter Verification Code',
     'auth.resetPassword': 'Reset Password',
@@ -337,6 +357,95 @@ class AppLocalizations {
     'error.TIER_INSUFFICIENT': 'Your current plan does not support this feature.',
     'error.INVALID_CURSOR': 'Invalid pagination cursor. Please refresh and try again.',
     'error.INTERNAL_ERROR': 'An internal server error occurred. Please try again later.',
+    'error.USERNAME_TAKEN': 'Could not allocate unique voucher codes. Please try again.',
+    'error.USERNAME_GENERATION_FAILED': 'Failed to generate unique voucher codes. Please try again.',
+    'error.ROUTER_NOT_READY': 'Router is still being provisioned. Try again once it is online.',
+    'error.RATE_LIMIT_EXCEEDED': 'Too many requests, please try again later.',
+    'error.HOTSPOT_TEMPLATE_FETCH_FAILED': 'The router could not download the login page files.',
+    'error.HOTSPOT_NOT_CONFIGURED': 'No hotspot is configured on this router. Run the hotspot setup first.',
+    'error.HOTSPOT_TEMPLATE_APPLY_FAILED': 'The router rejected the login page update.',
+
+    // The block below covers EVERY error code the backend can emit, including
+    // admin-panel- and portal-only codes the mobile app never surfaces. That is
+    // deliberate: it lets test/i18n/backend_error_codes_test.dart assert a flat
+    // "every backend code has a key" rule with no exception list to maintain.
+    // Generic HTTP-status fallbacks
+    'error.badRequest': 'The request could not be completed. Please check your input and try again.',
+
+    // Auth / session / rate limiting
+    'error.AUTH_RATE_LIMIT_EXCEEDED': 'Too many attempts. Please wait a minute and try again.',
+    'error.EMAIL_RATE_LIMIT_EXCEEDED': 'Too many code requests. Please wait a while before requesting another.',
+    'error.RATE_LIMITED': 'Too many attempts. Please wait a moment and try again.',
+    'error.ACCOUNT_LOCKED': 'Too many failed attempts. Your account is temporarily locked. Please try again in a few minutes.',
+    'error.ACCOUNT_SUSPENDED': 'This account has been suspended. Please contact support.',
+    'error.OTP_LOCKED': 'Too many incorrect codes. Please wait 15 minutes and try again.',
+    'error.USER_NOT_FOUND': 'Account not found.',
+    'error.ALREADY_VERIFIED': 'This email is already verified. You can sign in now.',
+    'error.INVALID_PASSWORD': 'The current password is incorrect.',
+    'error.EMAIL_UNCHANGED': 'The new email is the same as your current email.',
+    'error.EMAIL_CHANGE_INVALID': 'No pending email change, or the code has expired.',
+    'error.REFRESH_TOKEN_INVALID': 'Your session is no longer valid. Please log in again.',
+    'error.REFRESH_TOKEN_REVOKED': 'Your session was ended. Please log in again.',
+    'error.AUTH_REQUIRED': 'Please log in to continue.',
+    'error.TOKEN_INVALID': 'Session expired. Please log in again.',
+    'error.ADMIN_REQUIRED': 'This action requires an administrator account.',
+
+    // Request / validation
+    'error.NOT_FOUND': 'The requested resource was not found.',
+    'error.INVALID_REQUEST': 'The request is invalid. Please check your input and try again.',
+    'error.NO_FIELDS_TO_UPDATE': 'There is nothing to update.',
+    'error.INVALID_DATE_RANGE': 'The start date must be before the end date.',
+    'error.DATE_RANGE_TOO_LARGE': 'The date range must not exceed one year.',
+
+    // Subscription / plan / payment
+    'error.SUBSCRIPTION_NOT_FOUND': 'Subscription not found.',
+    'error.SUBSCRIPTION_ACTIVE': 'You already have an active subscription.',
+    'error.SUBSCRIPTION_PENDING': 'You already have a subscription request under review.',
+    'error.NO_ACTIVE_SUBSCRIPTION': 'You do not have an active subscription to change.',
+    'error.CHANGE_PENDING': 'You already have a plan change request under review.',
+    'error.SAME_PLAN': 'You are already on this plan.',
+    'error.INVALID_PLAN': 'The selected plan is not valid.',
+    'error.INVALID_DURATION': 'The selected duration is not valid.',
+    'error.PLAN_NOT_FOUND': 'Plan not found.',
+    'error.PLAN_HAS_SUBSCRIPTIONS': 'This plan cannot be removed while subscriptions are using it.',
+    'error.PAYMENT_NOT_FOUND': 'Payment not found.',
+    'error.PAYMENT_FORBIDDEN': 'You do not have access to this payment.',
+    'error.PAYMENT_NOT_CANCELLABLE': 'This payment can no longer be cancelled.',
+    'error.PAYMENT_NOT_RESUBMITTABLE': 'A receipt cannot be uploaded for this payment.',
+    'error.PAYMENT_ALREADY_REVIEWED': 'This payment has already been reviewed.',
+    'error.PAYMENT_NO_RECEIPT': 'No receipt has been uploaded for this payment.',
+    'error.PAYMENT_UPLOAD_FAILED': 'Uploading the receipt failed. Please try again.',
+    'error.RECEIPT_FILE_REQUIRED': 'Please attach a receipt image.',
+
+    // Router / voucher / RADIUS profile / session
+    'error.ROUTER_NOT_CONFIGURED': 'This router is not fully configured yet.',
+    'error.ROUTER_QUOTA_EXCEEDED': 'You have reached the router limit for your plan.',
+    'error.VOUCHER_LIMIT_REACHED': 'You have reached the voucher limit for your plan.',
+    'error.PROFILE_NOT_FOUND': 'RADIUS profile not found.',
+    'error.PROFILE_DUPLICATE': 'A RADIUS profile with this name already exists.',
+    'error.PROFILE_IN_USE': 'This RADIUS profile is in use and cannot be deleted.',
+    'error.SESSION_NOT_FOUND': 'Session not found.',
+
+    // Inbox / support / admin
+    'error.NOTIFICATION_NOT_FOUND': 'Notification not found.',
+    'error.SUPPORT_MESSAGE_NOT_FOUND': 'Support message not found.',
+    'error.ADMIN_NOT_FOUND': 'Administrator not found.',
+    'error.CANNOT_MODIFY_SELF': 'You cannot modify your own account.',
+    'error.CANNOT_DELETE_SELF': 'You cannot delete your own account.',
+    'error.CANNOT_MODIFY_ADMIN': 'Administrator accounts cannot be modified here.',
+    'error.LAST_ADMIN': 'The last administrator cannot be removed.',
+
+    // Reports / templates / uploads
+    'error.INVALID_REPORT_TYPE': 'This report type is not supported.',
+    'error.PDF_NOT_IMPLEMENTED': 'PDF export is not available yet. Please export as CSV.',
+    'error.TEMPLATE_NOT_FOUND': 'Template not found.',
+    'error.EMAIL_TEMPLATE_NOT_FOUND': 'Email template not found.',
+    'error.NO_TEMPLATE': 'No template is available for this action.',
+    'error.INVALID_FILE_TYPE': 'Only JPEG, PNG, or WebP images are allowed.',
+    'error.INVALID_FILE_CONTENT': 'The file could not be read as a valid image.',
+    'error.UPLOAD_DIR_UNWRITABLE': 'Uploads are temporarily unavailable. Please try again later.',
+    'error.UPLOAD_VERIFY_FAILED': 'The uploaded file could not be verified. Please try again.',
+    'error.READ_ERROR': 'The file could not be read. Please try again.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'Wasel',
@@ -348,7 +457,7 @@ class AppLocalizations {
     // ── Extra Auth ───────────────────────────────────────────────────────────
     'auth.registerSubtitle2': 'Set up your Wasel account',
     'auth.registerSentEmail': 'Account created. Check your email for a verification code.',
-    'auth.businessNameOptional': 'Business Name (optional)',
+    'auth.businessNameOptional': 'Network Name (optional)',
     'auth.phoneHint': '+1234567890',
     'auth.sendCode': 'Send Code',
     'auth.rememberPassword': 'Remember your password?',
@@ -362,7 +471,7 @@ class AppLocalizations {
     'auth.confirmNewPassword': 'Confirm New Password',
     'auth.currentPasswordRequired': 'Current password is required',
     'auth.resetPasswordSuccess': 'Password reset successfully! Please log in.',
-    'auth.emailVerifiedSuccess': 'Email verified successfully! Please log in.',
+    'auth.emailVerifiedSuccess': 'Email verified. Welcome to Wasel!',
     'auth.verificationResent': 'Verification code resent',
     'auth.passwordChangedRelogin': 'Password changed — please sign in again',
 
@@ -371,6 +480,7 @@ class AppLocalizations {
     'dashboard.addRouterFirst': 'Add a router first',
     'dashboard.noActiveSubscription': 'No active subscription',
     'dashboard.viewPlans': 'View Plans',
+    'dashboard.paymentPending': 'Payment pending for {0}',
     'dashboard.vouchersUsed': 'Vouchers Used',
     'dashboard.unlimited': 'Unlimited',
     'dashboard.dailyRevenue': 'Daily Revenue',
@@ -668,6 +778,16 @@ class AppLocalizations {
     'vouchers.wifiVoucher': 'WiFi Voucher',
     'vouchers.plan': 'Plan',
     'vouchers.countMax': 'You can create at most 3000 vouchers at once.',
+    'vouchers.batchHistory': 'Creation history',
+    'vouchers.batchFilter': 'Batch',
+    'vouchers.allBatches': 'All batches',
+    'vouchers.selectBatch': 'Select batch',
+    'vouchers.batchCount': '{0} vouchers',
+    'vouchers.noBatches': 'No creation batches yet',
+    'vouchers.noBatchesForRouter': 'No creation batches for "{0}" yet',
+    'vouchers.pdfDocTitle': 'Wasel Vouchers',
+    'vouchers.previewFirstPages':
+        'Preview shows the first {0} of {1} pages — printing includes all pages',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'No active sessions',
@@ -711,6 +831,8 @@ class AppLocalizations {
     'subscription.perMonth': '/month',
     'subscription.perNMonths': '/{0} months',
     'subscription.changePending': 'Change Pending',
+    'subscription.pendingPaymentBlocksPlans':
+        'Complete your pending payment first',
     'subscription.selectPlan': 'Select {0}',
     'subscription.confirmBody': 'You are requesting the {0} plan for {1} at {2}. After confirmation, you will receive payment instructions.',
 
@@ -777,7 +899,8 @@ class AppLocalizations {
     'payments.uploadReceipt': 'Upload receipt',
     'payments.replaceReceipt': 'Replace receipt',
     'payments.pendingUploadHint':
-        'Upload your receipt so the admin can verify your payment.',
+        'Transfer the amount to the bank account shown in the payment '
+        'instructions, then upload your receipt here.',
     'payments.awaitingReviewNote':
         'Your receipt is awaiting admin review. You can replace it or cancel this payment.',
     'payment.leaveTitle': 'Leave without uploading?',
@@ -904,7 +1027,7 @@ class AppLocalizations {
     'auth.forgotPassword': 'نسيت كلمة المرور؟',
     'auth.fullName': 'الاسم الكامل',
     'auth.phone': 'رقم الهاتف',
-    'auth.businessName': 'اسم النشاط التجاري',
+    'auth.businessName': 'اسم الشبكة',
     'auth.verifyEmail': 'تأكيد البريد الإلكتروني',
     'auth.enterOtp': 'أدخل رمز التحقق',
     'auth.resetPassword': 'إعادة تعيين كلمة المرور',
@@ -1130,6 +1253,95 @@ class AppLocalizations {
     'error.TIER_INSUFFICIENT': 'باقتك الحالية لا تدعم هذه الميزة.',
     'error.INVALID_CURSOR': 'مؤشر الترقيم غير صحيح. يرجى التحديث والمحاولة.',
     'error.INTERNAL_ERROR': 'حدث خطأ داخلي في الخادم. يرجى المحاولة لاحقاً.',
+    'error.USERNAME_TAKEN': 'تعذّر توليد أكواد كروت فريدة. يرجى المحاولة مرة أخرى.',
+    'error.USERNAME_GENERATION_FAILED': 'فشل توليد أكواد كروت فريدة. يرجى المحاولة مرة أخرى.',
+    'error.ROUTER_NOT_READY': 'لا يزال الراوتر قيد التجهيز. حاول مرة أخرى عندما يصبح متصلاً.',
+    'error.RATE_LIMIT_EXCEEDED': 'محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
+    'error.HOTSPOT_TEMPLATE_FETCH_FAILED': 'تعذّر على الراوتر تنزيل ملفات صفحة الدخول.',
+    'error.HOTSPOT_NOT_CONFIGURED': 'لا توجد نقطة اتصال (Hotspot) مُعدّة على هذا الراوتر. قم بإعداد الـ Hotspot أولاً.',
+    'error.HOTSPOT_TEMPLATE_APPLY_FAILED': 'رفض الراوتر تحديث صفحة الدخول.',
+
+    // The block below covers EVERY error code the backend can emit, including
+    // admin-panel- and portal-only codes the mobile app never surfaces. That is
+    // deliberate: it lets test/i18n/backend_error_codes_test.dart assert a flat
+    // "every backend code has a key" rule with no exception list to maintain.
+    // Generic HTTP-status fallbacks
+    'error.badRequest': 'تعذّر إتمام الطلب. يرجى مراجعة المدخلات والمحاولة مرة أخرى.',
+
+    // Auth / session / rate limiting
+    'error.AUTH_RATE_LIMIT_EXCEEDED': 'محاولات كثيرة جدًا. يرجى الانتظار دقيقة ثم المحاولة مرة أخرى.',
+    'error.EMAIL_RATE_LIMIT_EXCEEDED': 'طلبات رموز كثيرة جدًا. يرجى الانتظار بعض الوقت قبل طلب رمز آخر.',
+    'error.RATE_LIMITED': 'محاولات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
+    'error.ACCOUNT_LOCKED': 'محاولات فاشلة كثيرة. تم قفل حسابك مؤقتًا. يرجى المحاولة بعد بضع دقائق.',
+    'error.ACCOUNT_SUSPENDED': 'تم تعليق هذا الحساب. يرجى التواصل مع الدعم.',
+    'error.OTP_LOCKED': 'أدخلت رموزًا خاطئة عدة مرات. يرجى الانتظار 15 دقيقة ثم المحاولة مرة أخرى.',
+    'error.USER_NOT_FOUND': 'الحساب غير موجود.',
+    'error.ALREADY_VERIFIED': 'تم تأكيد هذا البريد الإلكتروني مسبقًا. يمكنك تسجيل الدخول الآن.',
+    'error.INVALID_PASSWORD': 'كلمة المرور الحالية غير صحيحة.',
+    'error.EMAIL_UNCHANGED': 'البريد الإلكتروني الجديد مطابق لبريدك الحالي.',
+    'error.EMAIL_CHANGE_INVALID': 'لا يوجد طلب تغيير بريد إلكتروني معلّق، أو انتهت صلاحية الرمز.',
+    'error.REFRESH_TOKEN_INVALID': 'لم تعد جلستك صالحة. يرجى تسجيل الدخول مرة أخرى.',
+    'error.REFRESH_TOKEN_REVOKED': 'تم إنهاء جلستك. يرجى تسجيل الدخول مرة أخرى.',
+    'error.AUTH_REQUIRED': 'يرجى تسجيل الدخول للمتابعة.',
+    'error.TOKEN_INVALID': 'انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.',
+    'error.ADMIN_REQUIRED': 'يتطلب هذا الإجراء حساب مسؤول.',
+
+    // Request / validation
+    'error.NOT_FOUND': 'المورد المطلوب غير موجود.',
+    'error.INVALID_REQUEST': 'الطلب غير صحيح. يرجى مراجعة المدخلات والمحاولة مرة أخرى.',
+    'error.NO_FIELDS_TO_UPDATE': 'لا يوجد ما يمكن تحديثه.',
+    'error.INVALID_DATE_RANGE': 'يجب أن يكون تاريخ البداية قبل تاريخ النهاية.',
+    'error.DATE_RANGE_TOO_LARGE': 'يجب ألا تتجاوز الفترة الزمنية سنة واحدة.',
+
+    // Subscription / plan / payment
+    'error.SUBSCRIPTION_NOT_FOUND': 'الاشتراك غير موجود.',
+    'error.SUBSCRIPTION_ACTIVE': 'لديك اشتراك نشط بالفعل.',
+    'error.SUBSCRIPTION_PENDING': 'لديك طلب اشتراك قيد المراجعة بالفعل.',
+    'error.NO_ACTIVE_SUBSCRIPTION': 'لا يوجد لديك اشتراك نشط لتغييره.',
+    'error.CHANGE_PENDING': 'لديك طلب تغيير باقة قيد المراجعة بالفعل.',
+    'error.SAME_PLAN': 'أنت مشترك في هذه الباقة بالفعل.',
+    'error.INVALID_PLAN': 'باقة الاشتراك المحددة غير صالحة.',
+    'error.INVALID_DURATION': 'المدة المحددة غير صالحة.',
+    'error.PLAN_NOT_FOUND': 'باقة الاشتراك غير موجودة.',
+    'error.PLAN_HAS_SUBSCRIPTIONS': 'لا يمكن حذف هذه الباقة أثناء وجود اشتراكات مرتبطة بها.',
+    'error.PAYMENT_NOT_FOUND': 'عملية الدفع غير موجودة.',
+    'error.PAYMENT_FORBIDDEN': 'ليس لديك صلاحية الوصول إلى عملية الدفع هذه.',
+    'error.PAYMENT_NOT_CANCELLABLE': 'لم يعد بالإمكان إلغاء عملية الدفع هذه.',
+    'error.PAYMENT_NOT_RESUBMITTABLE': 'لا يمكن رفع إيصال لعملية الدفع هذه.',
+    'error.PAYMENT_ALREADY_REVIEWED': 'تمت مراجعة عملية الدفع هذه بالفعل.',
+    'error.PAYMENT_NO_RECEIPT': 'لم يتم رفع إيصال لعملية الدفع هذه.',
+    'error.PAYMENT_UPLOAD_FAILED': 'فشل رفع الإيصال. يرجى المحاولة مرة أخرى.',
+    'error.RECEIPT_FILE_REQUIRED': 'يرجى إرفاق صورة الإيصال.',
+
+    // Router / voucher / RADIUS profile / session
+    'error.ROUTER_NOT_CONFIGURED': 'لم يتم إعداد هذا الراوتر بالكامل بعد.',
+    'error.ROUTER_QUOTA_EXCEEDED': 'وصلت إلى الحد الأقصى لعدد الراوترات في باقتك.',
+    'error.VOUCHER_LIMIT_REACHED': 'وصلت إلى الحد الأقصى لعدد الكروت في باقتك.',
+    'error.PROFILE_NOT_FOUND': 'باقة RADIUS غير موجودة.',
+    'error.PROFILE_DUPLICATE': 'توجد باقة RADIUS بهذا الاسم بالفعل.',
+    'error.PROFILE_IN_USE': 'باقة RADIUS هذه قيد الاستخدام ولا يمكن حذفها.',
+    'error.SESSION_NOT_FOUND': 'الجلسة غير موجودة.',
+
+    // Inbox / support / admin
+    'error.NOTIFICATION_NOT_FOUND': 'الإشعار غير موجود.',
+    'error.SUPPORT_MESSAGE_NOT_FOUND': 'رسالة الدعم غير موجودة.',
+    'error.ADMIN_NOT_FOUND': 'المسؤول غير موجود.',
+    'error.CANNOT_MODIFY_SELF': 'لا يمكنك تعديل حسابك الخاص.',
+    'error.CANNOT_DELETE_SELF': 'لا يمكنك حذف حسابك الخاص.',
+    'error.CANNOT_MODIFY_ADMIN': 'لا يمكن تعديل حسابات المسؤولين من هنا.',
+    'error.LAST_ADMIN': 'لا يمكن حذف آخر مسؤول.',
+
+    // Reports / templates / uploads
+    'error.INVALID_REPORT_TYPE': 'نوع التقرير هذا غير مدعوم.',
+    'error.PDF_NOT_IMPLEMENTED': 'تصدير PDF غير متاح بعد. يرجى التصدير بصيغة CSV.',
+    'error.TEMPLATE_NOT_FOUND': 'القالب غير موجود.',
+    'error.EMAIL_TEMPLATE_NOT_FOUND': 'قالب البريد الإلكتروني غير موجود.',
+    'error.NO_TEMPLATE': 'لا يوجد قالب متاح لهذا الإجراء.',
+    'error.INVALID_FILE_TYPE': 'يُسمح بصور JPEG أو PNG أو WebP فقط.',
+    'error.INVALID_FILE_CONTENT': 'تعذّر قراءة الملف كصورة صالحة.',
+    'error.UPLOAD_DIR_UNWRITABLE': 'الرفع غير متاح مؤقتًا. يرجى المحاولة لاحقًا.',
+    'error.UPLOAD_VERIFY_FAILED': 'تعذّر التحقق من الملف المرفوع. يرجى المحاولة مرة أخرى.',
+    'error.READ_ERROR': 'تعذّر قراءة الملف. يرجى المحاولة مرة أخرى.',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'واصل',
@@ -1141,7 +1353,7 @@ class AppLocalizations {
     // ── Extra Auth ───────────────────────────────────────────────────────────
     'auth.registerSubtitle2': 'أنشئ حساب واصل الخاص بك',
     'auth.registerSentEmail': 'تم إنشاء الحساب. تحقق من بريدك للحصول على رمز التأكيد.',
-    'auth.businessNameOptional': 'اسم النشاط التجاري (اختياري)',
+    'auth.businessNameOptional': 'اسم الشبكة (اختياري)',
     'auth.phoneHint': '+1234567890',
     'auth.sendCode': 'إرسال الرمز',
     'auth.rememberPassword': 'تتذكر كلمة المرور؟',
@@ -1155,7 +1367,7 @@ class AppLocalizations {
     'auth.confirmNewPassword': 'تأكيد كلمة المرور الجديدة',
     'auth.currentPasswordRequired': 'كلمة المرور الحالية مطلوبة',
     'auth.resetPasswordSuccess': 'تم إعادة تعيين كلمة المرور بنجاح! يرجى تسجيل الدخول.',
-    'auth.emailVerifiedSuccess': 'تم تأكيد البريد الإلكتروني بنجاح! يرجى تسجيل الدخول.',
+    'auth.emailVerifiedSuccess': 'تم تأكيد البريد الإلكتروني. أهلاً بك في واصل!',
     'auth.verificationResent': 'تم إعادة إرسال رمز التحقق',
     'auth.passwordChangedRelogin': 'تم تغيير كلمة المرور — يرجى تسجيل الدخول مجدداً',
 
@@ -1164,6 +1376,7 @@ class AppLocalizations {
     'dashboard.addRouterFirst': 'أضف راوتر أولاً',
     'dashboard.noActiveSubscription': 'لا يوجد اشتراك نشط',
     'dashboard.viewPlans': 'عرض الباقات',
+    'dashboard.paymentPending': 'دفعة معلقة لباقة {0}',
     'dashboard.vouchersUsed': 'الكروت المستخدمة',
     'dashboard.unlimited': 'غير محدود',
     'dashboard.dailyRevenue': 'إيرادات اليوم',
@@ -1440,9 +1653,9 @@ class AppLocalizations {
     'vouchers.hours': 'ساعات',
     'vouchers.days': 'أيام',
     'vouchers.exampleHint': 'مثال: {0}',
-    'vouchers.unitMb': 'MB',
-    'vouchers.unitGb': 'GB',
-    'vouchers.unitKb': 'KB',
+    'vouchers.unitMb': 'ميجابايت',
+    'vouchers.unitGb': 'جيجابايت',
+    'vouchers.unitKb': 'كيلوبايت',
     'vouchers.unitMinShort': 'دقيقة',
     'vouchers.unitHrShort': 'ساعة',
     'vouchers.unitDayShort': 'يوم',
@@ -1476,6 +1689,16 @@ class AppLocalizations {
     'vouchers.wifiVoucher': 'كرت واي فاي',
     'vouchers.plan': 'الباقة',
     'vouchers.countMax': 'يمكنك إنشاء 3000 كرت كحد أقصى في المرة الواحدة.',
+    'vouchers.batchHistory': 'سجل الإنشاء',
+    'vouchers.batchFilter': 'الدفعة',
+    'vouchers.allBatches': 'كل الدفعات',
+    'vouchers.selectBatch': 'اختر الدفعة',
+    'vouchers.batchCount': '{0} كرت',
+    'vouchers.noBatches': 'لا توجد دفعات إنشاء بعد',
+    'vouchers.noBatchesForRouter': 'لا توجد دفعات إنشاء للراوتر "{0}" بعد',
+    'vouchers.pdfDocTitle': 'كروت واصل',
+    'vouchers.previewFirstPages':
+        'المعاينة تعرض أول {0} من {1} صفحة — الطباعة تشمل جميع الصفحات',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'لا توجد جلسات نشطة',
@@ -1519,6 +1742,7 @@ class AppLocalizations {
     'subscription.perMonth': '/شهر',
     'subscription.perNMonths': '/{0} أشهر',
     'subscription.changePending': 'التغيير معلق',
+    'subscription.pendingPaymentBlocksPlans': 'أكمل دفعتك المعلقة أولاً',
     'subscription.selectPlan': 'اختر {0}',
     'subscription.confirmBody': 'أنت تطلب باقة {0} لمدة {1} بسعر {2}. بعد التأكيد، ستتلقى تعليمات الدفع.',
 
@@ -1576,7 +1800,8 @@ class AppLocalizations {
     'payments.uploadReceipt': 'رفع الإيصال',
     'payments.replaceReceipt': 'استبدال الإيصال',
     'payments.pendingUploadHint':
-        'ارفع إيصالك حتى يتمكن المسؤول من التحقق من دفعتك.',
+        'حوّل المبلغ إلى الحساب البنكي الموضح في تعليمات الدفع، ثم ارفع '
+        'إيصالك هنا.',
     'payments.awaitingReviewNote':
         'إيصالك قيد مراجعة المسؤول. يمكنك استبداله أو إلغاء هذه الدفعة.',
     'payment.leaveTitle': 'المغادرة دون رفع الإيصال؟',

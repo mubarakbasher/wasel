@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { HOTSPOT_TEMPLATES } from '../hotspot-templates/manifest';
+import { EMAIL_TEMPLATE_TYPES, EMAIL_TEMPLATE_LANGUAGES } from '../email-templates/manifest';
 
 // Shared pagination
 const paginationSchema = {
@@ -209,11 +210,13 @@ export const listEmailLogQuerySchema = z.object({
 // Email templates
 // ---------------------------------------------------------------------------
 
-const EMAIL_TEMPLATE_TYPES = ['verification_otp', 'password_reset_otp', 'payment_submitted_admin', 'payment_approved', 'payment_rejected'] as const;
-
+// Reuse the email-template catalogue as the single source of truth for valid
+// types, the same way hotspotTemplateIds does above. Restating the list here
+// would let a newly catalogued type be listed and edited in the panel but 400
+// on save — losing the admin's work after they wrote the whole template.
 export const emailTemplateParamSchema = z.object({
   type: z.enum(EMAIL_TEMPLATE_TYPES),
-  language: z.enum(['en', 'ar']),
+  language: z.enum(EMAIL_TEMPLATE_LANGUAGES),
 });
 
 export const updateEmailTemplateBodySchema = z
@@ -229,7 +232,7 @@ export const updateEmailTemplateBodySchema = z
 
 export const testEmailBodySchema = z.object({
   type: z.enum(EMAIL_TEMPLATE_TYPES),
-  language: z.enum(['en', 'ar']),
+  language: z.enum(EMAIL_TEMPLATE_LANGUAGES),
 });
 
 // ---------------------------------------------------------------------------

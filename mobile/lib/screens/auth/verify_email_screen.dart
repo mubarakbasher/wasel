@@ -95,7 +95,7 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
         if (mounted) {
           AppSnackbar.success(
               context, context.tr('auth.emailVerifiedSuccess'));
-          context.go('/login');
+          context.go('/dashboard');
         }
       }
     } catch (_) {}

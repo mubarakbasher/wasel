@@ -74,7 +74,7 @@ flowchart TB
   end
 
   LOGIN -->|"login success"| DASH
-  VERIFY -->|"verified"| LOGIN
+  VERIFY -->|"verified, signed in"| DASH
   RESET -->|"password reset"| LOGIN
 
   subgraph RSTACK["Router stack - pushed over shell"]
@@ -162,9 +162,9 @@ Code: `mobile/lib/screens/auth/*`, `backend/src/routes/auth.routes.ts`, `backend
 
 | Step | Screen | User action | API call | Result |
 |---|---|---|---|---|
-| 1 | `/register` (`register_screen.dart`) | Enter name, email, password | `POST /auth/register` | Account created (unverified), a 6-digit OTP is emailed (`createVerificationOtp`, 24 h TTL in Redis). App pushes `/verify-email?email=…` (`register_screen.dart:58`). |
-| 2 | `/verify-email` (`verify_email_screen.dart`) | Enter OTP from email | `POST /auth/verify-email` | Email marked verified. A resend countdown timer runs on-screen; resending calls `POST /auth/resend-verification`. Invalid/expired code → `OTP_INVALID`. |
-| 3 | `/login` (`login_screen.dart`) | Enter credentials | `POST /auth/login` | Backend returns access (15 m) + refresh (7 d) JWT pair; refresh JTI stored in Redis (`refresh:{userId}:{jti}`). Tokens persisted in `flutter_secure_storage` (`mobile/lib/services/secure_storage.dart`). GoRouter redirect lands on `/dashboard`. `auth_provider.dart` fire-and-forgets `_loadUserScopedProviders()` so subscription state is warm before any tab reads it. |
+| 1 | `/register` (`register_screen.dart`) | Enter name, email, password | `POST /auth/register` | Account created (unverified) — **no tokens are issued** — and a 6-digit OTP is emailed (`createVerificationOtp`, 24 h TTL in Redis). App pushes `/verify-email?email=…` (`register_screen.dart:58`). |
+| 2 | `/verify-email` (`verify_email_screen.dart`) | Enter OTP from email | `POST /auth/verify-email` | Email marked verified **and the session is issued**: the response carries the same `{ user, accessToken, refreshToken }` body as login (access 15 m, refresh 7 d, JTI in Redis `refresh:{userId}:{jti}`). The app persists the pair in `flutter_secure_storage`, flips `isAuthenticated`, and `context.go('/dashboard')` — a new user never sees the login screen. A resend countdown timer runs on-screen; resending calls `POST /auth/resend-verification`. Invalid/expired code → `OTP_INVALID`; suspended account → `ACCOUNT_SUSPENDED`. |
+| 3 | `/login` (`login_screen.dart`) | Returning user: enter credentials | `POST /auth/login` | Backend returns the same JWT pair. An unverified account gets 403 `EMAIL_NOT_VERIFIED`: the app resends the OTP and pushes `/verify-email`, which then lands on `/dashboard` exactly as in step 2. Tokens persisted in `flutter_secure_storage` (`mobile/lib/services/secure_storage.dart`). GoRouter redirect lands on `/dashboard`. `auth_provider.dart` fire-and-forgets `_loadUserScopedProviders()` so subscription state is warm before any tab reads it. |
 | 4 | — | (forgot password) | `POST /auth/forgot-password` → `POST /auth/reset-password` | `/forgot-password` sends a reset OTP (15 m TTL); `/reset-password` receives the email via `extra` and submits OTP + new password. |
 
 Guard rails (verified in `auth.service.ts` and `backend/src/middleware/rateLimiter.ts`):
@@ -183,7 +183,7 @@ Payments are **manual bank transfers** verified by a platform admin — there is
 |---|---|---|---|---|
 | 1 | `/subscription` (`subscription_status_screen.dart`) | View status + plan cards | `GET /subscription` + `GET /subscription/plans` | Shows current subscription (or "no active subscription" header) and plan cards with a duration selector driven by each plan's `allowed_durations`. `GET /subscription/plans` is the only public subscription endpoint. |
 | 2 | `/subscription` | Tap a plan's subscribe button | `POST /subscription/request` `{planTier, durationMonths}` | Creates a `pending` subscription and a `pending` payment row. |
-| 3 | `/subscription/payment` (`payment_screen.dart`) | Read transfer instructions | `GET /subscription/bank-info` | Bank account details shown. Screen is screenshot-protected: `FLAG_SECURE` on Android (`SecureWindow.enable()`), blur overlay in the iOS app switcher. |
+| 3 | `/subscription/payment` (`payment_screen.dart`) | Read transfer instructions | `GET /subscription/bank-info` + `GET /subscription/payments` | Bank account details, amount and reference code shown. The amount/reference come from the in-memory request result right after step 2, and are rehydrated from the pending (or rejected) row of `GET /subscription/payments` when the screen is reopened later or after an app restart. Screen is screenshot-protected: `FLAG_SECURE` on Android (`SecureWindow.enable()`), blur overlay in the iOS app switcher. |
 | 4 | `/subscription/payment` | Pick receipt photo (camera/gallery) and upload | `POST /subscription/receipt` (multipart field `receipt` + `paymentId`) | Receipt stored after magic-byte validation (`verifyUploadMagicBytes` in `backend/src/middleware/upload.ts`). Payment now awaits admin review. A poller starts: re-fetch `GET /subscription` every 15 s, capped at 5 min (`_kPollInterval` / `_kPollTimeout`). |
 | 5 | (admin panel) | Admin approves | `PUT /admin/payments/:id` `{decision: 'approved'}` | Subscription flips to `active` with `start_date = NOW()`; `payment_confirmed` push fires. |
 | 6 | `/subscription/payment` | — | poller sees `subscription.isActive` | Success snackbar ("subscription activated"), then `context.go('/dashboard')`. If the 5-min poll cap is hit first, the screen shows a timed-out state — activation still lands via push/next refresh. |
@@ -191,6 +191,8 @@ Payments are **manual bank transfers** verified by a platform admin — there is
 **Rejection path** — admin sends `{decision: 'rejected', rejection_reason}` (reason is mandatory: `reviewPaymentBodySchema` in `backend/src/validators/admin.validators.ts`). The reason is persisted on the payment row and visible to the operator in `/settings/payments` (`GET /subscription/payments`), who can fix the issue and re-upload.
 
 **Cancel path** — the operator can abandon a pending payment with `DELETE /subscription/payments/:id` (`cancelPayment`).
+
+**Recovery path (abandoned before paying)** — a `pending` subscription + receipt-less `pending` payment persist server-side (nothing expires them; the admin queue hides receipt-less payments). The operator stays signed in; only `requireSubscription`-gated screens bounce to `/subscription`. Three surfaces lead back to the money step: the Dashboard subscription card shows "Payment pending for {plan}" with a **View payment instructions** button; `/subscription` shows the pending status with the same button and disables every plan card until the pending payment is completed or cancelled (a second `POST /subscription/request` would be 409 `SUBSCRIPTION_PENDING`, surfaced as a snackbar); and `/settings/payments` shows the pending/rejected card with amount, reference, a hint that says where to transfer, **View payment instructions**, **Cancel & switch plan**, and **Upload / Replace / Resubmit receipt**. All three open the same `/subscription/payment` screen, which rehydrates from the payments list (step 3).
 
 **Plan change path** — `POST /subscription/change` creates a `pending_change` subscription; on payment approval `reviewPayment` cancels the old active subscription and activates the new one inside a single transaction (`admin.service.ts:588-682`).
 

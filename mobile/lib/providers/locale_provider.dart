@@ -1,10 +1,25 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/auth_service.dart';
 import '../services/secure_storage.dart';
+
+/// The language code the app is effectively displaying: the user's explicit
+/// in-app choice when set, otherwise the device system locale — normalized
+/// to the two supported codes ('ar' for every Arabic variant, 'en' otherwise).
+///
+/// [storedCode] is the persisted preference (may be null when none has been
+/// chosen). [systemCode] overrides the platform-dispatcher lookup and is
+/// exposed solely so unit tests can inject a fixed system locale without
+/// depending on the test runner's environment.
+String effectiveLanguageCode(String? storedCode, {String? systemCode}) {
+  final code = storedCode ??
+      (systemCode ?? ui.PlatformDispatcher.instance.locale.languageCode);
+  return code == 'ar' ? 'ar' : 'en';
+}
 
 class LocaleNotifier extends StateNotifier<Locale?> {
   final SecureStorageService _storage;

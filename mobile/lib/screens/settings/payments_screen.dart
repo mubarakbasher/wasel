@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../i18n/app_localizations.dart';
@@ -106,6 +107,11 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
     }
   }
 
+  /// Opens the bank-transfer instructions. The route takes no arguments — the
+  /// payment screen rehydrates the amount + reference code from the payments
+  /// list, so this works even after an app restart.
+  void _openPaymentInstructions() => context.push('/subscription/payment');
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(subscriptionProvider);
@@ -139,6 +145,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                           busy: state.isLoading,
                           onResubmit: () => _resubmitReceipt(payment),
                           onCancel: () => _cancelPayment(payment),
+                          onViewInstructions: _openPaymentInstructions,
                         );
                       },
                     ),
@@ -170,12 +177,14 @@ class _PaymentTile extends StatelessWidget {
   final bool busy;
   final VoidCallback onResubmit;
   final VoidCallback onCancel;
+  final VoidCallback onViewInstructions;
 
   const _PaymentTile({
     required this.payment,
     required this.busy,
     required this.onResubmit,
     required this.onCancel,
+    required this.onViewInstructions,
   });
 
   @override
@@ -345,6 +354,18 @@ class _PaymentTile extends StatelessWidget {
           // states; approved/cancelled are terminal and show no actions.
           if (payment.isPending || payment.isRejected) ...[
             const SizedBox(height: AppSpacing.md),
+            // Where to pay. Without this the recovery path showed the amount
+            // and the reference but never the bank account to transfer to.
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: busy ? null : onViewInstructions,
+                icon: const Icon(Icons.account_balance, size: 18),
+                label:
+                    Text(context.tr('subscription.viewPaymentInstructions')),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
             Row(
               children: [
                 Expanded(

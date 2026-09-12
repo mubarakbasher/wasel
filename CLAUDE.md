@@ -8,6 +8,12 @@
 
 **Before starting or resuming in-flight work (staging deployment, security hardening, deploys, or anything that depends on "where we left off"), read `docs/PROJECT_STATE.md`** — the living snapshot of what's done, what's in progress, the current blocker, and gotchas already hit. `docs/PROJECT_SUMMARY.md` is the fuller handover. Update `PROJECT_STATE.md` whenever that state changes.
 
+## Environment Rule (hard)
+
+- **Default target is `dev` + staging (`wa-sel.cloud`) — always.** Commit to `dev`, deploy and verify on staging.
+- **Never touch prod (`wa-sel.com`) or `main`** — no `dev`→`main` merge, no push to `main`, no SSH/deploy/DB/config/compose changes on the prod VPS, no prod API calls that mutate data — unless the user explicitly says **in the current conversation** to work on `wa-sel.com` / promote to prod. "Ready for prod", "done", or a green staging run is NOT permission.
+- "Deploy" with no target named means **staging**.
+
 ## Documentation
 
 All Markdown documentation lives in `docs/`. When creating any new `.md` file (audits, runbooks, plans, design notes, reports), write it to `docs/` — never to the repo root or a feature folder.
@@ -88,8 +94,8 @@ Backend loads `.env.local` first then `.env`. Prod has no `.env.local` → silen
 **Branch + deploy model (staging is the pre-merge gate):**
 - All local commits land on `dev`.
 - Push `dev` → **staging VPS** (`wa-sel.cloud`) → run the E2E checklist in `docs/STAGING.md` (WireGuard handshake, RADIUS auth, RouterOS API, TLS).
-- Promote only after staging passes: `git checkout main && git merge dev --ff-only && git push origin main`.
-- Prod VPS (`wa-sel.com`): `git pull origin main && docker compose up -d --build` (uses prod `docker-compose.yml`, never the dev one). Migrations auto-run on backend boot.
+- Promotion is **user-triggered only** (see *Environment Rule*). When the user explicitly asks: `git checkout main && git merge dev --ff-only && git push origin main`.
+- Prod VPS (`wa-sel.com`) — **only on explicit instruction**: `git pull origin main && docker compose up -d --build` (uses prod `docker-compose.yml`, never the dev one). Migrations auto-run on backend boot.
 - **Never push directly to `main`. Prod is live with paying users.**
 
 **Boundary — what stays local:**

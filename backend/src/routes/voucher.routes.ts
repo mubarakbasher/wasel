@@ -9,6 +9,7 @@ import {
   createVouchersSchema,
   updateVoucherSchema,
   listVouchersQuerySchema,
+  listVoucherBatchesQuerySchema,
   bulkDeleteVouchersSchema,
 } from '../validators/voucher.validators';
 import * as voucherController from '../controllers/voucher.controller';
@@ -45,6 +46,16 @@ router.post(
   requireSubscription,
   validate({ params: routerIdParamSchema, body: bulkDeleteVouchersSchema }),
   voucherController.bulkDeleteVouchers,
+);
+
+// List creation batches — must be before /:vid so 'batches' is not parsed as a UUID param.
+// Same ordering note as bulk-delete above.
+router.get(
+  '/batches',
+  authenticate,
+  requireSubscription,
+  validate({ params: routerIdParamSchema, query: listVoucherBatchesQuerySchema }),
+  voucherController.getVoucherBatches,
 );
 
 // Get single voucher

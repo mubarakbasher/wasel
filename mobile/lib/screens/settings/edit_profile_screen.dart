@@ -174,7 +174,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   textCapitalization: TextCapitalization.words,
                   decoration: InputDecoration(
                     labelText: context.tr('auth.businessNameOptional'),
-                    prefixIcon: const Icon(Icons.business_outlined),
+                    prefixIcon: const Icon(Icons.wifi_outlined),
                   ),
                   onFieldSubmitted: (_) => _submit(),
                 ),

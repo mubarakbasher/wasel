@@ -86,6 +86,7 @@ interface RouterRow {
   hotspot_template_status: string | null;
   hotspot_template_applied_at: string | null;
   hotspot_template_error: string | null;
+  hotspot_template_error_code: string | null;
   hotspot_accent_color: string | null;
   created_at: string;
   updated_at: string;
@@ -908,6 +909,7 @@ export async function getRouters(
          r.last_seen, r.last_health_check_at, r.tunnel_ip,
          r.hotspot_template_id, r.hotspot_template_status,
          r.hotspot_template_applied_at, r.hotspot_template_error,
+         r.hotspot_template_error_code,
          r.hotspot_accent_color, r.created_at, r.updated_at,
          u.name AS owner_name, u.email AS owner_email
        FROM routers r

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:wasel/models/voucher.dart';
+import 'package:wasel/models/voucher_batch.dart';
 import 'package:wasel/providers/vouchers_provider.dart';
 import 'package:wasel/services/voucher_service.dart';
 
@@ -53,15 +54,17 @@ void main() {
       expect(notifier.state.total, 0);
       expect(notifier.state.nextCursor, isNull);
       expect(notifier.state.hasMore, false);
+      expect(notifier.state.filterBatch, isNull);
     });
 
     test('loadVouchers sets vouchers and nextCursor on success', () async {
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
-            limit: 100,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher, mockVoucher2],
             total: 2,
@@ -84,10 +87,11 @@ void main() {
         () async {
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
-            limit: 100,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher],
             total: 1,
@@ -108,6 +112,7 @@ void main() {
             status: any(named: 'status'),
             limitType: any(named: 'limitType'),
             search: any(named: 'search'),
+            batch: any(named: 'batch'),
             limit: any(named: 'limit'),
           )).thenThrow(Exception('fail'));
 
@@ -121,10 +126,11 @@ void main() {
       // First load: returns cursor-1
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
-            limit: 100,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher],
             total: 2,
@@ -135,14 +141,15 @@ void main() {
       await notifier.loadVouchers('r-1');
       expect(notifier.state.hasMore, true);
 
-      // loadMore: sends cursor-1, returns cursor-2 (still more)
+      // loadMore: sends cursor-1, returns null (done)
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
             cursor: 'cursor-1',
-            limit: 100,
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher2],
             total: 2,
@@ -162,10 +169,11 @@ void main() {
     test('loadMore deduplicates items already held', () async {
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
-            limit: 100,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher],
             total: 2,
@@ -178,11 +186,12 @@ void main() {
       // Server returns a page that includes v-1 again (overlapping window)
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
             cursor: 'cursor-1',
-            limit: 100,
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher, mockVoucher2], // v-1 is a duplicate
             total: 2,
@@ -202,10 +211,11 @@ void main() {
         () async {
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
-            limit: 100,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher],
             total: 1,
@@ -226,10 +236,11 @@ void main() {
     test('reset clears nextCursor', () async {
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
-            limit: 100,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher],
             total: 1,
@@ -297,10 +308,11 @@ void main() {
     test('deleteVoucher removes from list', () async {
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
-            limit: 100,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher, mockVoucher2],
             total: 2,
@@ -323,10 +335,11 @@ void main() {
     test('toggleVoucherStatus updates voucher in list', () async {
       when(() => mockService.getVouchers(
             'r-1',
-            status: null,
-            limitType: null,
-            search: null,
-            limit: 100,
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
           )).thenAnswer((_) async => VoucherListResult(
             vouchers: [mockVoucher],
             total: 1,
@@ -357,6 +370,131 @@ void main() {
 
       notifier.setSearch(null);
       expect(notifier.state.searchQuery, isNull);
+    });
+
+    // ── New batch filter tests ──────────────────────────────────────────────
+
+    final mockBatch = VoucherBatch.fromJson({
+      'batchKey': '2026-08-09T10:11:12.123456Z',
+      'createdAt': '2026-08-09T10:11:12.123456Z',
+      'count': 100,
+      'limitType': 'time',
+      'limitValue': 3600,
+      'limitUnit': 'hours',
+      'validitySeconds': null,
+      'price': 1.5,
+    });
+
+    test('setBatchFilter + loadVouchers forwards batchKey to getVouchers',
+        () async {
+      // Prime the active router so the router-switch branch does NOT fire on
+      // the second call (it clears filterBatch when switching routers, which
+      // is correct behaviour — but the test needs to be on the same router).
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [],
+            total: 0,
+            page: 1,
+            limit: 100,
+          ));
+      await notifier.loadVouchers('r-1'); // establishes _activeRouterId = 'r-1'
+
+      // Now set the batch filter — active router is already r-1 so it won't
+      // be cleared on the next loadVouchers call.
+      notifier.setBatchFilter(mockBatch);
+      expect(notifier.state.filterBatch?.batchKey,
+          '2026-08-09T10:11:12.123456Z');
+
+      // Capture which batch key is forwarded on the next load.
+      String? capturedBatch;
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
+          )).thenAnswer((invocation) async {
+        capturedBatch =
+            invocation.namedArguments[const Symbol('batch')] as String?;
+        return VoucherListResult(
+          vouchers: [mockVoucher],
+          total: 1,
+          page: 1,
+          limit: 100,
+        );
+      });
+
+      await notifier.loadVouchers('r-1', refresh: true);
+
+      expect(capturedBatch, '2026-08-09T10:11:12.123456Z');
+    });
+
+    test('switching routers clears filterBatch', () async {
+      // Set a batch filter for r-1
+      notifier.setBatchFilter(mockBatch);
+      expect(notifier.state.filterBatch, isNotNull);
+
+      when(() => mockService.getVouchers(
+            any(),
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [],
+            total: 0,
+            page: 1,
+            limit: 100,
+          ));
+
+      // Switch to a different router
+      await notifier.loadVouchers('r-2');
+
+      expect(notifier.state.filterBatch, isNull);
+    });
+
+    test('deleteAllVouchers forwards the batch filter to service', () async {
+      notifier.setBatchFilter(mockBatch);
+
+      String? capturedBatch;
+      when(() => mockService.deleteAllVouchers(
+            'r-1',
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+          )).thenAnswer((invocation) async {
+        capturedBatch =
+            invocation.namedArguments[const Symbol('batch')] as String?;
+        return 0; // empty batch → loop breaks immediately
+      });
+
+      // loadVouchers is called after deleteAll to resync
+      when(() => mockService.getVouchers(
+            'r-1',
+            status: any(named: 'status'),
+            limitType: any(named: 'limitType'),
+            search: any(named: 'search'),
+            batch: any(named: 'batch'),
+            limit: any(named: 'limit'),
+          )).thenAnswer((_) async => VoucherListResult(
+            vouchers: [],
+            total: 0,
+            page: 1,
+            limit: 100,
+          ));
+
+      await notifier.deleteAllVouchers('r-1');
+
+      expect(capturedBatch, '2026-08-09T10:11:12.123456Z');
     });
   });
 }

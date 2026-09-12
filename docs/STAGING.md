@@ -421,8 +421,11 @@ Run this checklist in order after every staging deploy. All items must pass befo
 - [ ] Open the staging app (debug APK pointing at `https://api.wa-sel.cloud/api/v1`)
 - [ ] Register a new account with a real or MailHog email address
 - [ ] OTP email arrives (check MailHog at `http://<STAGING_VPS_IP>:8025` if using MailHog SMTP)
-- [ ] Enter OTP on the verify screen — account becomes verified
-- [ ] Login succeeds, app reaches Dashboard
+- [ ] Enter OTP on the verify screen — welcome snackbar, app lands on Dashboard **already signed in** (the login screen is never shown)
+- [ ] Kill and relaunch the app — still signed in (session persisted)
+- [ ] Register a second account, skip the OTP, then Login with it — `EMAIL_NOT_VERIFIED` → verify screen → OTP → Dashboard
+- [ ] Wrong OTP stays on the verify screen with a localized error; Logout then Login with the first account still works
+- [ ] Five wrong codes → "wait 15 minutes" error; the correct code and Resend are both refused during the lock (`OTP_LOCKED`); the 6th Resend within an hour is refused (`EMAIL_RATE_LIMIT_EXCEEDED`)
 
 PASS: Dashboard loads with no errors in `docker compose logs backend`.
 
@@ -533,7 +536,93 @@ docker compose exec postgres psql -U wasel -d wasel -c \
 
 PASS: The phone loses internet access immediately after the delete.
 
-### 11.10 Full Checklist Summary
+### 11.10 Admin Panel Security and Cache Headers
+
+The admin container emits its own security and cache headers (`admin/nginx.conf.template`), but TLS is terminated by a **host** vhost that is not in this repo — on staging that is `/etc/nginx/sites-available/wasel-admin-staging`, scoped to `server_name admin.wa-sel.cloud`. Only a request against the deployed host proves what a browser actually receives, so run this after every admin rebuild.
+
+- [ ] Exactly **one** `Strict-Transport-Security` header on the SPA shell, carrying the container's value:
+
+```bash
+curl -sSI https://admin.wa-sel.cloud/ | tr -d '\r' | grep -ci '^strict-transport-security:'
+# Expected: 1
+
+curl -sSI https://admin.wa-sel.cloud/ | tr -d '\r' | grep -i '^strict-transport-security:'
+# Expected: strict-transport-security: max-age=31536000; includeSubDomains
+```
+
+Duplicates are not cosmetic. RFC 6797 has the user agent process the **first** HSTS header and ignore the rest, so a second one added at the host would silently become the effective policy. The staging vhost currently sets none; a count of `2` means one was added there (by hand or by certbot).
+
+- [ ] `Referrer-Policy` and `Permissions-Policy` present, once each:
+
+```bash
+for h in referrer-policy permissions-policy; do
+  printf '%s = %s\n' "$h" "$(curl -sSI https://admin.wa-sel.cloud/ | tr -d '\r' | grep -ci "^$h:")"
+done
+# Expected: referrer-policy = 1
+#           permissions-policy = 1
+```
+
+- [ ] The SPA shell revalidates — on `/` and on a client-side deep link:
+
+```bash
+curl -sSI https://admin.wa-sel.cloud/      | tr -d '\r' | grep -i '^cache-control:'
+curl -sSI https://admin.wa-sel.cloud/login | tr -d '\r' | grep -i '^cache-control:'
+# Expected (both): cache-control: no-cache
+```
+
+FAIL trigger: anything with a `max-age` on the shell. A cached `index.html` keeps referencing asset bundles that no longer exist after the next rebuild — the panel goes blank until a hard refresh.
+
+- [ ] A content-hashed bundle is cached forever:
+
+```bash
+ASSET=$(curl -sS https://admin.wa-sel.cloud/ | grep -oE '/assets/[A-Za-z0-9._-]+\.js' | head -1)
+echo "$ASSET"
+
+curl -sSI "https://admin.wa-sel.cloud$ASSET" | tr -d '\r' | grep -i '^cache-control:'
+# Expected: cache-control: public, max-age=31536000, immutable
+```
+
+- [ ] The CSP is unchanged and **identical** on the shell and on that asset. The `/assets/` block redeclares the whole header set (an `add_header` in a `location` drops every inherited one), so a drift between the two is the failure this check exists to catch:
+
+```bash
+diff <(curl -sSI https://admin.wa-sel.cloud/       | tr -d '\r' | grep -i '^content-security-policy:') \
+     <(curl -sSI "https://admin.wa-sel.cloud$ASSET" | tr -d '\r' | grep -i '^content-security-policy:') \
+  && echo "CSP identical on shell and asset"
+```
+
+PASS: `diff` prints nothing, and the header still carries the staging origin in `connect-src` / `img-src` (`https://api.wa-sel.cloud`, substituted from `API_ORIGIN` at container start) — never `api.wa-sel.com`.
+
+> **Expected difference, do not "fix" it:** the API responses proxied through this same host come from the backend's helmet middleware and carry `preload`, which the panel's header deliberately omits — `preload` is a domain-wide, hard-to-reverse commitment the operator has not opted into.
+>
+> ```bash
+> curl -sSI https://admin.wa-sel.cloud/api/v1/health | tr -d '\r' | grep -i '^strict-transport-security:'
+> # Expected: one line, and it ends with `; preload` — unlike the panel's
+> ```
+
+### 11.10a Email Template Upsert Against a Real Postgres
+
+Saving a template type that has no row yet is an `INSERT ... ON CONFLICT DO UPDATE`, and the audit
+trail distinguishes the two halves with `(xmax = 0) AS created` — a Postgres system-column trick that
+unit tests can only assert as a SQL string, since they mock `pool.query`. This is the one piece of the
+write path never exercised against a real server, so confirm it here.
+
+In the panel: open **Email Templates**, pick any type whose "Last updated" shows `—` (no stored row
+yet), edit the subject, and Save. Then edit and Save the same one again.
+
+- [ ] The first save inserts, the second updates:
+
+```bash
+docker compose exec postgres psql -U wasel -d wasel -c \
+  "SELECT created_at, changes->>'created' AS created FROM audit_logs \
+   WHERE action = 'email_template.update' ORDER BY created_at DESC LIMIT 2;"
+# Expected: newest row created = false, the one before it created = true
+```
+
+FAIL trigger: both rows report `true`, or the column is null — the second save inserted a duplicate
+or the `xmax` probe did not survive the `RETURNING` list. Either way the write path is not doing what
+the audit trail claims.
+
+### 11.11 Full Checklist Summary
 
 | Step | Expected result | Pass / Fail |
 |------|-----------------|-------------|
@@ -546,6 +635,8 @@ PASS: The phone loses internet access immediately after the delete.
 | Phone connects + Access-Accept | `radacct` row created | |
 | Disable voucher + Access-Reject | `Auth-Type := Reject` in radcheck | |
 | Delete voucher + CoA Disconnect | `acctstoptime` set, phone drops | |
+| Admin panel headers | One HSTS, `no-cache` shell, `immutable` assets, CSP identical | |
+| Email template upsert | First save audits `created = true`, second `false` | |
 
 ---
 

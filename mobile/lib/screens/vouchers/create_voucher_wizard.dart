@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/voucher_format.dart';
 import '../../models/voucher.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/vouchers_provider.dart';
@@ -43,6 +44,18 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
   bool _isCustomValidity = false;
   final _customValidityController = TextEditingController();
   String _customValidityUnit = 'hours'; // 'hours' or 'days'
+
+  @override
+  void initState() {
+    super.initState();
+    // The Dashboard quick-create path reaches this wizard without the routers
+    // list ever being loaded; fetch it so the print header can resolve the
+    // router's name instead of falling back to the localized "Wi-Fi".
+    final routers = ref.read(routersProvider).routers;
+    if (routers.where((r) => r.id == widget.routerId).isEmpty) {
+      Future.microtask(() => ref.read(routersProvider.notifier).loadRouters());
+    }
+  }
 
   @override
   void dispose() {
@@ -673,7 +686,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
   Widget _buildStep3CountPrice() {
     final limitText = _limitValueController.text.isNotEmpty
-        ? '${_limitValueController.text} $_limitUnit'
+        ? '${_limitValueController.text} ${localizedUnitLabel(context, _limitUnit)}'
         : '';
     final validityText = _validitySeconds == null
         ? context.tr('vouchers.openNoExpiry')
@@ -757,13 +770,13 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                 const SizedBox(height: AppSpacing.sm),
                 _buildSummaryRow(
                   context.tr('vouchers.price'),
-                  context.tr('vouchers.each', [price.toStringAsFixed(2)]),
+                  context.tr('vouchers.each', ['${price.toStringAsFixed(2)} ${context.tr('common.currencySymbol')}']),
                 ),
                 if (count > 1) ...[
                   const Divider(height: AppSpacing.lg),
                   _buildSummaryRow(
                     context.tr('vouchers.total'),
-                    totalPrice.toStringAsFixed(2),
+                    '${totalPrice.toStringAsFixed(2)} ${context.tr('common.currencySymbol')}',
                     bold: true,
                   ),
                 ],

@@ -1,46 +1,57 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
-/// Maps any exception to a display string that is safe to show in the UI.
+import '../i18n/app_localizations.dart';
+
+/// Maps any exception to an i18n key that is safe to show in the UI.
+///
+/// The return value is ALWAYS an `error.*` key — never a backend string, never
+/// [DioException.message], never `error.toString()`. Backend API messages are
+/// English-only (the app sends no `Accept-Language` and the server reads none),
+/// so returning one would show English to an Arabic user.
 ///
 /// Rules (in priority order):
-/// 1. If the error is a [DioException] whose response body has a nested
-///    `error.code` (SCREAMING_SNAKE_CASE), and that code is in the known-codes
-///    table, return the matching `error.<CODE>` i18n key.
-/// 2. If the body has a nested `error.message` string, return it directly —
-///    it is a backend-provided human message.
-/// 3. If the body has a flat `message` string, return that.
-/// 4. Otherwise switch on [DioExceptionType] and return an i18n key from the
-///    `error.*` namespace.  The caller is expected to resolve the key via
-///    `context.trOrRaw(value)`.
-/// 5. Any non-DioException falls through to `"error.unknown"`.
+/// 1. [DioException] whose body carries `error.code` → `error.<CODE>`, when that
+///    key exists in [AppLocalizations]. Keys are DERIVED from the code, not
+///    table-mapped: adding an `error.<CODE>` translation pair is all it takes to
+///    support a new backend code.
+/// 2. Unknown / future code → falls through to 3. The English text is logged in
+///    debug builds only, so an unmapped code stays diagnosable.
+/// 3. [DioExceptionType] → an `error.*` key; `badResponse` maps the HTTP status
+///    via [_statusKey].
+/// 4. Any non-[DioException] → `error.unknown`.
 ///
-/// This function NEVER returns a raw [DioException.message] or
-/// [error.toString()] to the UI.
+/// The caller resolves the key via `context.trOrRaw(value)`.
 String errorToDisplay(Object error) {
   if (error is DioException) {
-    // ── 1 + 2 + 3: try to extract code / message from response body ─────────
+    // ── 1 + 2: derive an i18n key from the backend's machine-readable code ──
     final data = error.response?.data;
-    if (data is Map<String, dynamic>) {
+    if (data is Map) {
       final errorObj = data['error'];
-      if (errorObj is Map<String, dynamic>) {
-        // 1. Machine-readable code → mapped i18n key (takes precedence)
+      if (errorObj is Map) {
         final code = errorObj['code'];
         if (code is String && code.trim().isNotEmpty) {
-          final key = _codeToKey[code];
-          if (key != null) return key;
+          final key = 'error.${code.trim()}';
+          if (AppLocalizations.hasTranslationKey(key)) return key;
+
+          // Unknown code: log the English so it stays diagnosable, but never
+          // render it. The assert body is stripped from release builds.
+          assert(() {
+            debugPrint(
+              '[i18n] Untranslated backend error code "$code" '
+              '(HTTP ${error.response?.statusCode}) — '
+              'add $key to _en and _ar in app_localizations.dart. '
+              'Backend said: ${errorObj['message']}',
+            );
+            return true;
+          }());
         }
-        // 2. Human message from the backend
-        final msg = errorObj['message'];
-        if (msg is String && msg.trim().isNotEmpty) return msg;
       }
-      // 3. Flat message field
-      final flatMsg = data['message'];
-      if (flatMsg is String && flatMsg.trim().isNotEmpty) return flatMsg;
     }
 
-    // ── 4: map Dio-level error type to i18n key ───────────────────────────
+    // ── 3: map the Dio-level error type to an i18n key ─────────────────────
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
@@ -59,7 +70,7 @@ String errorToDisplay(Object error) {
     }
   }
 
-  // ── 5: non-Dio ────────────────────────────────────────────────────────
+  // ── 4: non-Dio ──────────────────────────────────────────────────────────
   return 'error.unknown';
 }
 
@@ -71,8 +82,14 @@ bool isAuthRejection(Object error) =>
     error is DioException && error.response?.statusCode == 401;
 
 /// Maps an HTTP status code to the matching i18n error key.
+///
+/// This is the fallback for a response with no code, or a code this build has
+/// no translation for — so its coverage is what stops English from leaking.
 String _statusKey(int? status) {
   switch (status) {
+    case 400:
+    case 422:
+      return 'error.badRequest';
     case 401:
       return 'error.unauthorized';
     case 403:
@@ -81,6 +98,9 @@ String _statusKey(int? status) {
       return 'error.notFound';
     case 409:
       return 'error.conflict';
+    case 423:
+      // 423 is only ever emitted for the login lockout (auth.service.ts).
+      return 'error.ACCOUNT_LOCKED';
     case 429:
       return 'error.rateLimited';
     case 500:
@@ -92,25 +112,3 @@ String _statusKey(int? status) {
       return 'error.unknown';
   }
 }
-
-/// Mapping from backend SCREAMING_SNAKE_CASE error codes to `error.*` i18n keys.
-///
-/// Keys must have matching entries in [AppLocalizations._en] and [_ar].
-/// For unknown codes the function falls back to the backend's human message.
-const _codeToKey = <String, String>{
-  'VALIDATION_ERROR': 'error.VALIDATION_ERROR',
-  'INVALID_CREDENTIALS': 'error.INVALID_CREDENTIALS',
-  'EMAIL_NOT_VERIFIED': 'error.EMAIL_NOT_VERIFIED',
-  'EMAIL_EXISTS': 'error.EMAIL_EXISTS',
-  'OTP_INVALID': 'error.OTP_INVALID',
-  'QUOTA_EXCEEDED': 'error.QUOTA_EXCEEDED',
-  'SUBSCRIPTION_REQUIRED': 'error.SUBSCRIPTION_REQUIRED',
-  'SUBSCRIPTION_EXPIRED': 'error.SUBSCRIPTION_EXPIRED',
-  'ROUTER_LIMIT_REACHED': 'error.ROUTER_LIMIT_REACHED',
-  'ROUTER_NOT_FOUND': 'error.ROUTER_NOT_FOUND',
-  'ROUTER_UNREACHABLE': 'error.ROUTER_UNREACHABLE',
-  'VOUCHER_NOT_FOUND': 'error.VOUCHER_NOT_FOUND',
-  'TIER_INSUFFICIENT': 'error.TIER_INSUFFICIENT',
-  'INVALID_CURSOR': 'error.INVALID_CURSOR',
-  'INTERNAL_ERROR': 'error.INTERNAL_ERROR',
-};

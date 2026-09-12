@@ -89,6 +89,10 @@ class PushNotificationService {
     try {
       final cachedToken = await _storage.getFcmToken();
       if (cachedToken == token) return;
+      // Not logged in yet (fresh install / logged out): the endpoint needs a
+      // bearer token, so the call would only 401. login() and
+      // tryRestoreSession() call registerCurrentToken() once authenticated.
+      if (await _storage.getAccessToken() == null) return;
       final platform = Platform.isIOS ? 'ios' : 'android';
       await _api.dio.post('/notifications/device-token', data: {
         'token': token,

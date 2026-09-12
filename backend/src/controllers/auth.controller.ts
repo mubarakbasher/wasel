@@ -106,8 +106,6 @@ export async function register(req: Request, res: Response, next: NextFunction):
       success: true,
       data: {
         user: result.user,
-        accessToken: result.tokens.accessToken,
-        refreshToken: result.tokens.refreshToken,
       },
     });
   } catch (error) {
@@ -186,10 +184,15 @@ export async function refresh(req: Request, res: Response, next: NextFunction): 
 export async function verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email, otp } = req.body;
-    await authService.verifyEmail(email, otp);
+    const result = await authService.verifyEmail(email, otp);
+    // Admins never register or verify through this endpoint.
     res.status(200).json({
       success: true,
-      data: { message: 'Email verified successfully' },
+      data: {
+        user: result.user,
+        accessToken: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
+      },
     });
   } catch (error) {
     next(error);

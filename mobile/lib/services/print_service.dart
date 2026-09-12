@@ -1,8 +1,89 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+
+// ---------------------------------------------------------------------------
+// Grid layout constants — shared by [voucherGridLayoutFor] and the PDF builder.
+// ---------------------------------------------------------------------------
+
+const double _kMarginH = 16;
+const double _kMarginV = 16;
+const double _kGutterH = 4;
+const double _kGutterV = 3;
+
+// ---------------------------------------------------------------------------
+// Public grid-math API
+// ---------------------------------------------------------------------------
+
+/// Computed voucher-card dimensions and row count for an A4 page with
+/// [columns] columns, using the standard Wasel print margins (16 pt all sides)
+/// and gutters (horizontal 4 pt, vertical 3 pt).
+///
+/// All measurements are in PDF user-space points (72 pt = 1 inch).
+class VoucherGridLayout {
+  /// Card width in points.
+  final double cardW;
+
+  /// Card height in points, clamped to the range [56, 150] pt.
+  final double cardH;
+
+  /// Number of card rows that fit on a single A4 page.
+  final int rows;
+
+  /// Column count used to construct this layout.
+  final int columns;
+
+  const VoucherGridLayout({
+    required this.cardW,
+    required this.cardH,
+    required this.rows,
+    required this.columns,
+  });
+
+  /// Number of voucher cards that fit on one A4 page.
+  int get perPage => rows * columns;
+}
+
+/// Returns the [VoucherGridLayout] for an A4 page with [columns] columns and
+/// the standard Wasel print margins and gutters.
+///
+/// This is the single source of truth for card/row math — both the preview
+/// page-cap logic and the PDF builder call this function.
+VoucherGridLayout voucherGridLayoutFor(int columns) {
+  final pageFormat = PdfPageFormat.a4.copyWith(
+    marginLeft: _kMarginH,
+    marginRight: _kMarginH,
+    marginTop: _kMarginV,
+    marginBottom: _kMarginV,
+  );
+
+  final double usableW = pageFormat.availableWidth;
+  final double usableH = pageFormat.availableHeight;
+
+  final double cardW = (usableW - _kGutterH * (columns - 1)) / columns;
+  final double cardH = (cardW * 0.62).clamp(56.0, 150.0);
+  final int rows = ((usableH + _kGutterV) / (cardH + _kGutterV)).floor();
+
+  return VoucherGridLayout(
+    cardW: cardW,
+    cardH: cardH,
+    rows: rows,
+    columns: columns,
+  );
+}
+
+/// Returns the total number of A4 pages in a voucher PDF that contains
+/// [itemCount] items arranged in [columns] columns.
+///
+/// Returns 0 when [itemCount] is zero or negative.
+int voucherPdfPageCount(int itemCount, int columns) {
+  if (itemCount <= 0) return 0;
+  final perPage = voucherGridLayoutFor(columns).perPage;
+  return (itemCount / perPage).ceil();
+}
 
 /// Immutable data transfer object passed to [PrintService.generateVouchersPdf].
 ///
@@ -26,61 +107,81 @@ class VoucherPrintItem {
   });
 }
 
-class PrintService {
-  // Arabic Unicode block + Arabic Supplement + Arabic Extended-A + Arabic
-  // Presentation Forms. If the string contains any of these, we must render it
-  // RTL so the pdf package runs Arabic glyph shaping (joining initial/medial/
-  // final forms). Without this, Arabic letters stay as isolated shapes.
-  static final _arabicRegex =
-      RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
+/// Plain-data job passed to [compute] for isolate-offloaded PDF generation.
+class VoucherPdfJob {
+  final List<VoucherPrintItem> items;
+  final String businessName;
+  final int columns;
+  final Uint8List cairoRegular;
+  final Uint8List cairoBold;
 
-  pw.Font? _cairo;
-  pw.Font? _cairoBold;
+  /// Optional PDF document title shown in viewer title bars and share sheets.
+  /// Defaults to `'Wasel Vouchers'` when `null`.
+  final String? docTitle;
+
+  const VoucherPdfJob({
+    required this.items,
+    required this.businessName,
+    required this.columns,
+    required this.cairoRegular,
+    required this.cairoBold,
+    this.docTitle,
+  });
+}
+
+/// Top-level entry point for [compute] — must be a top-level function.
+Future<Uint8List> buildVouchersPdfJob(VoucherPdfJob job) {
+  final builder = _VouchersPdfBuilder(
+    cairo: pw.Font.ttf(job.cairoRegular.buffer.asByteData(
+      job.cairoRegular.offsetInBytes,
+      job.cairoRegular.lengthInBytes,
+    )),
+    cairoBold: pw.Font.ttf(job.cairoBold.buffer.asByteData(
+      job.cairoBold.offsetInBytes,
+      job.cairoBold.lengthInBytes,
+    )),
+  );
+  return builder.build(job.items, job.businessName, columns: job.columns, docTitle: job.docTitle);
+}
+
+// Arabic Unicode block + Arabic Supplement + Arabic Extended-A + Arabic
+// Presentation Forms. If the string contains any of these, we must render it
+// RTL so the pdf package runs Arabic glyph shaping (joining initial/medial/
+// final forms). Without this, Arabic letters stay as isolated shapes.
+final _arabicRegex =
+    RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
+
+class _VouchersPdfBuilder {
+  final pw.Font cairo;
+  final pw.Font cairoBold;
+
+  _VouchersPdfBuilder({required this.cairo, required this.cairoBold});
 
   bool _hasArabic(String s) => _arabicRegex.hasMatch(s);
 
   pw.TextDirection _direction(String s) =>
       _hasArabic(s) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
 
-  Future<void> _ensureFont() async {
-    _cairo ??= pw.Font.ttf(
-      await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
-    );
-    _cairoBold ??= pw.Font.ttf(
-      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
-    );
-  }
-
-  /// Generate an A4 PDF with voucher cards arranged in a configurable grid.
-  Future<Uint8List> generateVouchersPdf(
+  Future<Uint8List> build(
     List<VoucherPrintItem> items,
     String businessName, {
     int columns = 4,
+    String? docTitle,
   }) async {
-    await _ensureFont();
-
-    final doc = pw.Document(title: 'Wasel Vouchers', author: 'Wasel');
-
-    const double marginH = 16;
-    const double marginV = 16;
-    const double gutterH = 4;
-    const double gutterV = 3;
+    final doc = pw.Document(title: docTitle ?? 'Wasel Vouchers', author: 'Wasel');
 
     final pageFormat = PdfPageFormat.a4.copyWith(
-      marginLeft: marginH,
-      marginRight: marginH,
-      marginTop: marginV,
-      marginBottom: marginV,
+      marginLeft: _kMarginH,
+      marginRight: _kMarginH,
+      marginTop: _kMarginV,
+      marginBottom: _kMarginV,
     );
 
-    final double usableW = pageFormat.availableWidth;
-    final double usableH = pageFormat.availableHeight;
-
-    final double cardW = (usableW - gutterH * (columns - 1)) / columns;
-    final double cardH = (cardW * 0.62).clamp(56.0, 150.0);
-
-    final int rows = ((usableH + gutterV) / (cardH + gutterV)).floor();
-    final int perPage = rows * columns;
+    final layout = voucherGridLayoutFor(columns);
+    final double cardW = layout.cardW;
+    final double cardH = layout.cardH;
+    final int rows = layout.rows;
+    final int perPage = layout.perPage;
 
     for (int p = 0; p * perPage < items.length; p++) {
       final start = p * perPage;
@@ -97,8 +198,8 @@ class PrintService {
             rows: rows,
             cardW: cardW,
             cardH: cardH,
-            gutterH: gutterH,
-            gutterV: gutterV,
+            gutterH: _kGutterH,
+            gutterV: _kGutterV,
           ),
         ),
       );
@@ -181,7 +282,7 @@ class PrintService {
                   businessName,
                   style: pw.TextStyle(
                     fontSize: headerFs,
-                    font: _cairoBold,
+                    font: cairoBold,
                     fontWeight: pw.FontWeight.bold,
                   ),
                 ),
@@ -204,7 +305,7 @@ class PrintService {
                       font: pw.Font.courierBold(),
                       fontWeight: pw.FontWeight.bold,
                       letterSpacing: 1,
-                      fontFallback: [_cairo!],
+                      fontFallback: [cairo],
                     ),
                   ),
                 ),
@@ -221,7 +322,7 @@ class PrintService {
                             item.limitText!,
                             style: pw.TextStyle(
                               fontSize: infoFs,
-                              font: _cairoBold,
+                              font: cairoBold,
                               fontWeight: pw.FontWeight.bold,
                             ),
                           ),
@@ -241,7 +342,7 @@ class PrintService {
                           item.validityText,
                           style: pw.TextStyle(
                             fontSize: infoFs,
-                            font: _cairo,
+                            font: cairo,
                           ),
                         ),
                       ),
@@ -253,6 +354,67 @@ class PrintService {
           ),
         ],
       ),
+    );
+  }
+}
+
+class PrintService {
+  /// Optional [loadAsset] overrides the default [rootBundle.load], allowing
+  /// tests to inject a spy that counts actual asset-load calls.
+  PrintService({Future<ByteData> Function(String key)? loadAsset})
+      : _loadAsset = loadAsset ?? rootBundle.load;
+
+  final Future<ByteData> Function(String key) _loadAsset;
+
+  Uint8List? _cairoBytes;
+  Uint8List? _cairoBoldBytes;
+
+  // Single in-flight Future so concurrent callers share one load and the
+  // race-condition "check → await → assign → check" is impossible.
+  Future<void>? _fontLoad;
+
+  Future<void> _ensureFontBytes() {
+    return _fontLoad ??= _loadFontBytes().catchError((Object e, StackTrace s) {
+      // Transient asset failure stays retryable: clear the memo so the next
+      // caller attempts the load again rather than replaying the cached error.
+      _fontLoad = null;
+      Error.throwWithStackTrace(e, s);
+    });
+  }
+
+  Future<void> _loadFontBytes() async {
+    final regular = await _loadAsset('assets/fonts/Cairo-Regular.ttf');
+    final bold = await _loadAsset('assets/fonts/Cairo-Bold.ttf');
+    _cairoBytes = regular.buffer
+        .asUint8List(regular.offsetInBytes, regular.lengthInBytes);
+    _cairoBoldBytes =
+        bold.buffer.asUint8List(bold.offsetInBytes, bold.lengthInBytes);
+  }
+
+  /// Generate an A4 PDF with voucher cards arranged in a configurable grid.
+  ///
+  /// [docTitle] sets the PDF document title shown in viewer title bars and
+  /// share-sheet previews. When `null` (the default), falls back to the static
+  /// `'Wasel Vouchers'` string. Pass `context.tr('vouchers.pdfDocTitle')` from
+  /// the calling screen so the title is localised.
+  Future<Uint8List> generateVouchersPdf(
+    List<VoucherPrintItem> items,
+    String businessName, {
+    int columns = 4,
+    String? docTitle,
+  }) async {
+    await _ensureFontBytes();
+    return compute(
+      buildVouchersPdfJob,
+      VoucherPdfJob(
+        items: items,
+        businessName: businessName,
+        columns: columns,
+        cairoRegular: _cairoBytes!,
+        cairoBold: _cairoBoldBytes!,
+        docTitle: docTitle,
+      ),
+      debugLabel: 'voucherPdf',
     );
   }
 }
