@@ -139,3 +139,14 @@ docker compose --env-file /etc/wasel/compose.env up -d
 ```
 
 RTO target: 2 hours. RPO: 24 hours (daily backup cadence).
+
+## 3. Incident log
+
+### 2026-09-10 12:39 UTC — prod backend crash-restart (uncaught RouterOS socket timeout)
+
+- **Impact:** `wasel-backend-1` exited with code 1 and was auto-restarted by Docker (`restart: unless-stopped`) in ~5 s. API unavailable for those seconds; every open RouterOS call and in-flight request failed. Host did **not** reboot (uptime 128 d); no OOM. Container `RestartCount` reached 5 — the earlier four restarts are outside retained logs and almost certainly the same bug.
+- **Trigger:** a fleet-wide WireGuard flap at 12:39:09 (dozens of `Router status changed offline→online`, 77 RouterOS timeout errors that day) — the known recurring Hostinger path black-hole.
+- **Root cause:** `connectToRouter()` (`backend/src/services/routerOs.service.ts`) never attached an `'error'` listener to the `RouterOSClient`. After login, `node-routeros` re-routes socket `timeout`/`error` to `emit('error')` on the client instead of rejecting the connect promise. With zero listeners Node throws synchronously inside the socket timer callback → not catchable by callers → `process.on('uncaughtException')` in `server.ts` → `exit(1)`. Log signature: `Uncaught exception — exiting` / `RosException: Timed out after 30 seconds` at `node-routeros/dist/connector/Connector.js:187`.
+- **Fix (on `dev`):** `client.on('error', …)` attached before `connect()` (logs a warn + counts a circuit-breaker failure); abandoned retry clients are now `disconnect()`ed; regression test `backend/src/tests/services/routerOs.connect.test.ts`.
+- **How to triage a repeat:** `docker inspect --format '{{.RestartCount}} {{.State.OOMKilled}} {{.State.FinishedAt}}' wasel-backend-1`, then `docker logs --since <t-2m> --until <t> wasel-backend-1 | grep -E 'Uncaught|Unhandled|received, shutting down'`.
+- **Side note (not the cause):** Ubuntu `unattended-upgrades` runs daily ~06:00 UTC on prod. On 2026-09-11 06:02 it upgraded libc6 + python3.12 and **restarted containerd**; dockerd reconnected and containers kept running.
