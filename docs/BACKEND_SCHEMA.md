@@ -480,7 +480,7 @@ Created in `018_tunnel_subnet_pool.sql`. Pre-seeded pool of every /30 block in `
 
 ## 4. FreeRADIUS Tables
 
-> ⚠️ **Ownership warning.** The shape of these tables is dictated by the FreeRADIUS `rlm_sql` module (`freeradius/raddb/mods-enabled/sql`, `driver = "rlm_sql_postgresql"`) and the queries in its bundled `queries.conf`, plus the two `sqlcounter` instances in `freeradius/raddb/mods-enabled/sqlcounter`. **Do not rename columns, change types, or add NOT NULL constraints without coordinating with the FreeRADIUS container config** — `012_fix_radius_schema.sql` exists precisely because the original schema didn't match FreeRADIUS 3.2's queries (missing `nasreload`, too-narrow VARCHARs, NOT NULLs on columns FR sends as NULL). The FreeRADIUS image is built from `freeradius/freeradius-server:3.2.8` (`freeradius/Dockerfile`) and tagged locally as `wasel-freeradius:3.2.4` in `docker-compose.yml`.
+> ⚠️ **Ownership warning.** The shape of these tables is dictated by the FreeRADIUS `rlm_sql` module (`freeradius/raddb/mods-enabled/sql`, `driver = "rlm_sql_postgresql"`) and the queries in its bundled `queries.conf`, plus the two `sqlcounter` instances in `freeradius/raddb/mods-enabled/sqlcounter`. **Do not rename columns, change types, or add NOT NULL constraints without coordinating with the FreeRADIUS container config** — `012_fix_radius_schema.sql` exists precisely because the original schema didn't match FreeRADIUS 3.2's queries (missing `nasreload`, too-narrow VARCHARs, NOT NULLs on columns FR sends as NULL). The FreeRADIUS image is built from `freeradius/freeradius-server:3.2.8` (`freeradius/Dockerfile`) and tagged locally as `wasel-freeradius:3.2.8` in `docker-compose.yml`.
 
 All eight base tables are created in `002_freeradius_tables.sql`; `012_fix_radius_schema.sql` applies the 3.2 fixes. None have FKs to application tables — linkage is by `username` and `nasname`/`nasipaddress` strings.
 
@@ -493,7 +493,7 @@ All eight base tables are created in `002_freeradius_tables.sql`; `012_fix_radiu
 | `radgroupcheck` | Group check attributes | Legacy profile path: `Max-All-Session` (from `radius_profiles.total_time`), `Max-Total-Octets` (from `total_data`) |
 | `radgroupreply` | Group reply attributes | Legacy profile path: `Mikrotik-Rate-Limit := "up/down"` (e.g. `2M/5M`), `Session-Timeout` |
 | `radusergroup` | username → group mapping | Legacy profile vouchers only; wizard vouchers never get a row. Blocks profile deletion while populated |
-| `radacct` | Accounting (Start/Interim/Stop) | **The session and usage source of truth.** Active session = `acctstoptime IS NULL`. Cumulative time = `SUM(acctsessiontime)`; cumulative data = `SUM(acctinputoctets + acctoutputoctets)`. Read by the voucher list/status computation, session endpoints, reports, the two `sqlcounter`s, and all three 30-second jobs |
+| `radacct` | Accounting (Start/Interim/Stop) | **The session and usage source of truth.** Active session = `acctstoptime IS NULL`. Cumulative time = `SUM(acctsessiontime)`; cumulative data = `SUM(acctinputoctets + acctoutputoctets)`. Read by the voucher list/status computation, session endpoints, reports, the two `sqlcounter`s, and all three enforcement jobs |
 | `nas` | RADIUS client registry | One row per router, inserted inside the router-create transaction (`router.service.ts`): `nasname = tunnel_ip`, `shortname = nas_identifier`, `type = 'other'`, `secret = <plaintext 32-char RADIUS secret>`, `description = <router name>`. Deleted by `tunnel_ip` on router delete. FreeRADIUS reads this table to accept the router as a client |
 | `radpostauth` | Auth attempt log | Audit/debugging of Access-Accept/Reject outcomes |
 | `nasreload` | FR 3.2 NAS reload tracking (012) | Required by FreeRADIUS 3.2 accounting queries; not read by Wasel code |
@@ -627,9 +627,9 @@ stateDiagram-v2
 | Transition | Actor | SQL touched |
 |---|---|---|
 | create → `unused` | `POST /routers/:id/vouchers` → `createVouchers` | INSERT `voucher_meta` + `radcheck` (`Cleartext-Password`, `Simultaneous-Use`, limit attr) + optional `radreply` `Session-Timeout`; `UPDATE subscriptions SET vouchers_used += n` |
-| `unused` → `active` | The user logs in; FreeRADIUS writes the accounting Start | INSERT `radacct` (FR-owned). Within ≤30 s the `validityExpiration` job (`backend/src/jobs/validityExpiration.ts`) INSERTs the `Expiration` radcheck row = `MIN(acctstarttime) + validity_seconds` (race-guarded conditional INSERT with `::varchar` casts) |
-| `active`/`used` → `expired` (usage) | `usageLimitEnforcement` job (30 s) | When `SUM(acctsessiontime)` or `SUM(acctinputoctets+acctoutputoctets)` ≥ `voucher_meta.limit_value`: DELETE+INSERT `Auth-Type := Reject` in `radcheck`, `UPDATE voucher_meta SET status='expired'` |
-| `active` → kicked (validity) | `validityCoaDisconnect` job (30 s) | SELECT expired-Expiration + active-radacct + `nas.secret`, then RFC 5176 Disconnect-Request to `nasipaddress:3799` via `sendDisconnectRequest` (`backend/src/services/radclient.service.ts`) |
+| `unused` → `active` | The user logs in; FreeRADIUS writes the accounting Start | INSERT `radacct` (FR-owned). Within ≤30 s the `validityExpiration` job (`backend/src/jobs/validityExpiration.ts`) INSERTs the `Expiration` radcheck row = `MIN(acctstarttime) + validity_seconds` (race-guarded conditional INSERT with `::varchar` casts). Full reconciliation also runs at startup (+3 min) and daily at 02:10 UTC. |
+| `active`/`used` → `expired` (usage) | `usageLimitEnforcement` job (incremental fast pass every 30 s + reconciliation at startup +5 min and daily 02:40 UTC) | When `SUM(acctsessiontime)` or `SUM(acctinputoctets+acctoutputoctets)` ≥ `voucher_meta.limit_value`: DELETE+INSERT `Auth-Type := Reject` in `radcheck`, `UPDATE voucher_meta SET status='expired'` |
+| `active` → kicked (validity) | `validityCoaDisconnect` job (every 30 s, LIMIT 200 per tick) | SELECT expired-Expiration + active-radacct + `nas.secret`, then RFC 5176 Disconnect-Request to `nasipaddress:3799` via `sendDisconnectRequest` (`backend/src/services/radclient.service.ts`) |
 | → `disabled` / re-enable | `PATCH /routers/:id/vouchers/:vid` → `updateVoucher` | INSERT/DELETE `Auth-Type := Reject` radcheck row + `voucher_meta.status` |
 | delete | `DELETE` single / `POST bulk-delete` | DELETE from `radcheck`, `radreply`, `radusergroup`, `voucher_meta`; bulk path also decrements `vouchers_used` (floored at 0); CoA disconnect per active session |
 
@@ -683,13 +683,13 @@ sequenceDiagram
     F->>P: UPDATE radacct set acctstoptime and terminatecause
 ```
 
-The three 30-second jobs (all `node-cron` `*/30 * * * * *`, started in `startServer()` in `backend/src/server.ts`) and exactly what they touch:
+The three enforcement jobs (started in `startServer()` in `backend/src/server.ts`) and exactly what they touch:
 
-| Job | Reads | Writes |
-|---|---|---|
-| `validityExpiration.ts` | `voucher_meta` (validity set, not disabled, no `Expiration` yet) JOIN `radacct` for `MIN(acctstarttime)` | INSERT `radcheck` `Expiration := first_login + validity_seconds` (UTC, `Month DD YYYY HH24:MI:SS`) |
-| `usageLimitEnforcement.ts` | `voucher_meta` JOIN `radacct` with `HAVING SUM(...) >= limit_value` (time and data variants) | DELETE+INSERT `radcheck` `Auth-Type := Reject`; `UPDATE voucher_meta SET status='expired'` |
-| `validityCoaDisconnect.ts` | `voucher_meta` JOIN `radcheck`(Expiration past) JOIN `radacct`(active) JOIN `nas`(secret) | No SQL writes — sends Disconnect-Request packets; the router's resulting Accounting Stop closes the `radacct` row |
+| Job | Schedule | Reads | Writes |
+|---|---|---|---|
+| `validityExpiration.ts` | Fast pass every 30 s (only new first-logins); full reconciliation at startup +3 min and daily 02:10 UTC | `voucher_meta` (validity set, not disabled, no `Expiration` yet) JOIN `radacct` for `MIN(acctstarttime)` | INSERT `radcheck` `Expiration := first_login + validity_seconds` (UTC, `Month DD YYYY HH24:MI:SS`) |
+| `usageLimitEnforcement.ts` | Fast pass every 30 s (only unchecked candidates); full reconciliation at startup +5 min and daily 02:40 UTC | `voucher_meta` JOIN `radacct` with `HAVING SUM(...) >= limit_value` (time and data variants) | DELETE+INSERT `radcheck` `Auth-Type := Reject`; `UPDATE voucher_meta SET status='expired'` |
+| `validityCoaDisconnect.ts` | Every 30 s, up to 200 sessions per tick | `voucher_meta` JOIN `radcheck`(Expiration past) JOIN `radacct`(active) JOIN `nas`(secret) | No SQL writes — sends Disconnect-Request packets; the router's resulting Accounting Stop closes the `radacct` row |
 
 Other scheduled jobs for completeness: `subscriptionNotifications` (daily 09:00 UTC), `quotaMonitor` (every 6 h, notifies at ≥90 % of `voucher_quota`), `purgeUnverified` (hourly, deletes unverified users older than 72 h — which CASCADE-deletes all their data per §5).
 

@@ -342,7 +342,7 @@ Admin data fetching uses TanStack React Query (30 s `staleTime`, retry 1 — `Ap
 
 ## 5. Hotspot End-User Flow
 
-The voucher buyer's entire experience happens on the router's captive portal. Wasel's role is invisible: the RouterOS hotspot delegates AAA to FreeRADIUS (3.2.x — base image `freeradius/freeradius-server:3.2.8`, compose tag `wasel-freeradius:3.2.4` — with `rlm_sql_postgresql`) across the WireGuard tunnel.
+The voucher buyer's entire experience happens on the router's captive portal. Wasel's role is invisible: the RouterOS hotspot delegates AAA to FreeRADIUS (3.2.x — base image `freeradius/freeradius-server:3.2.8`, compose tag `wasel-freeradius:3.2.8` — with `rlm_sql_postgresql`) across the WireGuard tunnel.
 
 ```mermaid
 sequenceDiagram
@@ -374,7 +374,7 @@ Step by step:
 4. **Check** — FreeRADIUS reads `radcheck`: password match, `Simultaneous-Use := 1` (one concurrent session), `Auth-Type := Reject` short-circuits disabled/expired vouchers, and `rlm_expiration` rejects past-`Expiration` vouchers.
 5. **Access-Accept** — reply attributes are applied: `Session-Timeout` (first-session validity cap from `radreply`, later overwritten by `rlm_expiration` with remaining wall-clock time), and any profile group's `Mikrotik-Rate-Limit` via `radusergroup`/`radgroupreply`.
 6. **Accounting** — interim updates accumulate `acctsessiontime` and input/output octets in `radacct`; this is what dashboards, usage bars, and the enforcement jobs read.
-7. **First-login validity start** — the `validityExpiration` job (every 30 s, `backend/src/jobs/validityExpiration.ts`) notices the first `radacct` row for a validity-bearing voucher and writes the `Expiration` radcheck attribute = first login + validity window.
+7. **First-login validity start** — the `validityExpiration` job (`backend/src/jobs/validityExpiration.ts`) notices the first `radacct` row for a validity-bearing voucher and writes the `Expiration` radcheck attribute = first login + validity window. The job runs an incremental fast pass every 30 s (only unprocessed first-logins) plus a full reconciliation at startup and daily at 02:10 UTC.
 
 **Session termination causes:**
 
@@ -382,8 +382,8 @@ Step by step:
 |---|---|---|
 | User logs out | RouterOS hotspot logout | RouterOS |
 | Validity cap on first session | `Session-Timeout` reply attribute | `voucher.service.ts:412-417` |
-| Usage limit reached (time or data) | Job compares `radacct` totals to `voucher_meta.limit_value`; inserts `Auth-Type := Reject`, marks voucher `expired` (blocks the **next** login) | `backend/src/jobs/usageLimitEnforcement.ts` (every 30 s) |
-| Validity window elapsed mid-session | Job sends CoA Disconnect-Request to the NAS at `:3799` for still-active sessions past `Expiration` | `backend/src/jobs/validityCoaDisconnect.ts` (every 30 s) |
+| Usage limit reached (time or data) | Job compares `radacct` totals to `voucher_meta.limit_value`; inserts `Auth-Type := Reject`, marks voucher `expired` (blocks the **next** login) | `backend/src/jobs/usageLimitEnforcement.ts` (fast pass every 30 s + daily reconciliation 02:40 UTC) |
+| Validity window elapsed mid-session | Job sends CoA Disconnect-Request to the NAS at `:3799` for still-active sessions past `Expiration` (up to 200 per tick) | `backend/src/jobs/validityCoaDisconnect.ts` (every 30 s) |
 | Voucher deleted | RADIUS rows removed + immediate CoA disconnect | `voucher.service.ts:762+` |
 | Operator disconnects session | `DELETE /routers/:id/sessions/:sid` → CoA | `backend/src/routes/session.routes.ts` |
 

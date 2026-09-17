@@ -1,0 +1,7 @@
+# Force LF line endings for shell scripts regardless of core.autocrlf.
+# With core.autocrlf=true (Windows default), git would otherwise write CRLF
+# into checked-out .sh files; a CRLF after the shebang (#!) causes the kernel
+# exec to look for a binary named "/bin/sh\r", which does not exist — so
+# docker-entrypoint.sh and healthcheck.sh would both fail with "no such file
+# or directory" at container start.
+*.sh text eol=lf

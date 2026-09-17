@@ -6,13 +6,17 @@
 #   whenever an Access-Request arrives from a 10.10.0.0/16 source IP that
 #   is NOT already in FR's in-memory client table. Looks the NAS up in the
 #   `nas` table by source IP, populates the FreeRADIUS-Client-* control
-#   attributes, and returns ok so FR builds and caches the client. Cached
-#   for `lifetime` seconds (clients.conf), then re-fetched on the next
-#   packet after expiry.
+#   attributes, and returns ok so FR builds and caches the client.
+#
+#   Cache lifetime is 0 (see clients.conf: incident 2026-09-15). Cached
+#   clients never auto-expire. The backend evicts them explicitly
+#   with `radmin -e "del client ipaddr <ip>"` on router create, router
+#   delete and admin user delete, so a re-provisioned tunnel IP picks up
+#   its new secret without a FreeRADIUS restart.
 #
 #   Two SQL queries per cold lookup. Acceptable cost — fires only on the
-#   first packet of a new router (or after 3600s idle), never on hot-path
-#   voucher auth.
+#   first packet of a new router (or after an explicit eviction), never
+#   on hot-path voucher auth.
 #
 #   Both shortname AND secret must come back non-empty; either being NULL
 #   rejects the lookup and FR falls back to "Ignoring request ... from

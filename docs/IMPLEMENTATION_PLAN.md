@@ -116,11 +116,11 @@ Every service has a healthcheck, `json-file` log rotation (10 MB × 3), memory/C
 
 ### Custom FreeRADIUS image — `freeradius/Dockerfile`
 
-- Base: `freeradius/freeradius-server:3.2.8` (bumped from 3.2.4 in commit `8cecf56` for BlastRADIUS-era fixes; note the compose-side local tag `wasel-freeradius:3.2.4` is stale cosmetics — the real pin is the Dockerfile `FROM` line, as the compose comment itself says).
+- Base: `freeradius/freeradius-server:3.2.8` (bumped from 3.2.4 in commit `8cecf56` for BlastRADIUS-era fixes; compose-side local tag is now `wasel-freeradius:3.2.8` — updated to match the base in the 2026-09-17 FreeRADIUS hang remediation).
 - Adds `freeradius-postgresql` driver; enables `sql`, `expiration`, and `sqlcounter` modules.
 - Removes the base image's `inner-tunnel` site and the `eap` module — Wasel is voucher-PAP-only over WireGuard, and on FR 3.2.8 the default `eap` module fails to instantiate without an `Auth-Type EAP` section.
 - Ships Wasel's `raddb/radiusd.conf` (BlastRADIUS mitigation knobs `require_message_authenticator = no`, `limit_proxy_state = no` live in the `security{}` block so SQL-loaded NAS clients inherit them) and `raddb/sites-enabled/` (`default`, `coa`, `control-socket`, `dynamic-clients`).
-- **NAS onboarding is restart-free**: dynamic clients are resolved from the `nas` table via the SQL-backed `dynamic-clients` virtual server (120 s client lifetime, `read_clients` off — commits `796f661`, `f54e1dd`). Adding a router never requires a FreeRADIUS restart.
+- **NAS onboarding is restart-free**: dynamic clients are resolved from the `nas` table via the SQL-backed `dynamic-clients` virtual server (`read_clients` off — commits `796f661`, `f54e1dd`). Clients are cached in FreeRADIUS memory until evicted; the backend calls `radmin del client ipaddr <ip>` on router create, router delete, and admin user delete to flush the cache immediately. Adding or removing a router never requires a FreeRADIUS restart.
 - `/var/run/freeradius` (radmin control socket) is created mode `0770` and shared with the backend via the `freeradius_control` named volume.
 - Mikrotik vendor dictionary copied in; exposes `1812/udp`, `1813/udp`, `3799/udp`.
 

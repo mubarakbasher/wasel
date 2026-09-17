@@ -70,13 +70,16 @@ services:
 
   freeradius:
     build: ./freeradius
-    image: wasel-freeradius:3.2.4-dev
+    image: wasel-freeradius:3.2.8-dev
     # Bridge network + published UDP ports rather than network_mode: host.
     # On Docker Desktop (Windows / macOS), "host" means the Docker Linux VM,
     # not the WSL2 distro the backend is running in — so 127.0.0.1:1812 from
     # the host wouldn't reach freeradius. Publishing UDP ports lets Docker
     # Desktop's vmnetd forward localhost:1812/1813 to the container.
     # Inside the compose network, postgres is reachable by service name.
+    # init: true — same reason as prod: freeradius must not be PID 1 so the
+    # healthcheck watchdog can SIGKILL it (see docker-compose.yml comment).
+    init: true
     environment:
       RADIUS_DB_HOST: postgres
       RADIUS_DB_PORT: 5432
@@ -92,10 +95,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'pgrep freeradius || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ['CMD', '/usr/local/bin/wasel-healthcheck']
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 60s
     logging: *default-logging
     restart: unless-stopped
 

@@ -142,6 +142,18 @@ sudo mkdir -p /etc/wasel
 sudo tee /etc/wasel/compose.env > /dev/null <<'EOF'
 POSTGRES_PASSWORD=<POSTGRES_PASSWORD from 3.1>
 REDIS_PASSWORD=<REDIS_PASSWORD from 3.1>
+
+# Optional Postgres resource tuning — defaults are baked into docker-compose.yml.
+# Staging (1 vCPU / 3.9 GB, shared box) leaves these unset. Prod sets the
+# right-hand values in its own /etc/wasel/compose.env.
+# POSTGRES_MEM_LIMIT=1g                  # default 1g        / prod 3g
+# POSTGRES_CPUS=1.0                      # default 1.0       / prod 1.5
+# POSTGRES_SHARED_BUFFERS=256MB          # default 256MB     / prod 1GB
+# POSTGRES_EFFECTIVE_CACHE_SIZE=512MB    # default 512MB     / prod 2GB
+# POSTGRES_WORK_MEM=8MB                  # default 8MB       / prod 16MB
+# POSTGRES_MAINTENANCE_WORK_MEM=64MB     # default 64MB      / prod 128MB
+# POSTGRES_RANDOM_PAGE_COST=1.1          # default 1.1 (SSD) / prod 1.1
+# POSTGRES_SHM_SIZE=128mb                # default 128mb     / prod 256mb
 EOF
 
 sudo chmod 600 /etc/wasel/compose.env
@@ -263,8 +275,11 @@ curl http://localhost:3000/api/v1/health
 # WireGuard interface is up
 docker compose exec wireguard wg show wg0
 
-# FreeRADIUS process is running
-docker compose exec freeradius pgrep -l freeradius
+# FreeRADIUS is healthy and answers Status-Server. Both checks are read-only.
+# Do not run /usr/local/bin/wasel-healthcheck by hand: it shares the watchdog's
+# failure counter and can SIGKILL FreeRADIUS (docs/OBSERVABILITY.md §2.7).
+docker inspect -f '{{.State.Health.Status}}' wasel-freeradius-1
+docker compose exec freeradius sh -c 'printf "Message-Authenticator = 0x00\n" | radclient -x -t 3 -r 1 127.0.0.1:1812 status testing123' | grep "Received Access-" && echo "answering"
 ```
 
 ---

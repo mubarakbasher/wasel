@@ -65,6 +65,38 @@ services:
 
   postgres:
     image: postgres:16-alpine@sha256:93d55776e04376e19adb2733e3ccebb4392ee7dd86d8ff238503b30fe719c84f
+    # Tuning knobs are env-interpolated so staging (1 vCPU / 3.9 GB shared box)
+    # keeps safe defaults and prod sets larger values in /etc/wasel/compose.env.
+    #
+    # Prod values for /etc/wasel/compose.env (add before `up -d postgres`):
+    #   POSTGRES_MEM_LIMIT=3g
+    #   POSTGRES_CPUS=1.5
+    #   POSTGRES_SHARED_BUFFERS=1GB
+    #   POSTGRES_EFFECTIVE_CACHE_SIZE=2GB
+    #   POSTGRES_WORK_MEM=16MB
+    #   POSTGRES_MAINTENANCE_WORK_MEM=128MB
+    #   POSTGRES_SHM_SIZE=256mb
+    #
+    # Why: the cgroup mem_limit also caps the page cache, so the old 1 GB cap
+    # was simultaneously capping shared_buffers *and* the OS buffer cache.
+    # Prod cache hit ratio was 37.5 % (8.57 TB read from disk in 4 months) and
+    # the container was CPU-throttled 18 % of periods — a direct contributor to
+    # the FreeRADIUS SQL starvation that triggered the 2026-09-15 hang.
+    # Staging runs 1 vCPU / 3.9 GB shared with another stack, so defaults stay
+    # small.
+    command:
+      - postgres
+      - -c
+      - "shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB}"
+      - -c
+      - "effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-512MB}"
+      - -c
+      - "work_mem=${POSTGRES_WORK_MEM:-8MB}"
+      - -c
+      - "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}"
+      - -c
+      - "random_page_cost=${POSTGRES_RANDOM_PAGE_COST:-1.1}"
+    shm_size: ${POSTGRES_SHM_SIZE:-128mb}
     environment:
       POSTGRES_DB: wasel
       POSTGRES_USER: wasel
@@ -81,8 +113,8 @@ services:
       retries: 5
     logging: *default-logging
     restart: unless-stopped
-    mem_limit: 1g
-    cpus: 1.0
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
+    cpus: ${POSTGRES_CPUS:-1.0}
 
   redis:
     image: redis:7-alpine@sha256:efc27681bf81e6ed55cb581718b7818c6c04c39b1f9aa40854edd3ea2241b6ed
@@ -109,7 +141,13 @@ services:
     # line; the `image:` here is just the local tag buildx applies — a digest
     # alongside `build:` is rejected by modern buildx.
     build: ./freeradius
-    image: wasel-freeradius:3.2.4
+    image: wasel-freeradius:3.2.8
+    # init: true places docker-init as PID 1 and freeradius as a child process.
+    # Before incident 2026-09-15 freeradius was PID 1; a process cannot be
+    # SIGKILLed from inside its own PID namespace, so the watchdog kill and
+    # `kill -STOP` simulation tests were both no-ops.  docker-init also
+    # forwards SIGTERM on `docker stop`, so graceful shutdown still works.
+    init: true
     network_mode: host
     environment:
       RADIUS_DB_HOST: 127.0.0.1
@@ -128,10 +166,17 @@ services:
       wireguard:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'pgrep freeradius || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      # wasel-healthcheck sends a Status-Server packet and kills freeradius
+      # after FR_WATCHDOG_KILL_AFTER (8, ~3 min) consecutive failures when the
+      # main thread is spinning on CPU, or FR_WATCHDOG_KILL_AFTER_STALLED
+      # (30, ~10 min) when it is blocked, e.g. on a stalled DB.  The old
+      # `pgrep freeradius` check kept reporting healthy during the 2026-09-15
+      # incident because the process existed but was stuck in a libtalloc loop.
+      test: ['CMD', '/usr/local/bin/wasel-healthcheck']
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 60s
     logging: *default-logging
     restart: unless-stopped
     mem_limit: 512m
