@@ -11,6 +11,7 @@ import { generateMikrotikConfigText, generateSetupSteps, SetupStep } from './wir
 import { getRouterLimit } from './subscription.service';
 import { getSystemInfo } from './routerOs.service';
 import { runHealthCheck } from './routerHealth.service';
+import { evictDynamicClient } from './freeradius.service';
 
 // ----- Interfaces -----
 
@@ -203,6 +204,22 @@ export async function createRouter(
     );
 
     await client.query('COMMIT');
+
+    // Evict any stale FreeRADIUS dynamic-client cache entry for this tunnel IP
+    // BEFORE adding the WireGuard peer. With lifetime = 0 (incident 2026-09-15
+    // fix), FR never auto-expires clients, so reusing an IP that was previously
+    // assigned to a different router would keep the old NAS secret in FR's cache
+    // until a manual restart. The eviction must happen after COMMIT so the new
+    // nas row is visible to FR on the next lookup, and before addPeer so the
+    // router's first Auth-Request triggers a fresh dynamic-client load.
+    {
+      const evictOutcome = await evictDynamicClient(tunnel.routerIp);
+      logger.info('createRouter: evictDynamicClient', {
+        routerId: router.id,
+        tunnelIp: tunnel.routerIp,
+        outcome: evictOutcome,
+      });
+    }
 
     // Add WireGuard peer (non-fatal if wg isn't available in dev)
     try {
@@ -433,6 +450,21 @@ export async function deleteRouter(userId: string, routerId: string): Promise<vo
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  // Evict the deleted router's FreeRADIUS dynamic-client cache entry after
+  // COMMIT so no further Auth-Requests from this IP are accepted with the
+  // old secret. With lifetime = 0 (incident 2026-09-15 fix) the entry would
+  // persist in FR's cache forever without this explicit eviction. Non-fatal:
+  // the NAS row is already gone from Postgres so FR will reject any packet
+  // that would trigger a fresh dynamic-client load anyway.
+  if (router!.tunnel_ip) {
+    const evictOutcome = await evictDynamicClient(router!.tunnel_ip);
+    logger.info('deleteRouter: evictDynamicClient', {
+      routerId,
+      tunnelIp: router!.tunnel_ip,
+      outcome: evictOutcome,
+    });
   }
 
   logger.info('Router deleted', {

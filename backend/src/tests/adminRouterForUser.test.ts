@@ -61,6 +61,7 @@ vi.mock('../services/routerOs.service', () => ({
 
 vi.mock('../services/freeradius.service', () => ({
   showFreeradiusClients: vi.fn().mockResolvedValue(''),
+  evictDynamicClient: vi.fn().mockResolvedValue('evicted'),
 }));
 
 vi.mock('../services/routerHealth.service', () => ({
@@ -423,7 +424,8 @@ describe('DELETE /api/v1/admin/users/:id', () => {
 
     // Transaction sequence (all on client):
     // BEGIN → SELECT user → SELECT voucher_meta → DELETE radcheck →
-    // DELETE radreply → DELETE radusergroup → DELETE users → COMMIT
+    // DELETE radreply → DELETE radusergroup → DELETE nas RETURNING →
+    // SELECT routers wg_public_key → DELETE users → COMMIT
     mockClientQuery
       .mockResolvedValueOnce(undefined)  // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: TARGET_USER_ID, role: 'user' }], rowCount: 1 }) // SELECT users
@@ -434,6 +436,8 @@ describe('DELETE /api/v1/admin/users/:id', () => {
       .mockResolvedValueOnce({ rowCount: 2 })  // DELETE radcheck
       .mockResolvedValueOnce({ rowCount: 2 })  // DELETE radreply
       .mockResolvedValueOnce({ rowCount: 2 })  // DELETE radusergroup
+      .mockResolvedValueOnce({ rows: [] })      // DELETE nas RETURNING nasname
+      .mockResolvedValueOnce({ rows: [] })      // SELECT routers wg_public_key
       .mockResolvedValueOnce({ rowCount: 1 })  // DELETE users
       .mockResolvedValueOnce(undefined);        // COMMIT
 
@@ -464,6 +468,8 @@ describe('DELETE /api/v1/admin/users/:id', () => {
       .mockResolvedValueOnce(undefined)  // BEGIN
       .mockResolvedValueOnce({ rows: [{ id: TARGET_USER_ID, role: 'user' }], rowCount: 1 }) // SELECT users
       .mockResolvedValueOnce({ rows: [] })  // SELECT voucher_meta (none)
+      .mockResolvedValueOnce({ rows: [] })  // DELETE nas RETURNING nasname
+      .mockResolvedValueOnce({ rows: [] })  // SELECT routers wg_public_key
       .mockResolvedValueOnce({ rowCount: 1 })  // DELETE users
       .mockResolvedValueOnce(undefined);        // COMMIT
 

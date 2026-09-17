@@ -79,6 +79,13 @@ interface FreeradiusStatus {
     raw: string;
     lineCount: number;
   };
+  // Status-Server probe result. Optional so the card still renders against a
+  // backend that predates the probe.
+  radius?: {
+    responding: boolean;
+    outcome: 'accept' | 'reject' | 'timeout';
+    latencyMs: number;
+  };
 }
 
 function extractErr(err: unknown, fallback = 'Request failed'): string {
@@ -832,7 +839,10 @@ function FreeradiusCard() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-freeradius-status'],
     queryFn: async () => {
-      const { data: res } = await api.get('/admin/freeradius/status');
+      // Incident 2026-09-15: the status call hung and the card sat on "Loading"
+      // for hours while FreeRADIUS was dead. The shared client has no timeout, so
+      // bound this request and let a stuck backend surface as the error panel.
+      const { data: res } = await api.get('/admin/freeradius/status', { timeout: 10_000 });
       return res.data as FreeradiusStatus;
     },
     refetchInterval: 30_000,
@@ -851,8 +861,14 @@ function FreeradiusCard() {
   }
 
   // The control socket must exist and be both readable and writable for the
-  // backend's radmin probes to reach FreeRADIUS.
-  const healthy = data.socket.exists && data.socket.readable && data.socket.writable;
+  // backend's radmin probes to reach FreeRADIUS. The socket alone is not enough:
+  // on 2026-09-15 it stayed present while the server answered nothing, so a
+  // failed Status-Server probe also marks the card unhealthy.
+  const healthy =
+    data.socket.exists &&
+    data.socket.readable &&
+    data.socket.writable &&
+    data.radius?.responding !== false;
   const rawOutput = data.clients.raw?.trim()
     ? data.clients.raw
     : 'No output — radmin returned nothing (socket unreachable, or no NAS clients cached yet).';
@@ -889,6 +905,14 @@ function FreeradiusCard() {
             {data.socket.exists &&
               `, ${data.socket.readable ? 'r' : '-'}${data.socket.writable ? 'w' : '-'}`}
           </div>
+          {data.radius &&
+            (data.radius.responding ? (
+              <div className="mt-0.5">RADIUS: responding ({data.radius.latencyMs} ms)</div>
+            ) : (
+              <div className="mt-0.5 font-medium text-red-700">
+                RADIUS: not responding (no Status-Server reply)
+              </div>
+            ))}
         </div>
       </div>
 

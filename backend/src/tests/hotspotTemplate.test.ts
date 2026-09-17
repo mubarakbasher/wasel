@@ -73,6 +73,7 @@ vi.mock('../services/wireguardConfig', () => ({
 
 vi.mock('../services/freeradius.service', () => ({
   showFreeradiusClients: vi.fn().mockResolvedValue(''),
+  evictDynamicClient: vi.fn().mockResolvedValue('evicted'),
 }));
 
 vi.mock('../services/routerHealth.service', () => ({

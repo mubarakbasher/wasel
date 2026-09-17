@@ -199,3 +199,99 @@ export async function sendDisconnectRequest(
     child.stdin.end();
   });
 }
+
+export interface StatusServerResult {
+  /** True when FreeRADIUS answered with an Access-Accept or Access-Reject. */
+  responding: boolean;
+  outcome: RadiusAuthResult;
+  latencyMs: number;
+}
+
+/**
+ * Send a single Status-Server RADIUS request to the local FreeRADIUS
+ * instance on 127.0.0.1:1812 and observe whether it replies. Used by the
+ * admin status card and by freeradiusMonitor to detect a hang without
+ * touching the SQL path.
+ *
+ * The shared secret `testing123` belongs to the `localhost` client block in
+ * freeradius/raddb/clients.conf (ipaddr = 127.0.0.1). Sending it from a
+ * non-loopback source would fail the HMAC check, so this probe is safe to
+ * hardcode.
+ *
+ * Verified on prod: `printf 'Message-Authenticator = 0x00\n' | radclient
+ * ... status testing123` returns Access-Accept with no rlm_sql call, no
+ * radpostauth row, and no log line — so the probe cannot itself drive the
+ * DB overload that broke FreeRADIUS on 2026-09-15.
+ *
+ * Never rejects. A spawn failure or missing binary is reported as
+ * `{ responding: false, outcome: 'timeout' }` so callers can treat any
+ * negative outcome the same way.
+ */
+export async function sendStatusServer(
+  params: { timeoutMs?: number } = {},
+): Promise<StatusServerResult> {
+  const timeoutMs = params.timeoutMs ?? 3_000;
+  const started = Date.now();
+
+  return new Promise<StatusServerResult>((resolve) => {
+    const args = [
+      '-x',
+      '-t',
+      String(Math.max(1, Math.floor(timeoutMs / 1000))),
+      '-r',
+      '1',
+      '127.0.0.1:1812',
+      'status',
+      'testing123',
+    ];
+
+    const child = spawn('radclient', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const settle = (result: StatusServerResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    const killTimer = setTimeout(() => {
+      if (settled) return;
+      try { child.kill('SIGKILL'); } catch { /* best-effort */ }
+      settle({ responding: false, outcome: 'timeout', latencyMs: Date.now() - started });
+    }, timeoutMs + 1_000);
+
+    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8'); });
+
+    child.on('error', (err) => {
+      clearTimeout(killTimer);
+      logger.warn('radclient status spawn failed', { error: err.message });
+      // No process, no reply — surface as timeout so the caller's binary
+      // "responding?" check gets the correct answer.
+      settle({ responding: false, outcome: 'timeout', latencyMs: Date.now() - started });
+    });
+
+    child.on('close', () => {
+      clearTimeout(killTimer);
+      const latencyMs = Date.now() - started;
+      const combined = `${stdout}\n${stderr}`;
+      if (/Received Access-Accept/i.test(combined)) {
+        settle({ responding: true, outcome: 'accept', latencyMs });
+      } else if (/Received Access-Reject/i.test(combined)) {
+        // A reject still proves FreeRADIUS' main thread is alive.
+        settle({ responding: true, outcome: 'reject', latencyMs });
+      } else {
+        settle({ responding: false, outcome: 'timeout', latencyMs });
+      }
+    });
+
+    // radclient reads one request per line on stdin and closes on EOF.
+    // Status-Server needs a Message-Authenticator attribute per RFC 5997;
+    // the placeholder value is filled in by radclient before signing.
+    child.stdin.write('Message-Authenticator = 0x00\n');
+    child.stdin.end();
+  });
+}

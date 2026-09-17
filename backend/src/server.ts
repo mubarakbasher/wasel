@@ -16,6 +16,7 @@ import { startDataUsageCoaDisconnectJob } from './jobs/dataUsageCoaDisconnect';
 import { startUsageLimitEnforcementJob } from './jobs/usageLimitEnforcement';
 import { startStaleSessionReaperJob } from './jobs/staleSessionReaper';
 import { startMonitoring } from './services/wireguardMonitor';
+import { startFreeradiusMonitor } from './services/freeradiusMonitor';
 import { syncPeersFromDatabase } from './services/wireguardPeer';
 import { verifyServerEndpointResolves } from './services/wireguardConfig';
 import { runMigrations } from './migrations/runner';
@@ -123,6 +124,7 @@ async function startServer(): Promise<void> {
     startUsageLimitEnforcementJob();
     startStaleSessionReaperJob();
     startMonitoring();
+    startFreeradiusMonitor();
 
     // Start HTTP server. Bind explicitly to 0.0.0.0 (IPv4) rather than letting
     // Node default to IPv6 dual-stack `::` — WSL2's wslrelay only mirrors the

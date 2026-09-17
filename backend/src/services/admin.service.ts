@@ -16,6 +16,8 @@ import {
   VoucherInfo,
   VoucherMetaRow,
 } from './voucher.service';
+import { evictDynamicClient } from './freeradius.service';
+import { removePeer } from './wireguardPeer';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -233,6 +235,9 @@ export async function updateUser(
  */
 export async function deleteUser(userId: string): Promise<void> {
   const client = await pool.connect();
+  // Collected inside the transaction so we can clean up after COMMIT.
+  let evictIps: string[] = [];
+  let peerKeys: string[] = [];
 
   try {
     await client.query('BEGIN');
@@ -274,12 +279,25 @@ export async function deleteUser(userId: string): Promise<void> {
     // 3b. Remove nas rows for this user's routers. There is no FK from nas to
     //     routers, so the routers cascade does not clean these up. Mirrors the
     //     per-router deleteRouter path for the multi-router user-delete case.
-    await client.query(
+    // RETURNING nasname so we can evict the FreeRADIUS dynamic-client cache
+    // entries after COMMIT (incident 2026-09-15: with lifetime = 0 the entries
+    // persist forever without an explicit eviction call).
+    const nasResult = await client.query<{ nasname: string }>(
       `DELETE FROM nas WHERE nasname IN (
          SELECT tunnel_ip FROM routers WHERE user_id = $1 AND tunnel_ip IS NOT NULL
-       )`,
+       ) RETURNING nasname`,
       [userId],
     );
+    evictIps = nasResult.rows.map((r) => r.nasname);
+
+    // 3c. Snapshot the routers' WireGuard public keys before the cascade
+    //     removes the rows, so the peers can be taken off wg0 after COMMIT
+    //     (mirrors deleteRouter).
+    const peerResult = await client.query<{ wg_public_key: string }>(
+      `SELECT wg_public_key FROM routers WHERE user_id = $1 AND wg_public_key IS NOT NULL`,
+      [userId],
+    );
+    peerKeys = peerResult.rows.map((r) => r.wg_public_key);
 
     // 4. Delete the user — cascades to routers → voucher_meta.
     await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
@@ -290,6 +308,34 @@ export async function deleteUser(userId: string): Promise<void> {
     throw error;
   } finally {
     client.release();
+  }
+
+  // Remove each router's WireGuard peer BEFORE evicting its FreeRADIUS client,
+  // in the same order as deleteRouter. `del client` does not free the client:
+  // FR frees it on a timer, with no reference counting, when the next packet
+  // from that IP arrives (the 2026-09-15 use-after-free mechanism). If the
+  // tunnel stayed up, the deleted router's next packet would schedule that
+  // free while its earlier requests could still be stuck in SQL. With the
+  // peer gone, the next packet from the IP normally comes from a different
+  // router much later. Non-fatal, like deleteRouter.
+  for (const key of peerKeys) {
+    try {
+      await removePeer(key);
+    } catch (error) {
+      logger.warn('deleteUser: failed to remove WireGuard peer (non-fatal)', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Evict each deleted router's FreeRADIUS dynamic-client cache entry after
+  // COMMIT. Sequential to avoid hammering the radmin socket. Non-fatal:
+  // the NAS rows are already gone from Postgres so FR will reject any packet
+  // that triggers a fresh dynamic-client load regardless.
+  for (const ip of evictIps) {
+    const outcome = await evictDynamicClient(ip);
+    logger.info('deleteUser: evictDynamicClient', { userId, tunnelIp: ip, outcome });
   }
 
   logger.info('Admin deleted user', { userId });

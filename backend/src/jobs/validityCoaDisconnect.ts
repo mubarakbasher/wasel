@@ -16,14 +16,26 @@ import { sendDisconnectRequest } from '../services/radclient.service';
  * the router's idle-timeout fires or the user manually disconnects — even
  * though rlm_expiration would correctly reject any *new* Access-Request.
  *
- * Runs every 30 seconds.
+ * Runs every 30 seconds. Capped at 200 rows per tick (matches
+ * dataUsageCoaDisconnect) to prevent runaway radclient spawns on large backlogs.
+ * The in-flight guard prevents a slow tick from overlapping the next one.
  */
+
+// In-flight guard: set true while a tick is executing so that a slow DB query
+// or radclient call cannot cause two ticks to overlap (matches
+// dataUsageCoaDisconnect.ts pattern).
+let running = false;
+
 export function startValidityCoaDisconnectJob(): void {
   cron.schedule('*/30 * * * * *', async () => {
+    if (running) return;
+    running = true;
     try {
       // Parse the radcheck Expiration string ("Month DD YYYY HH24:MI:SS",
       // written in UTC by validityExpiration.ts) using to_timestamp, and
       // join the per-NAS shared secret so we can build a CoA packet.
+      // LIMIT 200 per tick prevents runaway radclient spawns on large backlogs;
+      // the job re-fires every 30 s until all expired sessions are cleared.
       const result = await pool.query<{
         username: string;
         nasipaddress: string;
@@ -48,6 +60,7 @@ export function startValidityCoaDisconnectJob(): void {
         WHERE vm.status NOT IN ('disabled')
           AND to_timestamp(rc.value, 'Month DD YYYY HH24:MI:SS')
               AT TIME ZONE 'UTC' < NOW()
+        LIMIT 200
       `);
 
       if (result.rows.length === 0) return;
@@ -70,8 +83,15 @@ export function startValidityCoaDisconnectJob(): void {
       }
     } catch (error) {
       logger.error('Validity CoA disconnect job failed', { error });
+    } finally {
+      running = false;
     }
   });
 
   logger.info('Validity CoA disconnect job scheduled (every 30s)');
+}
+
+/** Reset module-level state. Exported for tests only. */
+export function _resetJobState(): void {
+  running = false;
 }

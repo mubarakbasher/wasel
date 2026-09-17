@@ -14,6 +14,7 @@ import {
   getRadminSocketPath,
   showFreeradiusClients,
 } from '../services/freeradius.service';
+import { sendStatusServer } from '../services/radclient.service';
 import { applyHotspotTemplate } from '../services/hotspotTemplate.service';
 import { AppError } from '../middleware/errorHandler';
 import { redact } from '../utils/redact';
@@ -844,9 +845,17 @@ async function socketReachability(): Promise<{ path: string; exists: boolean; re
  */
 export async function getFreeradiusStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const [socket, clients] = await Promise.all([
+    // Run all three probes in parallel. Each is independently bounded:
+    //   - socketReachability: filesystem access calls, effectively instant
+    //   - showFreeradiusClients: runRadmin with a 3 s SIGKILL timeout
+    //   - sendStatusServer: radclient with a 2 s timeoutMs (+ 1 s kill buffer)
+    // Together the endpoint resolves within ~3.5 s even when FreeRADIUS is
+    // hung in libtalloc (incident 2026-09-15: the old untimed radmin call made
+    // this endpoint spin forever alongside the hung process).
+    const [socket, clients, radiusProbe] = await Promise.all([
       socketReachability(),
       showFreeradiusClients(),
+      sendStatusServer({ timeoutMs: 2_000 }),
     ]);
     res.status(200).json({
       success: true,
@@ -855,6 +864,11 @@ export async function getFreeradiusStatus(req: AuthenticatedRequest, res: Respon
         clients: {
           raw: clients,
           lineCount: clients ? clients.split('\n').filter((l) => l.trim().length > 0).length : 0,
+        },
+        radius: {
+          responding: radiusProbe.responding,
+          outcome: radiusProbe.outcome,
+          latencyMs: radiusProbe.latencyMs,
         },
       },
     });

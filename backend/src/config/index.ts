@@ -137,6 +137,9 @@ const envSchema = z.object({
   RADIUS_AUTH_PORT: z.coerce.number().default(1812),
   RADIUS_ACCT_PORT: z.coerce.number().default(1813),
   RADIUS_COA_PORT: z.coerce.number().default(3799),
+  // How often the FreeRADIUS monitor probes Status-Server and show uptime (ms).
+  // 0 disables the monitor (useful in dev/test without a FreeRADIUS container).
+  FREERADIUS_MONITOR_INTERVAL_MS: z.coerce.number().int().min(0).default(60_000),
 
   // Firebase (Push Notifications)
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),

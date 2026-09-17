@@ -21,13 +21,14 @@ vi.mock('../../services/radclient.service', () => ({
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof vi.fn>;
 
-import { startValidityCoaDisconnectJob } from '../validityCoaDisconnect';
+import { startValidityCoaDisconnectJob, _resetJobState } from '../validityCoaDisconnect';
 
 beforeEach(() => {
   cronTicks.length = 0;
   mockQuery.mockReset();
   sendDisconnectRequestMock.mockReset();
   sendDisconnectRequestMock.mockResolvedValue('ack');
+  _resetJobState();
 });
 
 describe('validityCoaDisconnect job', () => {
@@ -87,5 +88,39 @@ describe('validityCoaDisconnect job', () => {
 
     await expect(cronTicks[0]()).resolves.toBeUndefined();
     expect(sendDisconnectRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('LIMIT 200 is present in the query', async () => {
+    startValidityCoaDisconnectJob();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await cronTicks[0]();
+
+    const sql = (mockQuery.mock.calls[0] as [string])[0];
+    expect(sql).toMatch(/LIMIT\s+200/i);
+  });
+
+  it('guard prevents overlapping ticks', async () => {
+    startValidityCoaDisconnectJob();
+
+    let releaseFirst!: () => void;
+    const blocked = new Promise<void>((res) => {
+      releaseFirst = res;
+    });
+
+    // First tick: query hangs until we release it
+    mockQuery.mockReturnValueOnce(blocked.then(() => ({ rows: [] })));
+
+    const tick1 = cronTicks[0](); // running = true, then awaits query
+    const tick2 = cronTicks[0](); // guard fires: running is true → returns immediately
+    await tick2;
+
+    // Only tick1 hit the pool; tick2 was a no-op
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(sendDisconnectRequestMock).not.toHaveBeenCalled();
+
+    // Let tick1 finish
+    releaseFirst();
+    await tick1;
   });
 });

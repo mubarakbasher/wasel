@@ -9,6 +9,7 @@ import {
   ACTIVE_SUBSCRIPTION_ROW,
   TEST_ROUTER_ID,
 } from './helpers';
+import { evictDynamicClient } from '../services/freeradius.service';
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof vi.fn>;
 const mockClientQuery = (globalThis as Record<string, unknown>).__mockClientQuery as ReturnType<typeof vi.fn>;
@@ -65,6 +66,7 @@ vi.mock('../services/routerOs.service', () => ({
 
 vi.mock('../services/freeradius.service', () => ({
   showFreeradiusClients: vi.fn().mockResolvedValue(''),
+  evictDynamicClient: vi.fn().mockResolvedValue('evicted'),
 }));
 
 vi.mock('../services/routerHealth.service', () => ({
@@ -103,6 +105,8 @@ const MOCK_ROUTER_ROW = {
 beforeEach(() => {
   mockQuery.mockReset();
   mockClientQuery.mockReset();
+  vi.mocked(evictDynamicClient).mockReset();
+  vi.mocked(evictDynamicClient).mockResolvedValue('evicted');
 });
 
 // ─── POST /api/v1/routers ────────────────────────────────────────────────────
@@ -524,5 +528,111 @@ describe('GET /api/v1/routers/:id/setup-guide', () => {
     expect(res.body.data.setupGuide).toBeDefined();
     expect(res.body.data.routerName).toBe('Office Router');
     expect(res.body.data.tunnelIp).toBe('10.10.0.2');
+  });
+});
+
+// ─── evictDynamicClient call sites ───────────────────────────────────────────
+
+describe('evictDynamicClient call sites', () => {
+  it('createRouter calls evictDynamicClient with the allocated tunnel IP after COMMIT', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [ACTIVE_SUBSCRIPTION_ROW] });
+    mockQuery.mockResolvedValueOnce({ rows: [{
+      id: 'plan-starter', tier: 'starter', name: 'Starter', price: '5',
+      currency: 'SDG', max_routers: 1, monthly_vouchers: 500,
+      session_monitoring: null, dashboard: null, features: [],
+      allowed_durations: [1], is_active: true,
+      created_at: new Date(), updated_at: new Date(),
+    }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] }) // INSERT router
+      .mockResolvedValueOnce(undefined) // UPDATE tunnel_ip
+      .mockResolvedValueOnce(undefined) // UPDATE nas_identifier
+      .mockResolvedValueOnce(undefined) // INSERT nas
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    const res = await request(app)
+      .post('/api/v1/routers')
+      .set(authHeader())
+      .send({ name: 'My Router' });
+
+    expect(res.status).toBe(201);
+    // allocateNextTunnelIp mock returns routerIp = '10.10.0.2'
+    expect(vi.mocked(evictDynamicClient)).toHaveBeenCalledWith('10.10.0.2');
+  });
+
+  it('createRouter succeeds even if evictDynamicClient returns error', async () => {
+    // Incident 2026-09-15: eviction is non-fatal — an error outcome must not
+    // propagate up and turn a successful router creation into a 500.
+    vi.mocked(evictDynamicClient).mockResolvedValue('error');
+
+    mockSubscriptionQuery(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [ACTIVE_SUBSCRIPTION_ROW] });
+    mockQuery.mockResolvedValueOnce({ rows: [{
+      id: 'plan-starter', tier: 'starter', name: 'Starter', price: '5',
+      currency: 'SDG', max_routers: 1, monthly_vouchers: 500,
+      session_monitoring: null, dashboard: null, features: [],
+      allowed_durations: [1], is_active: true,
+      created_at: new Date(), updated_at: new Date(),
+    }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    const res = await request(app)
+      .post('/api/v1/routers')
+      .set(authHeader())
+      .send({ name: 'My Router' });
+
+    expect(res.status).toBe(201);
+  });
+
+  it('deleteRouter calls evictDynamicClient with tunnel IP after COMMIT', async () => {
+    mockSubscriptionQuery(mockQuery);
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)               // BEGIN
+      .mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] }) // SELECT routers
+      .mockResolvedValueOnce({ rows: [] })             // SELECT voucher_meta (none)
+      .mockResolvedValueOnce({ rowCount: 1 })          // DELETE nas
+      .mockResolvedValueOnce({ rowCount: 1 })          // DELETE routers
+      .mockResolvedValueOnce(undefined);               // COMMIT
+
+    const res = await request(app)
+      .delete(`/api/v1/routers/${TEST_ROUTER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(evictDynamicClient)).toHaveBeenCalledWith(MOCK_ROUTER_ROW.tunnel_ip);
+  });
+
+  it('deleteRouter succeeds even if evictDynamicClient returns timeout', async () => {
+    // timeout must be non-fatal — it must not turn a successful delete into a 500.
+    vi.mocked(evictDynamicClient).mockResolvedValue('timeout');
+
+    mockSubscriptionQuery(mockQuery);
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [MOCK_ROUTER_ROW] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce(undefined);
+
+    const res = await request(app)
+      .delete(`/api/v1/routers/${TEST_ROUTER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
   });
 });

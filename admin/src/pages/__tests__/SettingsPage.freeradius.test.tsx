@@ -27,6 +27,14 @@ const bankInfo = { bankName: '', accountNumber: '', accountHolder: '', instructi
 const healthyFreeradius = {
   socket: { path: '/var/run/freeradius/radmin.sock', exists: true, readable: true, writable: true },
   clients: { raw: 'Client: cafe-router\nClient: office-router', lineCount: 2 },
+  radius: { responding: true, outcome: 'accept', latencyMs: 12 },
+};
+
+// Incident 2026-09-15 shape: the control socket is still present and rw, but
+// the server no longer answers Status-Server.
+const hungFreeradius = {
+  ...healthyFreeradius,
+  radius: { responding: false, outcome: 'timeout', latencyMs: 2000 },
 };
 
 function routeGet(freeradius: () => Promise<unknown>) {
@@ -65,7 +73,48 @@ describe('SettingsPage — FreeRADIUS card', () => {
     expect(screen.getByText('Healthy')).toBeInTheDocument();
     // The count is bold ("2") followed by " cached clients" — assert the plural label.
     expect(screen.getByText(/cached clients/)).toBeInTheDocument();
+    expect(screen.getByText('RADIUS: responding (12 ms)')).toBeInTheDocument();
     expect(screen.getByText('Raw radmin output')).toBeInTheDocument();
+  });
+
+  it('bounds the status request with a client-side timeout', async () => {
+    routeGet(() => Promise.resolve({ data: { data: healthyFreeradius } }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: /System Status/ }));
+    await screen.findByText('FreeRADIUS');
+
+    expect(mockGet).toHaveBeenCalledWith(
+      '/admin/freeradius/status',
+      expect.objectContaining({ timeout: expect.any(Number) }),
+    );
+  });
+
+  it('marks the card unhealthy when RADIUS does not answer even though the socket is fine', async () => {
+    routeGet(() => Promise.resolve({ data: { data: hungFreeradius } }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: /System Status/ }));
+
+    expect(await screen.findByText('FreeRADIUS')).toBeInTheDocument();
+    expect(screen.getByText('Unhealthy')).toBeInTheDocument();
+    expect(screen.queryByText('Healthy')).not.toBeInTheDocument();
+    expect(screen.getByText(/RADIUS: not responding/)).toBeInTheDocument();
+  });
+
+  it('omits the RADIUS line for an older backend without the probe', async () => {
+    const legacy = { socket: healthyFreeradius.socket, clients: healthyFreeradius.clients };
+    routeGet(() => Promise.resolve({ data: { data: legacy } }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: /System Status/ }));
+
+    expect(await screen.findByText('FreeRADIUS')).toBeInTheDocument();
+    expect(screen.getByText('Healthy')).toBeInTheDocument();
+    expect(screen.queryByText(/RADIUS:/)).not.toBeInTheDocument();
   });
 
   it('shows the error panel when the FreeRADIUS status request fails', async () => {
