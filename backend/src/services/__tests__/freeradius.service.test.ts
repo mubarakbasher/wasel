@@ -152,6 +152,15 @@ describe('showFreeradiusClients', () => {
     expect(await showFreeradiusClients()).toBe('Client 10.10.0.2\n');
   });
 
+  it('uses the FreeRADIUS 3.2 "show client list" command', async () => {
+    // "show clients" is not a radmin command in 3.2.8 (verified on staging:
+    // ERROR: Unknown command "clients"), which left the admin card empty.
+    respondOk('127.0.0.1\n10.10.0.0/16\n');
+    await showFreeradiusClients();
+    const call = mockExecFile.mock.calls[0] as unknown as [string, string[]];
+    expect(call[1]).toEqual(['-f', RADMIN_SOCKET, '-e', 'show client list']);
+  });
+
   it('returns an empty string and warns on failure', async () => {
     respondWithError({ message: 'boom' });
     expect(await showFreeradiusClients()).toBe('');

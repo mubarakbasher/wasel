@@ -840,7 +840,7 @@ async function socketReachability(): Promise<{ path: string; exists: boolean; re
  *
  * Returns enough state for an admin to diagnose a RADIUS outage without SSH:
  *  - socket presence / permissions from the backend's POV
- *  - the current `show clients` output (dynamically-cached clients appear
+ *  - the current `show client list` output (dynamically-cached clients appear
  *    here after their first packet; postgres nas table is the source of truth)
  */
 export async function getFreeradiusStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {

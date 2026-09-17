@@ -106,16 +106,18 @@ export function runRadmin(command: string, timeoutMs = 3_000): Promise<RadminRes
 }
 
 /**
- * Invoke `radmin -e "show clients"` and return stdout. Exposed for use by
+ * Invoke `radmin -e "show client list"` and return stdout. Exposed for use by
  * the admin status endpoint. Swallowed errors turn into an empty string so
  * callers can treat "radmin failed" as "not available". Bounded by
  * runRadmin's timeout — the admin card can no longer hang here (incident
  * 2026-09-15).
  */
 export async function showFreeradiusClients(): Promise<string> {
-  const result = await runRadmin('show clients');
+  // FreeRADIUS 3.2 has no "show clients" command (radmin answers
+  // 'Unknown command "clients"'); the listing is "show client list".
+  const result = await runRadmin('show client list');
   if (!result.ok) {
-    logger.warn('radmin show clients failed', {
+    logger.warn('radmin show client list failed', {
       socket: RADMIN_SOCKET,
       exitCode: result.exitCode,
       timedOut: result.timedOut,
