@@ -29,17 +29,39 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 async function checkDb(): Promise<'ok' | 'fail'> {
+  // withTimeout only rejects the race — it cannot cancel pool.connect(), which
+  // keeps running and hands back a client after the timer fired. That client
+  // must still be released, or the pool slot is consumed forever: checked-out
+  // clients are exempt from idleTimeoutMillis reaping, so the leak is
+  // permanent and self-amplifying (fewer slots -> more timeouts -> more
+  // leaks). DB_POOL_MAX of these took prod down on 2026-09-25.
+  const pending = pool.connect();
+  let raceSettled = false;
+  pending
+    .then((late) => {
+      if (raceSettled) late.release();
+    })
+    .catch(() => undefined);
+
   try {
-    const client = await withTimeout(pool.connect(), HEALTH_TIMEOUT_MS);
+    const client = await withTimeout(pending, HEALTH_TIMEOUT_MS);
+    let queryFailed = false;
     try {
       await withTimeout(client.query('SELECT 1'), HEALTH_TIMEOUT_MS);
+    } catch (err) {
+      queryFailed = true;
+      throw err;
     } finally {
-      client.release();
+      // A timed-out SELECT 1 may still be in flight; destroy rather than
+      // return a client whose state we cannot vouch for.
+      client.release(queryFailed);
     }
     return 'ok';
   } catch (err) {
     logger.warn('Health: DB check failed', { error: (err as Error).message });
     return 'fail';
+  } finally {
+    raceSettled = true;
   }
 }
 
