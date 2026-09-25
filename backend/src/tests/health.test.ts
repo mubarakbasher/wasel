@@ -72,3 +72,39 @@ describe('GET /api/v1/readyz', () => {
     expect(res.body.data.status).toBe('ok');
   });
 });
+
+describe('health DB check — pool client leak regression', () => {
+  it('releases a client that arrives after the health timeout fired', async () => {
+    // Reproduces the prod outage of 2026-09-25: checkDb() raced pool.connect()
+    // against a 2s timer. When the timer won, the still-pending connect()
+    // later resolved a client that nobody released, permanently consuming a
+    // pool slot. Ten of those drained DB_POOL_MAX=10 and every login began
+    // failing with "timeout exceeded when trying to connect".
+    const { pool } = await import('../config/database');
+
+    const release = vi.fn();
+    const lateClient = { query: vi.fn().mockResolvedValue({ rows: [] }), release };
+
+    // Resolve well after HEALTH_TIMEOUT_MS (2000ms) so the race rejects first.
+    const connectSpy = vi
+      .spyOn(pool, 'connect')
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve(lateClient as never), 2500);
+          }) as never,
+      );
+
+    const res = await request(app).get('/api/v1/health');
+
+    // The check itself correctly reports failure.
+    expect(res.status).toBe(503);
+    expect(res.body.data.checks.db).toBe('fail');
+
+    // Wait past the late resolution, then assert the slot went back to the pool.
+    await new Promise((r) => setTimeout(r, 800));
+    expect(release).toHaveBeenCalled();
+
+    connectSpy.mockRestore();
+  }, 10000);
+});
