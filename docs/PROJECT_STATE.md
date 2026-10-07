@@ -23,7 +23,21 @@
 ## TL;DR
 Security hardening (Critical RCE + 4 High findings) plus several follow-on features are committed and pushed on `dev`: mobile UX + Arabic localization, a voucher-code-collision fix, an admin panel polish/responsive pass, CI extended to run on `dev`, and the **operator-selectable hotspot login page** (built end-to-end), a **payment-flow fix** (receipt-less payments no longer reach the admin queue + a new admin payment-detail view with inline receipt preview), an **email-notification system** (admin payment alerts + bilingual editable templates + an email log), and an **admin Dashboard redesign** (data-dense operator console with KPI hero, status-breakdown donuts, a "Needs attention" panel, and real trend lines), and a **hotspot voucher bug-fix batch** (blank captive page on expiry, monthly re-prompt, and the "won't re-login until disable/reactivate" MAC-randomization bug — fixed with locally-bundled fonts, interim accounting + MAC-cookie, a stale-session reaper, `Simultaneous-Use`→20, and a clean reactivation path), and a **mobile payment-recovery fix** (a `pending`, receipt-less payment left the user with no way to upload/cancel — now Settings→Payments surfaces Upload/Cancel for any non-terminal payment, the payment id survives an app restart, and a back-guard stops silent orphaning). On 2026-07-16 a six-commit **admin panel improvement pass** landed on `dev` (see its section below): admin test harness + UX fix batch, platform-wide voucher management, router actions + FreeRADIUS card, announcements broadcast, CSV exports, and HttpOnly-cookie refresh for the admin client (roadmap P0-2) + bank-settings audit logging. **All await the staging gate before promotion.** A dedicated **staging VPS** (`wa-sel.cloud`, `185.166.39.70`) is the pre-merge gate; the Docker stack has been deploying `dev` and reaching healthy. Production (`wa-sel.com`) is live with paying users and **untouched**.
 
-## PROD INCIDENT — FreeRADIUS hang (2026-09-15) — root cause found; remediation on `dev`, VERIFIED ON STAGING 2026-09-17, prod NOT yet promoted
+## PROD INCIDENT — FreeRADIUS hang (2026-09-15) — remediation PROMOTED TO PROD 2026-10-07 (`main` = `92bfe2d`)
+
+**Promotion, 2026-10-07 23:30–23:41 UTC.** Prompted by a 4-hour Hostinger CPU-steal event (50–57% steal, 17:00–20:45 UTC) on top of a ~40% baseline from the full-scan enforcement jobs.
+- **Merge:** `main` fast-forwarded `1ab9906` → `92bfe2d` (no merge commit).
+- **Backup:** `/root/backups/pre-promote-2026-10-07.sql.gz` (672 MB).
+- **Postgres settings:** `POSTGRES_*` values appended to `/etc/wasel/compose.env`; original kept at `compose.env.bak-2026-10-07`.
+- **Order:**
+  1. backend + admin (healthy in 11 s). Both reconciliation passes completed with `applied 0`.
+  2. freeradius: `-XC` OK; healthy in 11 s; PID 1 `docker-init`; socket `srw-rw-rw-`; auth + accounting flowing.
+  3. postgres: healthy in 7 s; `shared_buffers` 1GB, `work_mem` 16MB, 3 GiB / 1.5 CPU limits. Backend and FreeRADIUS reconnected on their own. Errors appeared only during the 5 s restart, and the watchdog correctly did not restart FreeRADIUS.
+- **Result:** host CPU user+sys **~38% → ~3%**; Postgres container **~104% → ~0%**; load 2–2.8 → ~1; no long-running enforcement queries.
+- **Rollback (not needed):** `git checkout 1ab9906` + rebuild; restore `compose.env.bak` + `up -d postgres`. No schema changes.
+- **Still open from the checklist:** Kuma push cron (`scripts/freeradius-health-push.sh`) + Push monitor; Sentry tag rule; a next-day `sar` comparison.
+
+`fde5d81` (MAC-cookie convergence) is **not** in this promotion. It waits for its staging test.
 
 - **Full report:** `docs/INCIDENT_2026-09-15_FREERADIUS_HANG.md`. Design + review outcomes: `docs/superpowers/specs/2026-09-17-freeradius-hang-remediation-design.md`.
 - **What happened:** prod FreeRADIUS stopped answering all RADIUS 01:20→06:19 UTC while Docker said healthy (main thread spinning in libtalloc). Recovered by `docker compose restart freeradius`.
