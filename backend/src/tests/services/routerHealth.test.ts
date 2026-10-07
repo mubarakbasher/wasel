@@ -27,17 +27,25 @@ vi.mock('../../services/wireguardPeer', () => ({
   getPeerStatus: getPeerStatusMock,
 }));
 
-const { listHotspotServersMock } = vi.hoisted(() => ({
+const { listHotspotServersMock, ensureMacCookieReloginMock } = vi.hoisted(() => ({
   listHotspotServersMock: vi.fn<(api: unknown) => Promise<unknown[]>>(),
+  ensureMacCookieReloginMock: vi.fn<() => Promise<{ checked: boolean; repaired: string[]; error?: string }>>(),
 }));
 
 vi.mock('../../services/routerOs.service', () => ({
   testConnection: testConnectionMock,
   connectToRouter: connectToRouterMock,
   listHotspotServers: listHotspotServersMock,
+  // Mirrors the real helper so tests still drive profile resolution via listHotspotServersMock.
+  resolveActiveServerProfileNames: async (api: unknown) => {
+    const servers = (await listHotspotServersMock(api)) as Array<{ profile?: string; disabled?: boolean }>;
+    const names = Array.from(new Set(servers.filter((s) => !s.disabled).map((s) => s.profile).filter((p): p is string => Boolean(p))));
+    return names.length > 0 ? names : ['default'];
+  },
   // Best-effort helper called by probeHotspotUsesRadius during remediation;
   // must be present in the mock so the import resolves to a callable function.
   ensureHotspotRadiusSettings: vi.fn().mockResolvedValue(undefined),
+  ensureMacCookieRelogin: ensureMacCookieReloginMock,
 }));
 
 vi.mock('../../services/radclient.service', () => ({
@@ -105,6 +113,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockQuery.mockReset();
   listHotspotServersMock.mockResolvedValue([]);
+  // Default: MAC-cookie already enabled (no repairs needed).
+  ensureMacCookieReloginMock.mockResolvedValue({ checked: true, repaired: [] });
 });
 
 /**
@@ -173,7 +183,7 @@ describe('runHealthCheck', () => {
     ]);
     connectToRouterMock.mockImplementation(() =>
       Promise.resolve(connectStub((path) => {
-        if (path === '/ip/hotspot/profile') return [{ name: 'default', 'use-radius': 'yes' }];
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
         if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
         if (path === '/ip/firewall/filter') return [
           { action: 'accept', protocol: 'udp', 'dst-port': '1812,1813', disabled: 'false' },
@@ -280,6 +290,7 @@ describe('runHealthCheck', () => {
     const byId = Object.fromEntries(report.probes.map((p) => [p.id, p]));
     expect(byId.routerOsApiReachable.status).toBe('fail');
     expect(byId.hotspotUsesRadius.status).toBe('skipped');
+    expect(byId.hotspotMacCookieRelogin.status).toBe('skipped');
     expect(byId.radiusClientConfigured.status).toBe('skipped');
     expect(byId.firewallAllowsRadius.status).toBe('skipped');
     expect(report.overall).toBe('degraded');
@@ -299,7 +310,7 @@ describe('runHealthCheck', () => {
     testConnectionMock.mockResolvedValueOnce(true);
     connectToRouterMock.mockImplementation(() =>
       Promise.resolve(connectStub((path) => {
-        if (path === '/ip/hotspot/profile') return [{ name: 'default', 'use-radius': 'no' }];
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: false }];
         if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
         if (path === '/ip/firewall/filter') return [
           { action: 'accept', protocol: 'udp', 'dst-port': '1812' },
@@ -333,7 +344,7 @@ describe('runHealthCheck', () => {
     testConnectionMock.mockResolvedValueOnce(true);
     connectToRouterMock.mockImplementation(() =>
       Promise.resolve(connectStub((path) => {
-        if (path === '/ip/hotspot/profile') return [{ name: 'default', 'use-radius': 'yes' }];
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
         if (path === '/radius') return [{ address: '8.8.8.8', service: 'login', secret: '' }];
         if (path === '/ip/firewall/filter') return [
           { action: 'accept', protocol: 'udp', 'dst-port': '1812' },
@@ -366,7 +377,7 @@ describe('runHealthCheck', () => {
     testConnectionMock.mockResolvedValueOnce(true);
     connectToRouterMock.mockImplementation(() =>
       Promise.resolve(connectStub((path) => {
-        if (path === '/ip/hotspot/profile') return [{ name: 'default', 'use-radius': 'yes' }];
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
         if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
         if (path === '/ip/firewall/filter') return [
           { action: 'accept', protocol: 'udp', 'dst-port': '1812,1813' },
@@ -400,7 +411,7 @@ describe('runHealthCheck', () => {
     testConnectionMock.mockResolvedValueOnce(true);
     connectToRouterMock.mockImplementation(() =>
       Promise.resolve(connectStub((path) => {
-        if (path === '/ip/hotspot/profile') return [{ name: 'default', 'use-radius': 'yes' }];
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
         if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
         if (path === '/ip/firewall/filter') return [
           { action: 'accept', protocol: 'udp', 'dst-port': '1812' },
@@ -443,7 +454,7 @@ describe('runHealthCheck', () => {
     ]);
     connectToRouterMock.mockImplementation(() =>
       Promise.resolve(connectStub((path) => {
-        if (path === '/ip/hotspot/profile') return [{ name: 'default', 'use-radius': 'yes' }];
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
         if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
         if (path === '/ip/firewall/filter') return [
           { action: 'accept', protocol: 'udp', 'dst-port': '1812' },
@@ -472,5 +483,167 @@ describe('runHealthCheck', () => {
     // called beyond the single loadRouterForHealth SELECT)
     // getPeerStatusMock was already consumed; calling it again would fail
     expect(getPeerStatusMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ---- hotspotUsesRadius regression: useRadius:true must not trigger ensureHotspotRadiusSettings ----
+
+  it('regression: useRadius:true (treated shape) → hotspotUsesRadius passes and ensureHotspotRadiusSettings NOT called', async () => {
+    const { ensureHotspotRadiusSettings: ensureRadiusMock } = await import('../../services/routerOs.service');
+    const ensureRadiusSpy = vi.mocked(ensureRadiusMock);
+
+    primeLoadAndNas(mockRouterRow(), true);
+    getPeerStatusMock.mockResolvedValueOnce({
+      publicKey: 'pk-router', endpoint: '', allowedIps: '',
+      latestHandshake: Math.floor(Date.now() / 1000) - 5,
+      transferRx: 0, transferTx: 0,
+    });
+    execFileMock.mockImplementation((_cmd, _args, cb) => cb(null, '', ''));
+    testConnectionMock.mockResolvedValueOnce(true);
+    connectToRouterMock.mockImplementation(() =>
+      Promise.resolve(connectStub((path) => {
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
+        if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
+        if (path === '/ip/firewall/filter') return [
+          { action: 'accept', protocol: 'udp', 'dst-port': '1812' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '3799' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '51820' },
+        ];
+        return [];
+      })),
+    );
+    sendAccessRequestMock.mockResolvedValueOnce('reject');
+    allowPersist();
+
+    const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
+    const p6 = report.probes.find((p) => p.id === 'hotspotUsesRadius');
+    expect(p6?.status).toBe('pass');
+    expect(ensureRadiusSpy).not.toHaveBeenCalled();
+  });
+
+  // ---- hotspotMacCookieRelogin probe ----
+
+  it('hotspotMacCookieRelogin passes with detail "already enabled" when no repairs needed', async () => {
+    primeLoadAndNas(mockRouterRow(), true);
+    getPeerStatusMock.mockResolvedValueOnce({
+      publicKey: 'pk-router', endpoint: '', allowedIps: '',
+      latestHandshake: Math.floor(Date.now() / 1000) - 5,
+      transferRx: 0, transferTx: 0,
+    });
+    execFileMock.mockImplementation((_cmd, _args, cb) => cb(null, '', ''));
+    testConnectionMock.mockResolvedValueOnce(true);
+    ensureMacCookieReloginMock.mockResolvedValue({ checked: true, repaired: [] });
+    connectToRouterMock.mockImplementation(() =>
+      Promise.resolve(connectStub((path) => {
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
+        if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
+        if (path === '/ip/firewall/filter') return [
+          { action: 'accept', protocol: 'udp', 'dst-port': '1812' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '3799' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '51820' },
+        ];
+        return [];
+      })),
+    );
+    sendAccessRequestMock.mockResolvedValueOnce('reject');
+    allowPersist();
+
+    const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
+    const probe = report.probes.find((p) => p.id === 'hotspotMacCookieRelogin');
+    expect(probe?.status).toBe('pass');
+    expect(probe?.detail).toContain('already enabled');
+  });
+
+  it('hotspotMacCookieRelogin passes with repaired detail when helper fixed drift', async () => {
+    primeLoadAndNas(mockRouterRow(), true);
+    getPeerStatusMock.mockResolvedValueOnce({
+      publicKey: 'pk-router', endpoint: '', allowedIps: '',
+      latestHandshake: Math.floor(Date.now() / 1000) - 5,
+      transferRx: 0, transferTx: 0,
+    });
+    execFileMock.mockImplementation((_cmd, _args, cb) => cb(null, '', ''));
+    testConnectionMock.mockResolvedValueOnce(true);
+    ensureMacCookieReloginMock.mockResolvedValue({
+      checked: true,
+      repaired: ['login-by:default', 'add-mac-cookie:default'],
+    });
+    connectToRouterMock.mockImplementation(() =>
+      Promise.resolve(connectStub((path) => {
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
+        if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
+        if (path === '/ip/firewall/filter') return [
+          { action: 'accept', protocol: 'udp', 'dst-port': '1812' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '3799' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '51820' },
+        ];
+        return [];
+      })),
+    );
+    sendAccessRequestMock.mockResolvedValueOnce('reject');
+    allowPersist();
+
+    const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
+    const probe = report.probes.find((p) => p.id === 'hotspotMacCookieRelogin');
+    expect(probe?.status).toBe('pass');
+    expect(probe?.detail).toContain('repaired');
+    expect(probe?.detail).toContain('login-by:default');
+    expect(probe?.detail).toContain('add-mac-cookie:default');
+  });
+
+  it('hotspotMacCookieRelogin fails when helper returns checked:false', async () => {
+    primeLoadAndNas(mockRouterRow(), true);
+    getPeerStatusMock.mockResolvedValueOnce({
+      publicKey: 'pk-router', endpoint: '', allowedIps: '',
+      latestHandshake: Math.floor(Date.now() / 1000) - 5,
+      transferRx: 0, transferTx: 0,
+    });
+    execFileMock.mockImplementation((_cmd, _args, cb) => cb(null, '', ''));
+    testConnectionMock.mockResolvedValueOnce(true);
+    ensureMacCookieReloginMock.mockResolvedValue({
+      checked: false,
+      repaired: ['login-by:hsprof1'],
+      error: 'connection refused',
+    });
+    connectToRouterMock.mockImplementation(() =>
+      Promise.resolve(connectStub((path) => {
+        if (path === '/ip/hotspot/profile') return [{ name: 'default', useRadius: true }];
+        if (path === '/radius') return [{ address: '10.10.0.1', service: 'hotspot', secret: 'x' }];
+        if (path === '/ip/firewall/filter') return [
+          { action: 'accept', protocol: 'udp', 'dst-port': '1812' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '3799' },
+          { action: 'accept', protocol: 'udp', 'dst-port': '51820' },
+        ];
+        return [];
+      })),
+    );
+    sendAccessRequestMock.mockResolvedValueOnce('reject');
+    allowPersist();
+
+    const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
+    const probe = report.probes.find((p) => p.id === 'hotspotMacCookieRelogin');
+    expect(probe?.status).toBe('fail');
+    // Raw RouterOS error stays server-side; partial repairs are surfaced.
+    expect(probe?.detail).not.toContain('connection refused');
+    expect(probe?.detail).toContain('partially repaired: login-by:hsprof1');
+    expect(probe?.remediation).toBeDefined();
+    // A single MAC-cookie failure should degrade, not break
+    expect(report.overall).toBe('degraded');
+  });
+
+  it('hotspotMacCookieRelogin is skipped when RouterOS API (probe 5) is unreachable', async () => {
+    primeLoadAndNas(mockRouterRow(), true);
+    getPeerStatusMock.mockResolvedValueOnce({
+      publicKey: 'pk-router', endpoint: '', allowedIps: '',
+      latestHandshake: Math.floor(Date.now() / 1000) - 5,
+      transferRx: 0, transferTx: 0,
+    });
+    execFileMock.mockImplementation((_cmd, _args, cb) => cb(null, '', ''));
+    testConnectionMock.mockResolvedValueOnce(false); // API unreachable
+    sendAccessRequestMock.mockResolvedValueOnce('reject');
+    allowPersist();
+
+    const report = await runHealthCheck(USER_ID, ROUTER_ID, { force: true });
+    const probe = report.probes.find((p) => p.id === 'hotspotMacCookieRelogin');
+    expect(probe?.status).toBe('skipped');
+    expect(ensureMacCookieReloginMock).not.toHaveBeenCalled();
   });
 });

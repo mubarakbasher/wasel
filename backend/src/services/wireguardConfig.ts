@@ -399,8 +399,10 @@ export interface SetupStep {
  * backend can run health probes and read live sessions.
  * Steps 7–11 configure RADIUS and firewall so voucher auth works immediately
  * after the operator pastes the script — no Stage-2 push required.
- * Hotspot RADIUS and MAC-cookie settings (formerly steps 9–10) are omitted here
- * because ensureHotspotRadiusSettings() applies them programmatically on connect.
+ * Hotspot RADIUS settings (formerly steps 9–10) are omitted here because they
+ * are applied by the router health check (ensureHotspotRadiusSettings when
+ * use-radius is off, ensureMacCookieRelogin on every health run), by the
+ * login-page template apply, and by the daily macCookieConvergence job.
  *
  * service=hotspot,login on step 7 is required on some RouterOS versions; using
  * only hotspot causes the login flow to not route auth requests to FreeRADIUS.

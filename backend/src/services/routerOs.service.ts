@@ -573,6 +573,154 @@ export async function ensureHotspotRadiusSettings(
 }
 
 /**
+ * Resolve the hotspot server profile names that are actively in use (enabled
+ * servers' `profile`), falling back to ['default'] when no enabled server exists.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function resolveActiveServerProfileNames(api: any): Promise<string[]> {
+  const servers = await listHotspotServers(api);
+  const names = Array.from(
+    new Set(
+      servers
+        .filter((s) => !s.disabled)
+        .map((s) => s.profile)
+        .filter((p): p is string => Boolean(p)),
+    ),
+  );
+  return names.length > 0 ? names : ['default'];
+}
+
+/**
+ * Minimal-drift repair for MAC-cookie auto-relogin.
+ *
+ * Unlike {@link ensureHotspotRadiusSettings} (which overwrites `login-by` with a
+ * fixed string and forces a 30 d mac-cookie timeout), this helper only mutates
+ * the attributes that are actually wrong, preserving every operator
+ * customization (extra login methods, long cookie timeouts, etc.).
+ *
+ * Auto-relogin requires BOTH:
+ *   - server profile `login-by` must include `mac-cookie`
+ *   - user profile `default` must have `add-mac-cookie=yes` and a non-zero
+ *     `mac-cookie-timeout`
+ *
+ * MAC-cookie relogin still issues a fresh RADIUS Access-Request on each
+ * reconnect, so rlm_expiration / Auth-Type := Reject enforcement is intact
+ * (same guarantee as the ensureHotspotRadiusSettings docstring).
+ *
+ * KEY-SHAPE GOTCHA: routeros-client's `.get()` strips the leading dot and
+ * camel-cases keys (`login-by` → `loginBy`, `.id` → `id`), and converts
+ * `"true"`/`"false"` to booleans and pure-digit strings to numbers. Reads use
+ * the camelCase form with dashed fallback for safety; writes stay dashed to
+ * match the native RouterOS API.
+ */
+export async function ensureMacCookieRelogin(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api: any,
+  opts: { serverProfileNames: string[] },
+): Promise<{ checked: boolean; repaired: string[]; error?: string }> {
+  const repaired: string[] = [];
+  try {
+    // --- /ip/hotspot/profile — repair login-by only on drift ---
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hsProfiles = (await (api as any).menu('/ip/hotspot/profile').get()) as Array<
+      Record<string, unknown>
+    >;
+
+    const targets: Array<Record<string, unknown>> = [];
+    if (hsProfiles && hsProfiles.length > 0) {
+      const wanted = new Set((opts.serverProfileNames ?? []).map((n) => n.toLowerCase()));
+      if (wanted.size > 0) {
+        for (const p of hsProfiles) {
+          if (wanted.has(String(p.name ?? '').toLowerCase())) targets.push(p);
+        }
+      }
+      if (targets.length === 0) {
+        const fallback =
+          hsProfiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ??
+          hsProfiles[0];
+        if (fallback) targets.push(fallback);
+      }
+    }
+
+    for (const profile of targets) {
+      const profileId = String(profile.id ?? profile['.id'] ?? '');
+      if (!profileId) continue;
+      const name = String(profile.name ?? '');
+      const current = String(profile.loginBy ?? profile['login-by'] ?? '').trim();
+      const methods = current ? current.split(',').map((m) => m.trim()).filter(Boolean) : [];
+      if (methods.map((m) => m.toLowerCase()).includes('mac-cookie')) continue;
+      const next = methods.length === 0 ? 'mac-cookie' : `${methods.join(',')},mac-cookie`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (api as any)
+        .menu('/ip/hotspot/profile')
+        .where('.id', profileId)
+        .update({ 'login-by': next });
+      logger.info('ensureMacCookieRelogin: hotspot profile login-by updated', {
+        profileId,
+        name,
+        loginBy: next,
+      });
+      repaired.push(`login-by:${name}`);
+    }
+
+    // --- /ip/hotspot/user/profile — repair default user profile only on drift ---
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const userProfiles = (await (api as any).menu('/ip/hotspot/user/profile').get()) as Array<
+      Record<string, unknown>
+    >;
+    if (userProfiles && userProfiles.length > 0) {
+      const userProfile =
+        userProfiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ??
+        userProfiles[0];
+      const userProfileId = String(userProfile.id ?? userProfile['.id'] ?? '');
+      if (userProfileId) {
+        const amcRaw = userProfile.addMacCookie ?? userProfile['add-mac-cookie'];
+        const addMacCookieOn =
+          amcRaw === true ||
+          (typeof amcRaw === 'string' && ['yes', 'true'].includes(amcRaw.toLowerCase()));
+
+        const toRaw = userProfile.macCookieTimeout ?? userProfile['mac-cookie-timeout'];
+        const toStr =
+          toRaw === undefined || toRaw === null ? '' : String(toRaw).trim().toLowerCase();
+        const timeoutZero =
+          toStr === '' || toStr === '0' || toStr === '0s' || toStr === '00:00:00';
+
+        const payload: Record<string, string> = {};
+        if (!addMacCookieOn) {
+          payload['add-mac-cookie'] = 'yes';
+          repaired.push('add-mac-cookie');
+        }
+        if (timeoutZero) {
+          payload['mac-cookie-timeout'] = MAC_COOKIE_TIMEOUT;
+          repaired.push('mac-cookie-timeout');
+        }
+
+        if (Object.keys(payload).length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (api as any)
+            .menu('/ip/hotspot/user/profile')
+            .where('.id', userProfileId)
+            .update(payload);
+          logger.info('ensureMacCookieRelogin: hotspot user profile updated', {
+            userProfileId,
+            name: String(userProfile.name ?? ''),
+            payload,
+          });
+        }
+      }
+    }
+
+    return { checked: true, repaired };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn('ensureMacCookieRelogin: best-effort update failed (non-fatal)', {
+      error: message,
+    });
+    return { checked: false, repaired, error: message };
+  }
+}
+
+/**
  * List all IP addresses configured on the router.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
