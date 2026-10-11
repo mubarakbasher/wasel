@@ -561,7 +561,7 @@ class AppLocalizations {
     'routers.generating': 'Generating...',
     'routers.vpnAssigned': 'Your VPN IP: {0}',
     'routers.scriptInstructions':
-        'Paste these 13 commands into your Mikrotik terminal (SSH, Winbox terminal, or WebFig). Once pasted, your router is fully configured.',
+        'Copy the command below and paste it into your router\'s terminal in one go.',
     'routers.nameYourRouter':
         'Give your router a name. Wasel will generate a self-contained setup script you paste into RouterOS.',
     'routers.leaveWarningTitle': 'Leave this screen?',
@@ -570,6 +570,10 @@ class AppLocalizations {
     'routers.leaveAnyway': 'Leave anyway',
     'routers.copyAllCommands': 'Copy all commands',
     'routers.copyAllSnackbar': 'Copied — paste into RouterOS terminal',
+    'routers.copySetupCommand': 'Copy setup command',
+    'routers.setupCommandCopied': 'Copied — open WinBox → New Terminal and paste',
+    'routers.pasteHint': 'Open WinBox → New Terminal, paste, then press Enter.',
+    'routers.showIndividualSteps': 'Show individual steps',
     'routers.defaultRouterName': 'Wi-Fi',
 
     // ── Router setup steps ────────────────────────────────────────────────────
@@ -1466,7 +1470,7 @@ class AppLocalizations {
     'routers.generating': 'جارٍ الإنشاء...',
     'routers.vpnAssigned': 'عنوان VPN الخاص بك: {0}',
     'routers.scriptInstructions':
-        'الصق هذه الأوامر الـ 13 في طرفية مايكروتيك (SSH أو Winbox أو WebFig). بمجرد اللصق يكون الراوتر مهيأً بالكامل.',
+        'انسخ الأمر أدناه والصقه في طرفية الراوتر دفعة واحدة.',
     'routers.nameYourRouter':
         'أعط راوترك اسماً. سيقوم واصل بإنشاء سكريبت إعداد متكامل تلصقه في RouterOS.',
     'routers.leaveWarningTitle': 'مغادرة هذه الشاشة؟',
@@ -1475,6 +1479,10 @@ class AppLocalizations {
     'routers.leaveAnyway': 'غادر على أي حال',
     'routers.copyAllCommands': 'نسخ جميع الأوامر',
     'routers.copyAllSnackbar': 'تم النسخ — الصق في طرفية RouterOS',
+    'routers.copySetupCommand': 'نسخ أمر الإعداد',
+    'routers.setupCommandCopied': 'تم النسخ — افتح WinBox ← New Terminal والصق',
+    'routers.pasteHint': 'افتح WinBox ← New Terminal، الصق ثم اضغط Enter.',
+    'routers.showIndividualSteps': 'عرض الخطوات بشكل منفصل',
     'routers.defaultRouterName': 'واي فاي',
 
     // ── Router setup steps ────────────────────────────────────────────────────

@@ -153,13 +153,14 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
                     .copyWith(color: AppColors.textSecondary),
               ),
               const SizedBox(height: AppSpacing.lg),
-              _CopyAllButton(
-                onPressed: () => _copyAllCommands(),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              if (_steps != null && _steps!.isNotEmpty)
-                ..._steps!.map((step) => _buildStepCard(step))
-              else
+              if (_steps != null && _steps!.isNotEmpty) ...[
+                SetupScriptBlock(steps: _steps!),
+                const SizedBox(height: AppSpacing.lg),
+                ExpansionTile(
+                  title: Text(context.tr('routers.showIndividualSteps')),
+                  children: _steps!.map((step) => _buildStepCard(step)).toList(),
+                ),
+              ] else
                 _buildNoStepsFallback(state),
               const SizedBox(height: AppSpacing.xxl),
               _DoneButton(onPressed: _finish),
@@ -169,14 +170,6 @@ class _AddRouterScreenState extends ConsumerState<AddRouterScreen> {
         ),
       ),
     );
-  }
-
-  void _copyAllCommands() {
-    final commands = (_steps ?? []).map((s) => s.command).join('\n\n');
-    if (commands.isEmpty) return;
-    ClipboardService.instance
-        .copyWithAutoClear(commands, duration: const Duration(minutes: 2));
-    AppSnackbar.success(context, context.tr('routers.copyAllSnackbar'));
   }
 
   Widget _buildNoStepsFallback(RoutersState state) {
@@ -475,26 +468,8 @@ class _StepCommand extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Copy All + Done buttons
+// Done button
 // ---------------------------------------------------------------------------
-
-class _CopyAllButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  const _CopyAllButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 48,
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: const Icon(Icons.copy),
-        label: Text(context.tr('routers.copyAllCommands')),
-      ),
-    );
-  }
-}
 
 class _DoneButton extends StatelessWidget {
   final VoidCallback onPressed;
