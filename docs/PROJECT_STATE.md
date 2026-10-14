@@ -23,7 +23,11 @@
   - Backend `tsc` clean, 964 tests passing; new tests mutation-checked.
   - Security audit: no Critical/High.
 - **Deploy: rebuild FreeRADIUS** (`build freeradius`; the site file and Dockerfile are baked into the image). Order: backend first (applies 041), then FR after `-XC`.
-- **Staging E2E:** cross-router voucher → Access-Reject with the generic message; home router → Accept; MAC-cookie re-login on the home router still works.
+- **Staging: DEPLOYED 2026-10-14 22:56 UTC** (`/opt/wasel` at `1e68533`). Backup: `/opt/wasel-backups/pre-041-2026-10-14-2253.sql.gz`.
+  - Pre-flight queries were 0/0. The `-XC` gate passed, and `radmin.sock` survived it.
+  - The backend was recreated first; 041 locked **12,012/12,012** vouchers (0 unlocked, 0 locked to the wrong IP). FreeRADIUS was recreated next: healthy, `expr` enabled, PID 1 `docker-init`, socket `srw-rw-rw-`, no errors in its logs.
+  - radtest inside FR: lock=127.0.0.1 → Accept; lock=10.10.0.99 → Reject; a real unused voucher and a real expired voucher from a foreign source → Reject with no Reply-Message. Throwaway rows were removed.
+  - **Not verified:** a real MikroTik test (home-router Accept, cross-router Reject, MAC-cookie re-login). All 4 staging routers are offline (last seen 2026-10-01). Run it on a live staging router before the prod promotion, or watch per-NAS reject rates closely on prod right after deploy.
 - **Prod pre-flight (only on explicit go-ahead), all expect 0:**
   - `SELECT COUNT(*) FROM routers r LEFT JOIN nas n ON n.nasname = r.tunnel_ip WHERE r.tunnel_ip IS NOT NULL AND n.nasname IS NULL`
   - `SELECT COUNT(*) FROM voucher_meta vm JOIN routers r ON r.id = vm.router_id WHERE r.tunnel_ip IS NULL` (these vouchers would stay unlocked)
