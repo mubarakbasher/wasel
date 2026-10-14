@@ -11,6 +11,12 @@ RUN ln -sf /etc/freeradius/mods-available/sql /etc/freeradius/mods-enabled/sql
 # Enable expiration module so FreeRADIUS enforces the Expiration attribute
 RUN ln -sf /etc/freeradius/mods-available/expiration /etc/freeradius/mods-enabled/expiration
 
+# Keep rlm_expr enabled explicitly (the base image enables it by default).
+# It registers the Packet-Src-IP-Address comparison (rlm_expr/paircmp.c
+# generic_attrs[]) that the per-voucher router-lock radcheck row relies on
+# (migration 041). Without it the compare fails closed and EVERY voucher rejects.
+RUN ln -sf /etc/freeradius/mods-available/expr /etc/freeradius/mods-enabled/expr
+
 # Copy SQL config as a template (env vars substituted at runtime by entrypoint)
 COPY raddb/mods-enabled/sql /etc/freeradius/sql.template
 

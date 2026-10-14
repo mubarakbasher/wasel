@@ -6,6 +6,30 @@
 
 **2026-09-14:** operator survey (10 respondents, 9×5/5) analysed in `docs/users/SURVEY_2026-09-10_ANALYSIS.md` — each ask cross-checked against the code; follow-up checklist inside. No code changes. **2026-09-29:** batch 2 (15 more rows, 09-20→09-28, three new 1/5s) added to the same doc. Key finding: the "network is busy" complaint is our captive-page text for a RADIUS timeout, which strengthens the case for promoting the FreeRADIUS-hang fix to prod.
 
+**2026-10-15: Voucher router lock (bug: "a voucher works on every MikroTik in the system").**
+- **Root cause:** `8cecf56` / migration `023` removed the per-voucher lock instead of replacing it. The old lock (`588eeb5`) compared `NAS-IP-Address`, which is NAS-self-reported per RFC 2865 §5.4. Since then, any router with a valid NAS secret accepted any voucher, including other operators' routers.
+- **Fix, on `dev`:** each voucher gets a radcheck row `Packet-Src-IP-Address == <routers.tunnel_ip>`.
+  - `createVouchers` writes it for new vouchers.
+  - Migration `041_voucher_router_scope.sql` backfills ALL existing vouchers, every status (user decision).
+  - FR `rlm_expr` (`paircmp.c` `generic_attrs[]` → `genericcmp`) compares it against the UDP source IP. That IP always equals `tunnel_ip`: dynamic clients select the secret by `nasname = Packet-Src-IP-Address`, and WG AllowedIPs is `/32`, so it is unforgeable.
+  - The Post-Auth REJECT reason lookup is now joined to the requesting router, so a foreign voucher gets the generic "That code isn't right" and no other tenant's voucher state.
+  - `freeradius/Dockerfile` enables `expr` explicitly.
+  - Scope: own router only (user decision). An operator's cards no longer work on their *other* routers either.
+- **Verified locally (FR 3.2.8 dev stack):**
+  - `expr` loaded and `-XC` OK.
+  - radtest: lock = source IP → Access-Accept; lock = `10.10.0.99` → Access-Reject.
+  - Scoped reject query: home router → reason, foreign router → empty.
+  - Migration 041 idempotent (second run inserts 0 rows).
+  - Backend `tsc` clean, 964 tests passing; new tests mutation-checked.
+  - Security audit: no Critical/High.
+- **Deploy: rebuild FreeRADIUS** (`build freeradius`; the site file and Dockerfile are baked into the image). Order: backend first (applies 041), then FR after `-XC`.
+- **Staging E2E:** cross-router voucher → Access-Reject with the generic message; home router → Accept; MAC-cookie re-login on the home router still works.
+- **Prod pre-flight (only on explicit go-ahead), all expect 0:**
+  - `SELECT COUNT(*) FROM routers r LEFT JOIN nas n ON n.nasname = r.tunnel_ip WHERE r.tunnel_ip IS NOT NULL AND n.nasname IS NULL`
+  - `SELECT COUNT(*) FROM voucher_meta vm JOIN routers r ON r.id = vm.router_id WHERE r.tunnel_ip IS NULL` (these vouchers would stay unlocked)
+  - After deploy, watch the per-NAS reject rate in `radpostauth` for 15 min.
+- **Rollback:** `DELETE FROM radcheck rc USING voucher_meta vm WHERE rc.username = vm.radius_username AND rc.attribute = 'Packet-Src-IP-Address' AND rc.op = '=='`, then revert the commit.
+
 **2026-10-08: MAC-cookie re-login convergence (P1 "customers retype the voucher").**
 - **Investigation:** the live read-only check on prod router `alzarg.net` found it correctly configured; re-login works after a Wi-Fi drop and after a power-off. The remaining causes are operator local cards and phone MAC randomisation (runbook: `docs/HOTSPOT_RELOGIN_TROUBLESHOOTING.md`).
 - **Code gap fixed on `dev`:**

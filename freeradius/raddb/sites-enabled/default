@@ -53,6 +53,16 @@ server default {
         #  This is where Cleartext-Password, Expiration, Simultaneous-Use,
         #  Mikrotik-Rate-Limit, Session-Timeout, etc. are loaded.
         #
+        #  Router scoping: radcheck also carries a per-voucher
+        #  `Packet-Src-IP-Address == <routers.tunnel_ip>` check item
+        #  (registered by rlm_expr's generic_attrs / genericcmp — see
+        #  src/modules/rlm_expr/paircmp.c in FreeRADIUS 3.2.x). On a
+        #  request from a different router the compare fails, rlm_sql
+        #  rejects the check-item set and no Cleartext-Password is
+        #  loaded, so pap has nothing to match and the request is
+        #  rejected. This is what prevents a voucher issued for router A
+        #  from authenticating on router B.
+        #
         sql
 
         #
@@ -145,6 +155,13 @@ server default {
             #  rejects; on an empty/error result it sets nothing and the page falls back
             #  to RouterOS's default string, so it can never affect a successful login.
             #
+            #  Router scoping: the lookup is joined to `routers` on
+            #  tunnel_ip = %{Packet-Src-IP-Address}, so a user on router B
+            #  who types router A's voucher gets NO Reply-Message. The
+            #  captive page then shows the generic "That code isn't right"
+            #  and never leaks router A's voucher state (disabled /
+            #  expired / limit reached) across tenants.
+            #
             #  Belt-and-suspenders: the %{sql:} xlat already auto-escapes the
             #  User-Name expansion in FR 3.2, but since User-Name is attacker-
             #  controllable on the reject path we additionally gate the whole
@@ -166,7 +183,9 @@ server default {
                           WHEN vm.status = 'expired' AND vm.limit_type = 'time' THEN 'time limit reached' \
                           WHEN vm.status = 'expired' THEN 'voucher expired' \
                           ELSE '' END \
-                        FROM voucher_meta vm WHERE vm.radius_username = '%{User-Name}' LIMIT 1}"
+                        FROM voucher_meta vm JOIN routers r ON r.id = vm.router_id \
+                        WHERE vm.radius_username = '%{User-Name}' \
+                          AND r.tunnel_ip = '%{Packet-Src-IP-Address}' LIMIT 1}"
                 }
                 if (&control:Tmp-String-0 != '') {
                     update reply {

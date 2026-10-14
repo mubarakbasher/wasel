@@ -700,9 +700,8 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     // Must NOT contain the gigawords attribute for a ≤4 GB voucher
     expect(insertArgs).not.toContain('Mikrotik-Total-Limit-Gigawords');
 
-    // radcheck INSERT must contain only Cleartext-Password + Simultaneous-Use —
-    // NOT Max-Total-Octets (undefined in FreeRADIUS since max_total_octets
-    // sqlcounter was retired; its presence causes authorize to fail).
+    // radcheck INSERT must contain Cleartext-Password + Simultaneous-Use +
+    // Packet-Src-IP-Address (router scope). Must NOT contain Max-Total-Octets.
     const radcheckInserts = mockClientQuery.mock.calls.filter(
       (c) => typeof c[0] === 'string' && (c[0] as string).includes('radcheck'),
     );
@@ -710,6 +709,8 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     const rcArgs = radcheckInserts[0][1] as unknown[];
     expect(rcArgs).toContain('Cleartext-Password');
     expect(rcArgs).toContain('Simultaneous-Use');
+    expect(rcArgs).toContain('Packet-Src-IP-Address');
+    expect(rcArgs).toContain('10.10.0.2'); // tunnel_ip from mock
     expect(rcArgs).not.toContain('Max-Total-Octets');
     expect(rcArgs).not.toContain('Max-Total-Octets-Gigawords');
   });
@@ -775,9 +776,8 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
       String(GIGAWORDS),
     ]);
 
-    // radcheck INSERT must contain only Cleartext-Password + Simultaneous-Use —
-    // NOT Max-Total-Octets/-Gigawords (undefined in FreeRADIUS since the
-    // max_total_octets sqlcounter was retired).
+    // radcheck INSERT must contain Cleartext-Password + Simultaneous-Use +
+    // Packet-Src-IP-Address (router scope). Must NOT contain Max-Total-Octets.
     const radcheckInserts = mockClientQuery.mock.calls.filter(
       (c) => typeof c[0] === 'string' && (c[0] as string).includes('radcheck'),
     );
@@ -785,6 +785,8 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     const rcArgs = radcheckInserts[0][1] as unknown[];
     expect(rcArgs).toContain('Cleartext-Password');
     expect(rcArgs).toContain('Simultaneous-Use');
+    expect(rcArgs).toContain('Packet-Src-IP-Address');
+    expect(rcArgs).toContain('10.10.0.2'); // tunnel_ip from mock
     expect(rcArgs).not.toContain('Max-Total-Octets');
     expect(rcArgs).not.toContain('Max-Total-Octets-Gigawords');
   });
@@ -848,6 +850,121 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     ]);
     // No gigawords row for a ≤4 GB voucher
     expect(insertArgs).not.toContain('Mikrotik-Total-Limit-Gigawords');
+  });
+});
+
+// ─── Packet-Src-IP-Address router-scope lock ─────────────────────────────────
+
+describe('POST /api/v1/routers/:id/vouchers — Packet-Src-IP-Address router scope', () => {
+  // Use a distinctive tunnel_ip so tests catch any constant substitution bug.
+  const TUNNEL_IP = '10.10.3.14';
+
+  /**
+   * Set up pool mocks for verifyRouterOwnership with a custom tunnel_ip.
+   */
+  function mockOwnership(mq: ReturnType<typeof vi.fn>, tunnelIp: string): void {
+    mq.mockResolvedValueOnce({ rows: [{ tunnel_ip: tunnelIp }] });
+  }
+
+  it('each time-voucher in a multi-voucher batch gets exactly one Packet-Src-IP-Address row with the router tunnel_ip', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockOwnership(mockQuery, TUNNEL_IP);
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
+
+    // 3 time vouchers — BEGIN + UPDATE + INSERT voucher_meta + INSERT radcheck + COMMIT
+    const threeRows = [1, 2, 3].map((i) => ({
+      ...MOCK_VOUCHER_ROW,
+      id: `id-${i}`,
+      radius_username: `user${i}`,
+      limit_type: 'time',
+      limit_value: '3600',
+    }));
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                                           // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 3 }], rowCount: 1 })      // UPDATE subscriptions
+      .mockResolvedValueOnce({ rows: threeRows })                                 // INSERT voucher_meta
+      .mockResolvedValueOnce(undefined)                                           // INSERT radcheck
+      .mockResolvedValueOnce(undefined);                                          // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['user1', 'user2', 'user3']);
+    // count > 1: controller issues one fire-and-forget SELECT name FROM routers
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: 'Router A' }] });
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 1, limitUnit: 'hours', count: 3, price: 5 });
+
+    expect(res.status).toBe(201);
+
+    const radcheckInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radcheck'),
+    );
+    expect(radcheckInserts).toHaveLength(1);
+    const rcArgs = radcheckInserts[0][1] as unknown[];
+
+    // Packet-Src-IP-Address attribute present and value is the mocked tunnel_ip
+    expect(rcArgs).toContain('Packet-Src-IP-Address');
+    expect(rcArgs).toContain(TUNNEL_IP);
+
+    // Exactly 3 occurrences (one per voucher) — count '==' occurrences
+    const equalsOps = rcArgs.filter((v) => v === '==');
+    expect(equalsOps).toHaveLength(3);
+
+    // tunnel_ip appears exactly 3 times (once per voucher)
+    const scopeValues = rcArgs.filter((v) => v === TUNNEL_IP);
+    expect(scopeValues).toHaveLength(3);
+  });
+
+  it('each data-voucher in a multi-voucher batch gets exactly one Packet-Src-IP-Address row with the router tunnel_ip', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockOwnership(mockQuery, TUNNEL_IP);
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
+
+    const DATA_100MB = 100 * 1024 * 1024;
+    const twoRows = [1, 2].map((i) => ({
+      ...MOCK_VOUCHER_ROW,
+      id: `id-${i}`,
+      radius_username: `user${i}`,
+      limit_type: 'data',
+      limit_value: String(DATA_100MB),
+    }));
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                                           // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 2 }], rowCount: 1 })      // UPDATE subscriptions
+      .mockResolvedValueOnce({ rows: twoRows })                                   // INSERT voucher_meta
+      .mockResolvedValueOnce(undefined)                                           // INSERT radcheck
+      .mockResolvedValueOnce(undefined)                                           // INSERT radreply
+      .mockResolvedValueOnce(undefined);                                          // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['user1', 'user2']);
+    // count > 1: controller issues one fire-and-forget SELECT name FROM routers
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: 'Router A' }] });
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'data', limitValue: 100, limitUnit: 'MB', count: 2, price: 5 });
+
+    expect(res.status).toBe(201);
+
+    const radcheckInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radcheck'),
+    );
+    expect(radcheckInserts).toHaveLength(1);
+    const rcArgs = radcheckInserts[0][1] as unknown[];
+
+    // Packet-Src-IP-Address present and bound to the mocked tunnel_ip, not a constant
+    expect(rcArgs).toContain('Packet-Src-IP-Address');
+    expect(rcArgs).toContain(TUNNEL_IP);
+
+    // Exactly 2 occurrences (one per voucher)
+    const scopeValues = rcArgs.filter((v) => v === TUNNEL_IP);
+    expect(scopeValues).toHaveLength(2);
   });
 });
 

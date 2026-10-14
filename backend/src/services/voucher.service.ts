@@ -68,6 +68,15 @@ export interface VoucherListResult {
 const VOUCHER_SIMULTANEOUS_USE = 20;
 
 /**
+ * radcheck attribute that locks a voucher to its home router.
+ * FreeRADIUS 3.2.x rlm_expr registers PW_PACKET_SRC_IP_ADDRESS in
+ * generic_attrs[] with genericcmp, which expands %{Packet-Src-IP-Address}
+ * (the UDP source IP of the Access-Request) and compares it to this value.
+ * On the WireGuard-only topology the source IP is always routers.tunnel_ip.
+ */
+const VOUCHER_ROUTER_SCOPE_ATTRIBUTE = 'Packet-Src-IP-Address';
+
+/**
  * µs-precision UTC text of vm.created_at — shared wire format for keyset
  * cursors and batch keys. JS Date.toISOString() truncates to milliseconds,
  * which breaks keyset pagination when a multi-row batch INSERT shares one
@@ -405,8 +414,12 @@ async function toVoucherInfo(row: VoucherMetaRow): Promise<VoucherInfo> {
 }
 
 /**
- * Verify router belongs to the user. Returns the router's tunnel_ip
- * since most callers need it to NAS-scope the vouchers they create.
+ * Verify router belongs to the user.
+ *
+ * Returns the router's tunnel_ip so callers can lock vouchers to the router
+ * via a Packet-Src-IP-Address radcheck row. On this WireGuard-only topology
+ * Packet-Src-IP-Address always equals tunnel_ip (the WireGuard peer IP), which
+ * is enforced by AllowedIPs /32 and cannot be forged across peers.
  */
 async function verifyRouterOwnership(userId: string, routerId: string): Promise<{ tunnelIp: string | null }> {
   const result = await pool.query<{ tunnel_ip: string | null }>(
@@ -436,15 +449,19 @@ type PgClient = { query: (...args: any[]) => Promise<any> };
 /**
  * Insert RADIUS entries for a new-style voucher (no profiles).
  *
- * No per-voucher NAS scoping: vouchers authenticate on any NAS that
- * successfully presents its shared secret. Voucher usernames are random
- * 8-char strings and Simultaneous-Use=20 tolerates MAC-rotation overlap;
- * the stale-session reaper closes stragglers quickly. Cross-router replay
- * is a negligible concern. A previous NAS-IP-Address
- * scope row (commit 588eeb5) compared against the NAS-self-reported
- * NAS-IP-Address AVP (RFC 2865 §5.4), which RouterOS sets to the router's
- * own IP — not the WireGuard peer IP — so the comparison structurally
- * could not succeed on this deployment's topology.
+ * Vouchers ARE locked to their home router via a Packet-Src-IP-Address ==
+ * tunnelIp radcheck row. FreeRADIUS 3.2.x rlm_expr registers
+ * PW_PACKET_SRC_IP_ADDRESS in generic_attrs[] with genericcmp, which expands
+ * %{Packet-Src-IP-Address} (the UDP source of the Access-Request) and
+ * compares it to tunnelIp. The dynamic-client loader selects the NAS secret
+ * by nasname = Packet-Src-IP-Address, and router.service.ts inserts
+ * nasname = tunnel_ip. WireGuard AllowedIPs is <tunnel_ip>/32, so the source
+ * IP is unforgeable across peers.
+ *
+ * NAS-IP-Address MUST NOT be used: it is NAS-self-reported per RFC 2865 §5.4
+ * (RouterOS sets it to the router's own WAN/LAN IP, not the WG peer IP).
+ * Commit 588eeb5 used NAS-IP-Address and broke auth; 8cecf56 removed the lock
+ * entirely. Packet-Src-IP-Address is the correct attribute for this topology.
  *
  * NOTE: This function has no callers today. It is intentionally kept in sync
  * with the `createVouchers` batch path as a template for a future
@@ -459,6 +476,7 @@ async function insertRadiusEntriesV2(
   limitType: 'time' | 'data',
   normalizedLimitValue: number,
   validitySeconds: number | null | undefined,
+  tunnelIp: string,
 ): Promise<void> {
   // radcheck: Cleartext-Password
   await client.query(
@@ -470,6 +488,12 @@ async function insertRadiusEntriesV2(
   await client.query(
     'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
     [username, 'Simultaneous-Use', ':=', String(VOUCHER_SIMULTANEOUS_USE)],
+  );
+
+  // radcheck: router scope — locks this voucher to its home router
+  await client.query(
+    'INSERT INTO radcheck (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+    [username, VOUCHER_ROUTER_SCOPE_ATTRIBUTE, '==', tunnelIp],
   );
 
   // radcheck: limit attribute
@@ -630,6 +654,14 @@ export async function createVouchers(
       // Simultaneous-Use
       rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
       rcValues.push(cred.username, 'Simultaneous-Use', ':=', String(VOUCHER_SIMULTANEOUS_USE));
+
+      // Router scope: lock this voucher to its home router.
+      // Packet-Src-IP-Address is the UDP source of the Access-Request; on this
+      // WireGuard-only topology it always equals tunnel_ip (AllowedIPs /32).
+      // FreeRADIUS rlm_expr genericcmp performs the comparison server-side.
+      // Param budget: 3000 vouchers × 4 rows × 4 params = 48,000 < PG limit 65,535.
+      rcPlaceholders.push(`($${rcIdx++}, $${rcIdx++}, $${rcIdx++}, $${rcIdx++})`);
+      rcValues.push(cred.username, VOUCHER_ROUTER_SCOPE_ATTRIBUTE, '==', tunnelIp);
 
       // Limit attribute (radcheck)
       // Data vouchers: NO limit attribute written to radcheck. The byte cap is

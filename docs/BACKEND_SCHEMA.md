@@ -488,7 +488,7 @@ All eight base tables are created in `002_freeradius_tables.sql`; `012_fix_radiu
 
 | Table | Standard purpose | How Wasel uses it |
 |---|---|---|
-| `radcheck` | Per-user check attributes | One row-set per voucher: `Cleartext-Password := <username>` (voucher code is both username and password), `Simultaneous-Use := 1`, the limit attribute (`Max-All-Session` or `Max-Total-Octets` [+ `-Gigawords`]), `Expiration` (written later by the validity job), and `Auth-Type := Reject` for disabled/expired vouchers |
+| `radcheck` | Per-user check attributes | One row-set per voucher: `Cleartext-Password := <username>` (voucher code is both username and password), `Simultaneous-Use := 1`, the router lock `Packet-Src-IP-Address == <routers.tunnel_ip>` (migration 041), the limit attribute (`Max-All-Session` or `Max-Total-Octets` [+ `-Gigawords`]), `Expiration` (written later by the validity job), and `Auth-Type := Reject` for disabled/expired vouchers |
 | `radreply` | Per-user reply attributes | `Session-Timeout := validity_seconds` — caps the **first** session at the validity window before the `Expiration` row exists; on re-auth `rlm_expiration` overwrites it with the remaining wall-clock time (`insertRadiusEntriesV2` comment, `voucher.service.ts`) |
 | `radgroupcheck` | Group check attributes | Legacy profile path: `Max-All-Session` (from `radius_profiles.total_time`), `Max-Total-Octets` (from `total_data`) |
 | `radgroupreply` | Group reply attributes | Legacy profile path: `Mikrotik-Rate-Limit := "up/down"` (e.g. `2M/5M`), `Session-Timeout` |
@@ -555,9 +555,10 @@ Indexes: `username`, `acctsessionid`, `acctuniqueid`, `acctstarttime`, `acctstop
 | Data limit (`Max-Total-Octets`) | FreeRADIUS `sqlcounter max_total_octets` (same pattern; values > 4 294 967 295 bytes are split into `Max-Total-Octets` + `Max-Total-Octets-Gigawords` rows at create time) | same job |
 | Validity window | FreeRADIUS `rlm_expiration` reading the `Expiration` radcheck row | `validityCoaDisconnect` job (30 s) kicks live sessions whose window elapsed; `Session-Timeout` radreply caps the first session |
 | Concurrency | `Simultaneous-Use := 1` radcheck row | — |
+| Router lock | `Packet-Src-IP-Address == <routers.tunnel_ip>` radcheck row (compared by rlm_expr `genericcmp` against the UDP source IP) | — |
 | Disable | `Auth-Type := Reject` radcheck row (insert/remove via `PATCH` voucher endpoint) | — |
 
-A historical caveat worth knowing: per-voucher `NAS-IP-Address ==` scoping was added and then **removed** (migrations 022/023) because RouterOS fills that AVP with the router's own LAN IP, not the WireGuard peer IP — the comparison structurally could not succeed. Vouchers therefore authenticate on any NAS that presents a valid shared secret; the random 8-digit usernames plus `Simultaneous-Use=1` make cross-router replay a negligible concern (see the comment block on `insertRadiusEntriesV2`).
+**Router lock (migration 041, 2026-10-15).** Each voucher authenticates only on its home router via a `Packet-Src-IP-Address == <routers.tunnel_ip>` radcheck row. FreeRADIUS 3.2.x `rlm_expr` registers `Packet-Src-IP-Address` with `genericcmp`, which compares the check value to the request's UDP source IP. On the WireGuard-only topology that source IP always equals `tunnel_ip`: the dynamic-client loader picks the NAS secret by `nasname = Packet-Src-IP-Address`, and WG AllowedIPs is `<tunnel_ip>/32`. A foreign router's request fails the compare, so no password is loaded and FR rejects it. The Post-Auth REJECT reason lookup is also joined to the requesting router, so foreign vouchers get the generic "wrong code" message. History: the first attempt used `NAS-IP-Address ==` (migration 022), which can never match because that AVP is NAS-self-reported (RFC 2865 §5.4). Migration 023 removed it, which left vouchers valid on every router until 041. **Depends on `mods-enabled/expr` staying enabled:** without rlm_expr, every voucher rejects.
 
 ---
 
@@ -626,7 +627,7 @@ stateDiagram-v2
 
 | Transition | Actor | SQL touched |
 |---|---|---|
-| create → `unused` | `POST /routers/:id/vouchers` → `createVouchers` | INSERT `voucher_meta` + `radcheck` (`Cleartext-Password`, `Simultaneous-Use`, limit attr) + optional `radreply` `Session-Timeout`; `UPDATE subscriptions SET vouchers_used += n` |
+| create → `unused` | `POST /routers/:id/vouchers` → `createVouchers` | INSERT `voucher_meta` + `radcheck` (`Cleartext-Password`, `Simultaneous-Use`, `Packet-Src-IP-Address ==` router lock, limit attr) + optional `radreply` `Session-Timeout`; `UPDATE subscriptions SET vouchers_used += n` |
 | `unused` → `active` | The user logs in; FreeRADIUS writes the accounting Start | INSERT `radacct` (FR-owned). Within ≤30 s the `validityExpiration` job (`backend/src/jobs/validityExpiration.ts`) INSERTs the `Expiration` radcheck row = `MIN(acctstarttime) + validity_seconds` (race-guarded conditional INSERT with `::varchar` casts). Full reconciliation also runs at startup (+3 min) and daily at 02:10 UTC. |
 | `active`/`used` → `expired` (usage) | `usageLimitEnforcement` job (incremental fast pass every 30 s + reconciliation at startup +5 min and daily 02:40 UTC) | When `SUM(acctsessiontime)` or `SUM(acctinputoctets+acctoutputoctets)` ≥ `voucher_meta.limit_value`: DELETE+INSERT `Auth-Type := Reject` in `radcheck`, `UPDATE voucher_meta SET status='expired'` |
 | `active` → kicked (validity) | `validityCoaDisconnect` job (every 30 s, LIMIT 200 per tick) | SELECT expired-Expiration + active-radacct + `nas.secret`, then RFC 5176 Disconnect-Request to `nasipaddress:3799` via `sendDisconnectRequest` (`backend/src/services/radclient.service.ts`) |
