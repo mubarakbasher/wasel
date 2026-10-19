@@ -3,15 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---------------------------------------------------------------------------
 // Hoist mock factories so they exist before vi.mock() factory functions run.
 // ---------------------------------------------------------------------------
-const { mockListPeers, mockCaptureMessage, mockLoggerError, mockLoggerInfo } = vi.hoisted(() => ({
+const { mockListPeers, mockResetPeer, mockCaptureMessage, mockLoggerError, mockLoggerInfo } = vi.hoisted(() => ({
   mockListPeers: vi.fn(),
+  mockResetPeer: vi.fn(),
   mockCaptureMessage: vi.fn(),
   mockLoggerError: vi.fn(),
   mockLoggerInfo: vi.fn(),
 }));
 
-// Mock WireGuard peer listing — the system under test's only I/O besides pg.
-vi.mock('../wireguardPeer', () => ({ listPeers: mockListPeers }));
+// Mock WireGuard peer I/O — the only non-pg side effects in the system under test.
+vi.mock('../wireguardPeer', () => ({ listPeers: mockListPeers, resetPeer: mockResetPeer }));
 
 // Mock Sentry with sentryEnabled=true so captureMessage calls actually go through
 // the guarded branch. In production this would hit the real Sentry client.
@@ -58,6 +59,7 @@ const nowS = () => Math.floor(Date.now() / 1000);
 function makePeer(id: string, ageSecs: number) {
   return {
     publicKey: `key-${id}`,
+    presharedKey: '(none)',
     latestHandshake: ageSecs === 0 ? 0 : nowS() - ageSecs,
     endpoint: `1.2.3.4:51820`,
     allowedIps: `10.10.0.${id}/32`,
@@ -97,6 +99,8 @@ beforeEach(() => {
   mockLoggerError.mockReset();
   mockLoggerInfo.mockReset();
   mockListPeers.mockReset();
+  mockResetPeer.mockReset();
+  mockResetPeer.mockResolvedValue(undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -231,6 +235,110 @@ describe('fleet-offline alarm', () => {
     expect(mockLoggerError).toHaveBeenCalledWith(
       'WireGuard fleet-offline alarm: online routers collapsed',
       expect.objectContaining({ onlineCount: 3, previousOnlineCount: 7 }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stale-peer safety net
+// ---------------------------------------------------------------------------
+describe('stale-peer reset sweep', () => {
+  /**
+   * A peer whose last handshake is well past STALE_PEER_RESET_AFTER_S (300 s)
+   * is reset in place to clear the kernel's TAI64N replay-protection timestamp.
+   * The race-guard re-read confirms the staleness before the reset is issued.
+   */
+  it('resets a peer whose handshake is older than 300 s', async () => {
+    const stalePeer = makePeer('2', 600);
+    mockListPeers
+      .mockResolvedValueOnce([stalePeer])  // initial dump
+      .mockResolvedValueOnce([stalePeer]); // race-guard re-read
+    mockQuery.mockResolvedValueOnce({ rows: [makeRouter('2', 'online')] });
+
+    await checkRouterStatuses();
+
+    expect(mockResetPeer).toHaveBeenCalledTimes(1);
+    expect(mockResetPeer).toHaveBeenCalledWith({
+      publicKey: 'key-2',
+      allowedIps: '10.10.0.2/32',
+      presharedKey: '(none)',
+    });
+  });
+
+  /**
+   * A peer that has never handshook (hs == 0) must not be reset — that would
+   * loop forever on powered-off routers. hs == 0 is the self-limiting signal
+   * because the kernel reports it after a successful reset.
+   */
+  it('does not reset a peer with latestHandshake = 0 (never handshook)', async () => {
+    const neverHandshook = makePeer('3', 0);
+    // Queue a race-guard response too, so removing the hs=0 guard would call
+    // resetPeer and fail this test (mutation-check teeth).
+    mockListPeers
+      .mockResolvedValueOnce([neverHandshook])
+      .mockResolvedValueOnce([neverHandshook]);
+    mockQuery.mockResolvedValueOnce({ rows: [makeRouter('3', 'offline')] });
+
+    await checkRouterStatuses();
+
+    // hs == 0 is excluded upstream of the race-guard re-read — exactly one dump.
+    expect(mockListPeers).toHaveBeenCalledTimes(1);
+    expect(mockResetPeer).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A peer handshook within the threshold must not be reset — it is a live
+   * tunnel; a reset would disrupt an active session.
+   */
+  it('does not reset a peer that handshook recently (age <= 300 s)', async () => {
+    const fresh = makePeer('4', 60);
+    mockListPeers.mockResolvedValueOnce([fresh]);
+    mockQuery.mockResolvedValueOnce({ rows: [makeRouter('4', 'online')] });
+
+    await checkRouterStatuses();
+
+    expect(mockResetPeer).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Race-guard: a peer that looked stale in the initial dump but handshook
+   * between the two reads must be left alone — never reset a peer that is up.
+   */
+  it('skips reset when the race-guard re-read shows a recent handshake', async () => {
+    const stalePeer = makePeer('5', 600);
+    const nowRecovered = { ...stalePeer, latestHandshake: nowS() - 10 };
+    mockListPeers
+      .mockResolvedValueOnce([stalePeer])        // initial: stale
+      .mockResolvedValueOnce([nowRecovered]);    // race-guard: now live
+    mockQuery.mockResolvedValueOnce({ rows: [makeRouter('5', 'online')] });
+
+    await checkRouterStatuses();
+
+    expect(mockResetPeer).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A reset that throws must not break the tick — the status computation and
+   * DB write must still complete. Validated via the status UPDATE query being
+   * issued and the tick returning without a rejected promise.
+   */
+  it('tick still completes when resetPeer throws', async () => {
+    const stalePeer = makePeer('6', 600);
+    mockListPeers
+      .mockResolvedValueOnce([stalePeer])
+      .mockResolvedValueOnce([stalePeer]);
+    // Router starts as online in DB — stale handshake flips it to offline.
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeRouter('6', 'online')] }) // SELECT routers
+      .mockResolvedValue({ rows: [] });                              // BEGIN/UPDATE/COMMIT
+
+    mockResetPeer.mockRejectedValueOnce(new Error('wg set failed'));
+
+    await expect(checkRouterStatuses()).resolves.toBeUndefined();
+    expect(mockResetPeer).toHaveBeenCalledTimes(1);
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'WireGuard monitor: stale peer reset failed',
+      expect.objectContaining({ tunnelIp: '10.10.0.6' }),
     );
   });
 });

@@ -17,6 +17,7 @@ const WG_INTERFACE = 'wg0';
  */
 export interface WgPeerStatus {
   publicKey: string;
+  presharedKey: string;       // base64 PSK, or "(none)" if no PSK was configured
   endpoint: string;           // e.g., "1.2.3.4:51820" or "(none)"
   allowedIps: string;         // e.g., "10.10.0.2/32"
   latestHandshake: number;    // Unix timestamp in seconds, 0 if never
@@ -51,7 +52,10 @@ export async function addPeer(params: {
       // Write preshared key to a temp file — wg set reads it from disk
       const randomSuffix = randomBytes(8).toString('hex');
       pskTempFile = join(tmpdir(), `wg_psk_${randomSuffix}`);
-      await writeFile(pskTempFile, presharedKey, { mode: 0o600 });
+      // flag: 'wx' refuses to open if the path already exists, so a planted
+      // file or symlink at this path (TOCTOU on tmpdir) cannot be used to
+      // intercept the PSK or redirect our write.
+      await writeFile(pskTempFile, presharedKey, { flag: 'wx', mode: 0o600 });
       args.push('preshared-key', pskTempFile);
     }
 
@@ -136,6 +140,7 @@ export async function listPeers(): Promise<WgPeerStatus[]> {
 
       peers.push({
         publicKey: fields[0],
+        presharedKey: fields[1], // "(none)" or base64 PSK (sensitive — never log)
         endpoint: fields[2] === '(none)' ? '(none)' : fields[2],
         allowedIps: fields[3],
         latestHandshake: parseInt(fields[4], 10) || 0,
@@ -161,6 +166,114 @@ export async function listPeers(): Promise<WgPeerStatus[]> {
 export async function getPeerStatus(publicKey: string): Promise<WgPeerStatus | null> {
   const peers = await listPeers();
   return peers.find((p) => p.publicKey === publicKey) ?? null;
+}
+
+// Mirrors the 10.10.0.0/16 range of tunnel_subnet_pool — if that pool is ever
+// renumbered, this regex must move with it.
+/**
+ * Regex for a per-router /30 host IP in the Wasel tunnel pool, e.g.
+ * "10.10.0.2/32". Shared with the stale-peer safety net to refuse resets on
+ * anything that is not a single-host router allowed-ips.
+ */
+const ROUTER_ALLOWED_IPS_RE = /^10\.10\.\d{1,3}\.\d{1,3}\/32$/;
+
+/**
+ * Canonical WireGuard key: 32 bytes base64-encoded = 44 chars ending in `=`.
+ * The 43rd character is constrained by base64 padding (last 2 bits are zero),
+ * so it must be one of `AEIMQUYcgkosw480`. We use the strict form for both
+ * public keys and preshared keys. A `(none)` sentinel is accepted separately
+ * for peers configured without a PSK.
+ */
+const WG_KEY_RE = /^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=$/;
+
+/**
+ * Remove and immediately re-add a WireGuard peer with the same public key,
+ * allowed-ips and preshared key.
+ *
+ * Why: WireGuard's kernel implementation stores a per-peer `latest_timestamp`
+ * (TAI64N) from the last successful handshake, and silently drops any
+ * subsequent handshake initiation whose timestamp is ≤ that stored value
+ * (replay protection). When a router board without an RTC battery boots with
+ * its clock hours in the past (power cut, NTP never ran) its initiations are
+ * forever rejected until the server-side peer is torn down and re-added —
+ * which resets the stored timestamp to zero. This helper performs exactly
+ * that in-memory reset without touching wg0.conf (peers survive restart via
+ * syncPeersFromDatabase).
+ *
+ * Safety:
+ *   - allowed-ips is validated as a single-host /32 in the Wasel pool; the
+ *     helper refuses to touch anything else (would silently nuke the wrong peer).
+ *   - If the re-add fails after the remove succeeded, the peer is temporarily
+ *     missing from the running interface. We log the tunnel IP loudly so an
+ *     operator sees it, and note that the next backend restart will restore it
+ *     via syncPeersFromDatabase().
+ *   - Never log the preshared key. Public key is truncated to 8 chars to match
+ *     the surrounding addPeer / removePeer log style.
+ */
+export async function resetPeer(params: {
+  publicKey: string;
+  allowedIps: string;         // from wg dump; must be a single "10.10.x.y/32"
+  presharedKey: string;       // from wg dump; "(none)" means no PSK
+}): Promise<void> {
+  const { publicKey, allowedIps, presharedKey } = params;
+
+  if (!ROUTER_ALLOWED_IPS_RE.test(allowedIps)) {
+    logger.warn('WireGuard peer reset skipped: allowed-ips is not a single /32 in the Wasel pool', {
+      publicKey: publicKey.substring(0, 8) + '...',
+      allowedIps,
+    });
+    return;
+  }
+
+  const routerIp = allowedIps.split('/')[0];
+
+  // Shape-check the keys BEFORE touching the kernel. The values flow in from
+  // `wg show wg0 dump` which should always be well-formed, but if they ever
+  // aren't (parse bug, corrupt dump) we must not pass them verbatim to
+  // `wg set`, which could succeed on a mangled key and either delete the
+  // wrong peer or add garbage. Mismatch → log + return, matching the
+  // allowed-ips guard above.
+  if (!WG_KEY_RE.test(publicKey)) {
+    logger.warn('WireGuard peer reset skipped: public key does not match the WireGuard key shape', {
+      publicKey: publicKey.substring(0, 8) + '...',
+      tunnelIp: routerIp,
+    });
+    return;
+  }
+
+  if (presharedKey !== '(none)' && !WG_KEY_RE.test(presharedKey)) {
+    // Deliberately do NOT log the PSK value — only the public key prefix and
+    // tunnel IP are safe to surface.
+    logger.warn('WireGuard peer reset skipped: preshared key is neither "(none)" nor a valid WireGuard key', {
+      publicKey: publicKey.substring(0, 8) + '...',
+      tunnelIp: routerIp,
+    });
+    return;
+  }
+
+  const psk = presharedKey !== '(none)' ? presharedKey : undefined;
+
+  await removePeer(publicKey);
+
+  try {
+    await addPeer({ publicKey, routerIp, presharedKey: psk });
+    logger.info('WireGuard peer reset (remove+add) to clear stale handshake timestamp', {
+      publicKey: publicKey.substring(0, 8) + '...',
+      routerIp,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(
+      'WireGuard peer reset: re-add FAILED after remove — peer is missing from wg0 ' +
+        'until the next backend restart (syncPeersFromDatabase will restore it)',
+      {
+        publicKey: publicKey.substring(0, 8) + '...',
+        routerIp,
+        error: message,
+      },
+    );
+    throw error;
+  }
 }
 
 /**
