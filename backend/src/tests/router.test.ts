@@ -45,7 +45,7 @@ vi.mock('../utils/ipAllocation', () => ({
 vi.mock('../services/wireguardConfig', () => ({
   generateMikrotikConfigText: vi.fn().mockReturnValue('# Mikrotik Setup Commands\n/interface wireguard add ...'),
   generateSetupSteps: vi.fn().mockReturnValue(
-    Array.from({ length: 11 }, (_, i) => ({
+    Array.from({ length: 12 }, (_, i) => ({
       step: i + 1,
       title: `Step ${i + 1}`,
       description: `Description ${i + 1}`,
@@ -206,7 +206,7 @@ describe('POST /api/v1/routers', () => {
     expect(res.body.data.router.name).toBe('Office Router');
     expect(res.body.data.router.tunnelIp).toBe('10.10.0.2');
     expect(Array.isArray(res.body.data.steps)).toBe(true);
-    expect(res.body.data.steps).toHaveLength(11);
+    expect(res.body.data.steps).toHaveLength(12);
     expect(res.body.data.steps[6].command).toMatch(/^\/radius add service=hotspot,login address=10\.10\.0\.1/);
   });
 });

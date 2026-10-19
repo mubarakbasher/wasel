@@ -599,6 +599,8 @@ class AppLocalizations {
     'routers.setup.step10.desc': 'Allows UDP port 3799 from the Wasel VPS so CoA disconnect and policy-push packets are not dropped.',
     'routers.setup.step11.title': 'Firewall — allow WireGuard',
     'routers.setup.step11.desc': 'Allows UDP port 51820 so the WireGuard tunnel can be established even if the default firewall has a drop rule.',
+    'routers.setup.step12.title': 'Keep the router clock correct (NTP)',
+    'routers.setup.step12.desc': 'Turns on automatic time sync so the router keeps the correct time after a power cut. Without it the WireGuard VPN tunnel to Wasel may fail to reconnect and vouchers will stop working on this router.',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} selected',
@@ -1508,6 +1510,8 @@ class AppLocalizations {
     'routers.setup.step10.desc': 'يسمح بمنفذ UDP 3799 من خادم Wasel VPS حتى لا تُحذف حزم قطع الاتصال وتحديثات السياسة.',
     'routers.setup.step11.title': 'جدار الحماية — السماح بـ WireGuard',
     'routers.setup.step11.desc': 'يسمح بمنفذ UDP 51820 حتى يمكن إنشاء نفق WireGuard حتى لو كان جدار الحماية الافتراضي يحتوي على قاعدة حذف.',
+    'routers.setup.step12.title': 'الحفاظ على صحة ساعة الراوتر (NTP)',
+    'routers.setup.step12.desc': 'يُفعّل المزامنة التلقائية للوقت حتى يحتفظ الراوتر بالتوقيت الصحيح بعد انقطاع الكهرباء. بدونها قد يفشل نفق WireGuard في إعادة الاتصال بـ Wasel وتتوقف القسائم عن العمل على هذا الراوتر.',
 
     // ── Extra Vouchers ───────────────────────────────────────────────────────
     'vouchers.selected': '{0} محدد',

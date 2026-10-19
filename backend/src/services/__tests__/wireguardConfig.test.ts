@@ -27,10 +27,18 @@ const BASE_PARAMS = {
 };
 
 describe('generateMikrotikConfig', () => {
-  it('emits exactly 11 non-empty lines', () => {
+  it('emits exactly 12 non-empty lines', () => {
     const output = generateMikrotikConfig(BASE_PARAMS);
     const lines = output.split('\n').filter((l) => l.trim().length > 0);
-    expect(lines).toHaveLength(11);
+    expect(lines).toHaveLength(12);
+  });
+
+  it('step 12 (last) is the NTP client enable line — appended last to keep mobile step numbers stable for released APKs', () => {
+    const output = generateMikrotikConfig(BASE_PARAMS);
+    const lines = output.split('\n').filter((l) => l.trim().length > 0);
+    expect(lines[11]).toBe(
+      `/system ntp client set enabled=yes servers=time.cloudflare.com,pool.ntp.org,time.google.com`,
+    );
   });
 
   it('step 7 is the correct /radius add line with interpolated values', () => {
@@ -111,16 +119,24 @@ describe('generateMikrotikConfig', () => {
 });
 
 describe('generateSetupSteps', () => {
-  it('returns exactly 11 steps', () => {
+  it('returns exactly 12 steps', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
-    expect(steps).toHaveLength(11);
+    expect(steps).toHaveLength(12);
   });
 
-  it('step numbers are 1 through 11 in order', () => {
+  it('step numbers are 1 through 12 in order', () => {
     const steps = generateSetupSteps(BASE_PARAMS);
     steps.forEach((s, idx) => {
       expect(s.step).toBe(idx + 1);
     });
+  });
+
+  it('step 12 (index 11, last) enables the NTP client — appended last so mobile step numbers 1–11 are unchanged for released APKs', () => {
+    const steps = generateSetupSteps(BASE_PARAMS);
+    expect(steps[11].step).toBe(12);
+    expect(steps[11].command).toBe(
+      `/system ntp client set enabled=yes servers=time.cloudflare.com,pool.ntp.org,time.google.com`,
+    );
   });
 
   it('step 7 (index 6) command starts with /radius add service=hotspot,login address=10.10.0.1', () => {
@@ -186,13 +202,20 @@ describe('generateMikrotikConfigText', () => {
     expect(text).toContain('comment=wasel');
   });
 
-  it('contains all 11 STEP headings and no more', () => {
+  it('contains all 12 STEP headings and no more', () => {
     const text = generateMikrotikConfigText(TEXT_PARAMS);
-    for (let i = 1; i <= 11; i++) {
+    for (let i = 1; i <= 12; i++) {
       expect(text).toContain(`STEP ${i}:`);
     }
-    expect(text).not.toContain('STEP 12:');
     expect(text).not.toContain('STEP 13:');
+    expect(text).not.toContain('STEP 14:');
+  });
+
+  it('contains the NTP client enable command as the LAST step (STEP 12)', () => {
+    const text = generateMikrotikConfigText(TEXT_PARAMS);
+    expect(text).toContain('STEP 12: Enable the NTP client');
+    expect(text).toContain('/system ntp client set enabled=yes');
+    expect(text).toContain('servers=time.cloudflare.com,pool.ntp.org,time.google.com');
   });
 
   it('does not contain /tool fetch (old callback step)', () => {

@@ -6,6 +6,40 @@
 
 **2026-09-14:** operator survey (10 respondents, 9×5/5) analysed in `docs/users/SURVEY_2026-09-10_ANALYSIS.md` — each ask cross-checked against the code; follow-up checklist inside. No code changes. **2026-09-29:** batch 2 (15 more rows, 09-20→09-28, three new 1/5s) added to the same doc. Key finding: the "network is busy" complaint is our captive-page text for a RADIUS timeout, which strengthens the case for promoting the FreeRADIUS-hang fix to prod.
 
+**2026-10-19: PROD INCIDENT — vouchers failing; half the routers' WireGuard tunnels stuck. Mitigated by hand; permanent fix not built yet.**
+- **Symptom:** 167 routers online, 168 offline (about 105 dropped 12:00–16:00 UTC). Vouchers failed only on routers with a dead tunnel; routers with a live tunnel authenticated normally.
+- **Root cause, confirmed at the server side:** the stuck routers sent a WG handshake initiation every 5 s, and the server answered none of them (38 of 53 senders got no reply in 30 s).
+  - Ruled out: firewall/conntrack (UFW accepts udp/51820, 0 blocks, conntrack 1,365 of 262,144) and wrong keys (a router sending from the exact ip:port it had handshook from before).
+  - What's left: kernel `wg_noise_handshake_consume_initiation` refuses a known peer only for **timestamp replay** (the router's TAI64N timestamp is at or before the last one accepted).
+  - Proven by removing and re-adding one peer with the same key, PSK and allowed-ips. That clears only the stored per-peer state, and the router handshook 2 s later.
+- **Likely deeper cause, NOT yet verified on a router:** the router's clock goes backward. The setup script in `wireguardConfig.ts` never configures NTP, and MikroTik boards without RTC lose time on power cuts. A server reboot clears every per-peer timestamp, which is why the 2026-10-17 Hostinger reboot brought the whole fleet back before it slowly degraded again.
+- **Mitigation applied on prod (user-approved), 16:50 and 16:55 UTC:**
+  - Remove + re-add of the 112 peers that were stale for more than 180 s but had handshook since boot, using the same procedure as backend `addPeer`, with PSK hash and allowed-ips verified unchanged. 0 failures.
+  - Result: 42 handshook within 60 s; online 167 → 213; unanswered senders 38 → 5; Access-Accept volume spiked as customers logged back in.
+  - Up routers were not touched. No code, config or compose change.
+- **Confirmed by operators (17:05 UTC):** vouchers work again. In the 16:50 bucket, 45 routers came online and Access-Accept went from 864 to 1,362 per 10 min. The "online routers where vouchers fail" that operators reported were routers *with internet* whose tunnel the server was refusing; the app showed them as offline.
+- **Separate open item, NOT the cause of this incident:** a steady stream of rejects for real `unused` vouchers, about 40% of all rejects, both before and after the fix (about 200–300 per 10 min, rising with traffic). Their radcheck rows are identical to accepted vouchers'. FR logs only about 1/15 as many reject lines for them as radpostauth has rows, and that discrepancy is unexplained. Top FR reasons overall: `chap: &control:Cleartext-Password is required` (843/h), `No Auth-Type found` (789/h), `User-Name contains whitespace` (400/h). Investigate with aggregate queries.
+- **It will come back** with every power cut until the fix ships. To re-run the mitigation: re-add only the stale peers, never `docker restart wireguard` (that drops every up router too).
+- **Clock theory CONFIRMED (read-only RouterOS API, 6 prod routers, 17:13 UTC):**
+  - All six are MikroTik L009 (no RTC), and every one has `/system/ntp/client` disabled with empty servers.
+  - The 3 that had just lost power (uptime 6 min–1 h 38 min) had clocks **9–11 h in the past**. The 3 with multi-day uptime had correct time.
+  - `/ip/cloud update-time=true` was set on all of them and did not correct the time.
+- **Permanent fix: built on `dev` (this commit). Staging deploy next; prod only on explicit go-ahead.**
+  - Setup script **step 12** enables NTP (`time.cloudflare.com,pool.ntp.org,time.google.com`). It is appended LAST because the mobile app keys step titles by number, and released APKs ship translations for steps 1–11 only. Old APKs show a raw key on that one card. EN + AR step-12 strings were added for new builds.
+  - `ensureNtpClient` repairs drift only: it enables NTP only when disabled or when servers are empty, and never overwrites an operator's servers. The new `ntpConvergence` job runs it on DB-online routers daily at 03:50 UTC and once 10 min after boot.
+  - `wireguardMonitor` safety net, every 60 s: a peer with handshake > 0 that is older than 300 s is reset with `resetPeer`.
+    - Same key, PSK and /32. Key format is validated, and the PSK temp file is created with `wx`/0600.
+    - A race-guard re-read runs before each reset.
+    - It is self-limiting: after a reset the kernel reports handshake 0, so a dead router is reset once.
+  - Review: security audit found no Critical/High (replay trade-off rated low and user-approved); code review GO.
+  - Tests: backend tsc clean, 993 passed / 6 skipped; mobile analyze clean, 544 passed.
+  - Local dev boot: server stays up through the monitor ticks without `wg`.
+- **Still open:**
+  - Prod promotion: `dev` also carries unpromoted `fde5d81`, `210ff13` and `1e68533`. Promote together, or ship this as a `main` hotfix.
+  - Real-router smoke test of `ensureNtpClient` (staging has no live router).
+  - The 5 still-unanswered senders, possibly orphan routers with keys that are no longer on the server.
+  - The unused-voucher reject pattern below.
+
 **2026-10-15: Voucher router lock (bug: "a voucher works on every MikroTik in the system").**
 - **Root cause:** `8cecf56` / migration `023` removed the per-voucher lock instead of replacing it. The old lock (`588eeb5`) compared `NAS-IP-Address`, which is NAS-self-reported per RFC 2865 §5.4. Since then, any router with a valid NAS secret accepted any voucher, including other operators' routers.
 - **Fix, on `dev`:** each voucher gets a radcheck row `Packet-Src-IP-Address == <routers.tunnel_ip>`.

@@ -2,7 +2,7 @@ import { pool } from '../config/database';
 import logger from '../config/logger';
 import { Sentry, sentryEnabled } from '../config/sentry';
 import { notifyRouterOffline, notifyRouterOnline } from './notification.service';
-import { listPeers, WgPeerStatus } from './wireguardPeer';
+import { listPeers, resetPeer, WgPeerStatus } from './wireguardPeer';
 
 /** How often to check router statuses (ms). */
 const CHECK_INTERVAL_MS = 60_000;
@@ -12,6 +12,16 @@ const HANDSHAKE_TIMEOUT_S = 150;
 
 /** How long a router must be offline before triggering a notification (ms). */
 const OFFLINE_GRACE_PERIOD_MS = 180_000;
+
+/**
+ * Age of the last handshake (seconds) beyond which a peer is considered stuck
+ * and should be reset in-place to clear the kernel's stored TAI64N timestamp.
+ *
+ * 300 s is well past WireGuard's REJECT_AFTER_TIME (180 s), so no live session
+ * can exist for a peer this stale — the reset cannot drop traffic that is
+ * actually flowing. See resetPeer() in wireguardPeer.ts for the rationale.
+ */
+const STALE_PEER_RESET_AFTER_S = 300;
 
 /**
  * Minimum number of routers that were online in the previous tick for the
@@ -343,6 +353,106 @@ export async function checkRouterStatuses(): Promise<void> {
     } finally {
       client.release();
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Stale-peer safety net: reset peers whose last handshake is older than
+  // STALE_PEER_RESET_AFTER_S. This clears the kernel's stored TAI64N timestamp
+  // so a router whose clock jumped backwards (power cut on a board with no
+  // RTC battery) can re-handshake on its next initiation. See resetPeer().
+  //
+  // Status note: the status DB write above intentionally uses the PRE-reset
+  // peer map. A reset is an in-memory action on the server; the router's
+  // handshake state does not change until the router sends another init. So
+  // "pre-reset" status (= still offline) is the accurate observation for this
+  // tick, and the reset only affects what the next tick observes. Separating
+  // these keeps the status write and the repair action independent.
+  //
+  // Self-limiting: after a successful reset the kernel reports latestHandshake
+  // = 0 for that peer, which the hs > 0 guard below excludes — a powered-off
+  // router is reset exactly once and never again until it handshakes and goes
+  // stale again.
+  // -------------------------------------------------------------------------
+  await resetStalePeersSafely(peers, nowSeconds);
+}
+
+/**
+ * Reset peers that look stuck on a stale TAI64N timestamp.
+ *
+ * Caller passes the per-tick dump (`peers`) already read by checkRouterStatuses.
+ * We re-read JUST the handshake timestamps with a fresh `wg show` right before
+ * acting so a peer that handshook in the gap between the two reads is NOT
+ * reset — never reset a peer that is up.
+ *
+ * All errors are swallowed; the status tick must complete regardless.
+ */
+async function resetStalePeersSafely(
+  peers: WgPeerStatus[],
+  nowSeconds: number,
+): Promise<void> {
+  try {
+    const stale: WgPeerStatus[] = [];
+    for (const peer of peers) {
+      // Guard: hs == 0 means the peer has never handshook (fresh add, or we
+      // just reset it). Resetting those again is pointless and would loop.
+      if (peer.latestHandshake <= 0) continue;
+      const age = nowSeconds - peer.latestHandshake;
+      if (age > STALE_PEER_RESET_AFTER_S) stale.push(peer);
+    }
+    if (stale.length === 0) return;
+
+    // Race guard: re-read live handshakes once, then re-check each candidate
+    // against the fresh timestamp before touching it.
+    let freshHandshakes: Map<string, number>;
+    try {
+      const fresh = await listPeers();
+      freshHandshakes = new Map(fresh.map((p) => [p.publicKey, p.latestHandshake]));
+    } catch (error) {
+      logger.warn('WireGuard monitor: race-guard re-read failed, skipping stale-peer resets this tick', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    let reset = 0;
+    let failed = 0;
+    const freshNow = Math.floor(Date.now() / 1000);
+
+    for (const peer of stale) {
+      const freshHs = freshHandshakes.get(peer.publicKey) ?? 0;
+      if (freshHs > 0 && freshNow - freshHs <= STALE_PEER_RESET_AFTER_S) {
+        // Peer handshook between the two reads — leave it alone.
+        continue;
+      }
+      const routerIp = peer.allowedIps.split('/')[0];
+      try {
+        await resetPeer({
+          publicKey: peer.publicKey,
+          allowedIps: peer.allowedIps,
+          presharedKey: peer.presharedKey,
+        });
+        reset++;
+        logger.info('WireGuard monitor: stale peer reset', {
+          tunnelIp: routerIp,
+          handshakeAgeS: freshNow - peer.latestHandshake,
+        });
+      } catch (error) {
+        failed++;
+        logger.error('WireGuard monitor: stale peer reset failed', {
+          tunnelIp: routerIp,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (reset > 0 || failed > 0) {
+      logger.info('WireGuard monitor: stale-peer sweep complete', { reset, failed });
+    }
+  } catch (error) {
+    // Belt-and-braces: never let a repair error crash the status tick.
+    logger.error('WireGuard monitor: unexpected error in resetStalePeersSafely', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
