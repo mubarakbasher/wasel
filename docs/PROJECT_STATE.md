@@ -89,7 +89,21 @@
   - NTP on routers (dev `c099b36`).
   - `buildVoucherStatusConditions('expired')` ignores `vm.status = 'expired'`, so the list filter disagrees with the row status. It also drives bulk delete, so it needs its own decision.
   - `voucher_meta.status` is never advanced.
-  - FR SQL pool `max = 10`.
+  - ~~FR SQL pool `max = 10`~~ — fixed 19:39, see below.
+
+**2026-10-19 19:39 UTC: FreeRADIUS SQL pool sized to the thread pool (`main` = `5fcfc7d`).**
+- **Symptom:** "Cannot open new connection, already at max" came in bursts, 125–440/h (2.3–2.7% of login lines). A failed sql call in authorize rejects the login, so customers on healthy routers saw "network busy" or a rejected code.
+- **Cause:** the pool `max = 10` (unchanged since the MVP commit) against 32 worker threads. When a short DB slowdown leaves more than 10 requests waiting, the 11th fails immediately instead of waiting a few ms. The stock `mods-available/sql` documents this exact starvation and defaults to `max = ${thread[pool].max_servers}`.
+- **Not a slow DB:**
+  - 30 one-second samples showed 0 active FreeRADIUS queries, with no slow queries or lock waits.
+  - Bursts follow heavy queries on the shared Postgres. **Our own ad-hoc analysis queries at 19:15–19:31 caused several bursts** (7-day radpostauth scans, 17 s report timings).
+  - The Postgres container sits at its 3 GiB cgroup limit, nearly all of it reclaimable page cache (anon 30 MB, shmem 1.1 GB, 0 OOM kills), so cold queries hit disk.
+- **Fix:** `max = ${thread[pool].max_servers}` (32). The entrypoint `envsubst` only substitutes `RADIUS_DB_*`, so the reference survives. Postgres `max_connections` is 100; backend `DB_POOL_MAX` is 10.
+- **Prod:** `-XC` OK, config resolved `max = 32`. Swapped 19:39:17, healthy in 6 s. Rollback image `wasel-freeradius:pre-2026-10-19-pool`.
+  - First minutes: 0 "at max" and 0 "no connections". There was a one-minute accounting-flush burst from one router (اولاد امام).
+- **Rules from this:**
+  - No heavy ad-hoc scans on prod Postgres at peak; run them off-peak, or narrow them by indexed ranges.
+  - Raising the Postgres memory limit (`POSTGRES_*` in `/etc/wasel/compose.env`; the host has 7.9 GB) would give it more page cache. That is a separate, deliberate change.
 
 **2026-10-15: Voucher router lock (bug: "a voucher works on every MikroTik in the system").**
 - **Root cause:** `8cecf56` / migration `023` removed the per-voucher lock instead of replacing it. The old lock (`588eeb5`) compared `NAS-IP-Address`, which is NAS-self-reported per RFC 2865 §5.4. Since then, any router with a valid NAS secret accepted any voucher, including other operators' routers.
@@ -162,7 +176,7 @@ Security hardening (Critical RCE + 4 High findings) plus several follow-on featu
 - **Open decisions / follow-ups:** rlm_sql `query_timeout` (closes the last timed-free window, changes failure behaviour under DB stalls); FreeRADIUS 3.2.10 upgrade; hotspot pages sending username `[object HTMLInputElement]` (8,551 rejects in 13 h on prod); radacct/radpostauth/radcheck retention and unused/duplicate radacct indexes.
 
 ## Branch / deploy state
-- `main` — production; at **`c546b0b`**, deployed to prod 2026-10-19 (fast-forwards from `92bfe2d`): `44f9481` WireGuard stale-peer safety net (backend, 18:38 UTC), `88b16eb` accounting server time (FreeRADIUS, 19:09), `c546b0b` report status counts (backend, 19:23). Earlier: `92bfe2d` 2026-10-07; merge commit `32ea369` (`--no-ff` merge of `dev` through `9867376`), deployed 2026-09-12. (Previous: `b916b53`, 2026-07-23 → `479ec68`.)
+- `main` — production; at **`5fcfc7d`**, deployed to prod 2026-10-19 (fast-forwards from `92bfe2d`): `44f9481` WireGuard stale-peer safety net (backend, 18:38 UTC), `88b16eb` accounting server time (FreeRADIUS, 19:09), `c546b0b` report status counts (backend, 19:23), `5fcfc7d` FR SQL pool = thread count (FreeRADIUS, 19:39). Earlier: `92bfe2d` 2026-10-07; merge commit `32ea369` (`--no-ff` merge of `dev` through `9867376`), deployed 2026-09-12. (Previous: `b916b53`, 2026-07-23 → `479ec68`.)
 - `dev` — pushed to `origin/dev` (`github.com/mubarakbasher/wasel`); this is what the staging VPS pulls. Carries, on top of security hardening `7aa841f`: localized errors/offline session `2700de7`, splash-gate `253cef2`, compose healthcheck fix `840b9e0`, CI-on-dev + Admin CI `b1bb560`, voucher-collision fix `cbb3553`, admin polish/responsive `a02cb54`, the hotspot login page `32253b8`, the voucher provider test-stub alignment `98ef162`, the payment-flow fix `9a9b38a`, the email-notification system `4073289`, the admin Dashboard redesign `f89abb8`, the **hotspot voucher fixes** `999ecaf` (blank login page, MAC-randomization re-login, `Simultaneous-Use`=20, interim accounting + stale-session reaper), the **mobile payment-recovery fix** (Upload/Cancel for pending payments + paymentId rehydration + back-guard), and the **hotspot picker display fix** (RouterModel read the template fields as snake_case while the backend sends camelCase → the selected design was invisible; + apply success snackbar and router-side failure surfacing).
 - `staging-vps-setup` — feature branch, already fast-forward-merged into `dev`; safe to delete.
 
