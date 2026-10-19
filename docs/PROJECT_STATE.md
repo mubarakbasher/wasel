@@ -62,6 +62,35 @@
   - FR SQL pool `max = 10` logs "Cannot open new connection, already at max" 125–440×/h all day (peak 17:00), plus "unfinished request" duplicates. Postgres was idle (no slow queries or lock waits; `max_connections` 100), so the pool size is the limit.
   - The Postgres container is at 2.9 of 3 GiB.
 
+**2026-10-19 18:50–19:25 UTC: vouchers "expire immediately" + Active missing. Accounting now uses server time on prod (`main` = `c546b0b`).**
+- **Root cause:** FreeRADIUS wrote `radacct` start/update/stop from the router's `Event-Timestamp` (stock `event_timestamp_epoch = "%{%{integer:Event-Timestamp}:-%l}"`). L009 clocks run 5 h to 19 days behind after power cuts (NTP off).
+  - `validityExpiration` sets `Expiration = MIN(acctstarttime) + validity`, so cards were **born expired**: kicked on first login, then `Account expired`.
+  - `staleSessionReaper` closed every live session on those routers within about 2 min, so the app's "Active" (= open session) showed nothing there.
+- **Today's WG peer resets exposed it.** Before, a router whose clock jumped back was locked out by WG replay protection. Skewed first uses were 0–0.8% on 10-17/18 and 1–5% on 10-19 morning, then **12.9% at 16 h and ~31% at 17–18 h** once the stuck peers were reset.
+- **Fix A `88b16eb` (radius):** `freeradius/Dockerfile` seds the stock `queries.conf` to `event_timestamp_epoch = "%l"`, the option it documents for servers that distrust the provided Event-Timestamp. The build fails if the stock line changes.
+  - Usage limits are unaffected: they use `Acct-Session-Time` and the octet counters.
+  - Accounting-On bulk close (`now − AcctStartTime`) now behaves on skewed routers as it already did on correct-clock ones.
+  - Prod 19:09:47: `-XC` OK, healthy in 7 s, socket intact. Rollback image `wasel-freeradius:pre-2026-10-19`.
+- **Repair (user-approved) 19:18:**
+  - **1,569 burned cards** got `Expiration = first server-side Access-Accept + validity`. Extend-only and still-valid only, in one transaction.
+  - Old values are in `radcheck_expiration_backup_2026_10_19`; roll back by `id`.
+  - Excluded: 252 vouchers whose Expiration was already right (a later skewed session only lowered `MIN(acctstarttime)`).
+- **Fix C `c546b0b` (backend):** the Reports voucher-sales counts used the stored `voucher_meta.status`, which nothing advances, so Active ≈ 0 and Used = 0.
+  - They now reuse `buildVoucherStatusConditions`, plus `vm.status = 'expired'` for limit-reached, so each count matches the per-row status the list shows.
+  - Prod 19:23, rollback image `wasel-backend:pre-2026-10-19b`.
+  - Real-data check: one router went 0/23/0 → 72/1,402/1 (used / expired / active), with Active matching the list filter.
+  - Largest operator's 30 d report: 17 s cold, 1–7 s warm. A LATERAL rewrite was the same speed. **Follow-up:** cap the report date range, or index/cache, before it nears the 30 s `statement_timeout`.
+- **Verified 19:23:**
+  - 190 first uses since cutover, **0 skewed, 0 born expired**.
+  - 1,109 new accounting rows with server time.
+  - 56 open sessions on previously skewed routers (≈0 before).
+  - 45 repaired cards logged in within 5 min. The 3 post-repair rejects were typos or an empty password, and two of them then logged in OK.
+- **Still open:**
+  - NTP on routers (dev `c099b36`).
+  - `buildVoucherStatusConditions('expired')` ignores `vm.status = 'expired'`, so the list filter disagrees with the row status. It also drives bulk delete, so it needs its own decision.
+  - `voucher_meta.status` is never advanced.
+  - FR SQL pool `max = 10`.
+
 **2026-10-15: Voucher router lock (bug: "a voucher works on every MikroTik in the system").**
 - **Root cause:** `8cecf56` / migration `023` removed the per-voucher lock instead of replacing it. The old lock (`588eeb5`) compared `NAS-IP-Address`, which is NAS-self-reported per RFC 2865 §5.4. Since then, any router with a valid NAS secret accepted any voucher, including other operators' routers.
 - **Fix, on `dev`:** each voucher gets a radcheck row `Packet-Src-IP-Address == <routers.tunnel_ip>`.
@@ -133,7 +162,7 @@ Security hardening (Critical RCE + 4 High findings) plus several follow-on featu
 - **Open decisions / follow-ups:** rlm_sql `query_timeout` (closes the last timed-free window, changes failure behaviour under DB stalls); FreeRADIUS 3.2.10 upgrade; hotspot pages sending username `[object HTMLInputElement]` (8,551 rejects in 13 h on prod); radacct/radpostauth/radcheck retention and unused/duplicate radacct indexes.
 
 ## Branch / deploy state
-- `main` — production; at **`44f9481`** (WireGuard stale-peer safety-net hotfix, fast-forward from `92bfe2d`), **deployed to prod 2026-10-19 18:38 UTC** (backend only). Earlier: `92bfe2d` 2026-10-07; merge commit `32ea369` (`--no-ff` merge of `dev` through `9867376`), deployed 2026-09-12. (Previous: `b916b53`, 2026-07-23 → `479ec68`.)
+- `main` — production; at **`c546b0b`**, deployed to prod 2026-10-19 (fast-forwards from `92bfe2d`): `44f9481` WireGuard stale-peer safety net (backend, 18:38 UTC), `88b16eb` accounting server time (FreeRADIUS, 19:09), `c546b0b` report status counts (backend, 19:23). Earlier: `92bfe2d` 2026-10-07; merge commit `32ea369` (`--no-ff` merge of `dev` through `9867376`), deployed 2026-09-12. (Previous: `b916b53`, 2026-07-23 → `479ec68`.)
 - `dev` — pushed to `origin/dev` (`github.com/mubarakbasher/wasel`); this is what the staging VPS pulls. Carries, on top of security hardening `7aa841f`: localized errors/offline session `2700de7`, splash-gate `253cef2`, compose healthcheck fix `840b9e0`, CI-on-dev + Admin CI `b1bb560`, voucher-collision fix `cbb3553`, admin polish/responsive `a02cb54`, the hotspot login page `32253b8`, the voucher provider test-stub alignment `98ef162`, the payment-flow fix `9a9b38a`, the email-notification system `4073289`, the admin Dashboard redesign `f89abb8`, the **hotspot voucher fixes** `999ecaf` (blank login page, MAC-randomization re-login, `Simultaneous-Use`=20, interim accounting + stale-session reaper), the **mobile payment-recovery fix** (Upload/Cancel for pending payments + paymentId rehydration + back-guard), and the **hotspot picker display fix** (RouterModel read the template fields as snake_case while the backend sends camelCase → the selected design was invisible; + apply success snackbar and router-side failure surfacing).
 - `staging-vps-setup` — feature branch, already fast-forward-merged into `dev`; safe to delete.
 
