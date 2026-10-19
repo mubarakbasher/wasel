@@ -11,6 +11,19 @@ RUN ln -sf /etc/freeradius/mods-available/sql /etc/freeradius/mods-enabled/sql
 # Enable expiration module so FreeRADIUS enforces the Expiration attribute
 RUN ln -sf /etc/freeradius/mods-available/expiration /etc/freeradius/mods-enabled/expiration
 
+# Timestamp accounting rows with the time FreeRADIUS received the packet, not
+# the NAS-supplied Event-Timestamp. The stock queries.conf documents this
+# option for servers that distrust the provided Event-Timestamp. MikroTik L009
+# boards have no RTC battery, so after a power cut their clock is hours behind:
+# radacct.acctstarttime then lands in the past, validityExpiration computes an
+# Expiration that has already passed (the voucher dies on first use), and
+# staleSessionReaper closes every live session. The grep checks fail the build
+# if the stock line ever changes and the sed silently stops matching.
+RUN f=/etc/freeradius/mods-config/sql/main/postgresql/queries.conf && \
+    sed -i 's|^event_timestamp_epoch = "%{%{integer:Event-Timestamp}:-%l}"$|event_timestamp_epoch = "%l"|' "$f" && \
+    grep -qxF 'event_timestamp_epoch = "%l"' "$f" && \
+    ! grep -q '^event_timestamp_epoch = "%{' "$f"
+
 # Copy SQL config as a template (env vars substituted at runtime by entrypoint)
 COPY raddb/mods-enabled/sql /etc/freeradius/sql.template
 
