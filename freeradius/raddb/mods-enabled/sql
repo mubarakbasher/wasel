@@ -43,7 +43,13 @@ sql {
     pool {
         start = 5
         min = 4
-        max = 10
+        # One connection per worker thread, the stock default. With fewer
+        # connections than threads, a request that finds every connection
+        # busy fails at once ("Cannot open new connection, already at max")
+        # instead of waiting a few ms; the stock mods-available/sql warns that
+        # threads starve when max is below the thread count. Postgres allows
+        # 100 connections and the backend pool uses at most DB_POOL_MAX (10).
+        max = ${thread[pool].max_servers}
         spare = 3
         uses = 0
         lifetime = 0
