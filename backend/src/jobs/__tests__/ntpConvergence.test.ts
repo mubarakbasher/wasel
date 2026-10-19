@@ -184,6 +184,50 @@ describe('runNtpConvergence', () => {
     expect(result).toEqual({ checked: 2, repaired: 1, alreadyConfigured: 1, failed: 2 });
   });
 
+  it('skips routers already confirmed on a previous run, but retries failed ones', async () => {
+    const rows = [
+      { id: 'r-ok', user_id: 'u1', tunnel_ip: '10.10.0.1' },
+      { id: 'r-fixed', user_id: 'u2', tunnel_ip: '10.10.0.5' },
+      { id: 'r-fail', user_id: 'u3', tunnel_ip: '10.10.0.9' },
+    ];
+    mockQuery.mockResolvedValue({ rows });
+    connectToRouterMock.mockImplementation(async () => makeConn());
+    ensureNtpClientMock
+      .mockResolvedValueOnce({ status: 'already_configured', detail: 'ok' })
+      .mockResolvedValueOnce({ status: 'repaired', detail: 'enabled' })
+      .mockResolvedValueOnce({ status: 'failed', detail: 'err', error: 'v6 has no servers' });
+
+    const first = await runNtpConvergence();
+    expect(first).toEqual({ checked: 2, repaired: 1, alreadyConfigured: 1, failed: 1 });
+    expect(connectToRouterMock).toHaveBeenCalledTimes(3);
+
+    // Second pass: only the failed router is contacted again.
+    ensureNtpClientMock.mockResolvedValueOnce({ status: 'repaired', detail: 'enabled' });
+    const second = await runNtpConvergence();
+    expect(connectToRouterMock).toHaveBeenCalledTimes(4);
+    expect(connectToRouterMock).toHaveBeenLastCalledWith('r-fail', 'u3');
+    expect(second).toEqual({ checked: 1, repaired: 1, alreadyConfigured: 0, failed: 0 });
+
+    // Third pass: everything is confirmed, nothing is contacted.
+    const third = await runNtpConvergence();
+    expect(connectToRouterMock).toHaveBeenCalledTimes(4);
+    expect(third).toEqual({ checked: 0, repaired: 0, alreadyConfigured: 0, failed: 0 });
+  });
+
+  it('a router whose connect threw is retried on the next run', async () => {
+    const rows = [{ id: 'r1', user_id: 'u1', tunnel_ip: '10.10.0.1' }];
+    mockQuery.mockResolvedValue({ rows });
+    connectToRouterMock
+      .mockRejectedValueOnce(new Error('circuit breaker open'))
+      .mockResolvedValueOnce(makeConn());
+
+    await runNtpConvergence();
+    const second = await runNtpConvergence();
+
+    expect(connectToRouterMock).toHaveBeenCalledTimes(2);
+    expect(second).toEqual({ checked: 1, repaired: 0, alreadyConfigured: 1, failed: 0 });
+  });
+
   it('re-entrancy guard: concurrent second call skips if first is still running', async () => {
     let resolveQuery!: (value: unknown) => void;
     const blocker = new Promise((res) => { resolveQuery = res; });
@@ -203,14 +247,16 @@ describe('runNtpConvergence', () => {
 });
 
 describe('startNtpConvergenceJob', () => {
-  it('schedules cron at 03:50 UTC and registers a startup setTimeout', () => {
+  it('schedules cron hourly at :50 and registers a startup setTimeout', () => {
     vi.useFakeTimers();
 
     startNtpConvergenceJob();
 
-    // Verify cron expression is daily at 03:50 (6-field with seconds)
+    // Hourly at :50 (6-field with seconds). Daily would miss routers that
+    // are only powered on during the day; :50 keeps the 03:50 run 20 min
+    // after the 03:30 MAC-cookie sweep.
     expect(cron.schedule).toHaveBeenCalledWith(
-      '0 50 3 * * *',
+      '0 50 * * * *',
       expect.any(Function),
     );
 

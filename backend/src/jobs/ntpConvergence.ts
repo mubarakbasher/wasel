@@ -6,16 +6,28 @@ import { connectToRouter, ensureNtpClient } from '../services/routerOs.service';
 /**
  * NTP convergence job.
  *
- * Sweeps all online routers once per day (03:50 UTC) and calls
- * ensureNtpClient on each so that routers that come back from a power cut
- * with a dead clock battery get NTP enabled before their stale timestamp
+ * Sweeps online routers every hour (at :50) and calls ensureNtpClient on
+ * each one not yet confirmed, so that routers that come back from a power
+ * cut with a dead clock battery get NTP enabled before their stale timestamp
  * causes WireGuard to reject handshakes as replays.
  *
- * Runs daily at 03:50 UTC — 20 min after the MAC-cookie sweep (03:30) so
- * the two jobs never hold RouterOS API sessions at the same time.
+ * Why hourly, not daily: most of the fleet is powered off overnight (power
+ * cuts, shops closed), so a single 03:50 UTC pass would never reach a router
+ * that is only online during the day. Hourly passes converge every router
+ * within an hour of it first being online after a backend boot.
+ *
+ * Why it stays cheap: routers confirmed `repaired` or `already_configured`
+ * are remembered in-process and skipped on later passes, so after the first
+ * pass each hourly run only touches routers that are new, newly online, or
+ * failed last time. The set is per-process (cleared on boot), which is fine:
+ * a boot-time pass re-confirms the fleet once, read-only for routers that
+ * are already configured.
+ *
+ * The :50 slot keeps the 03:50 run 20 min after the MAC-cookie sweep (03:30)
+ * so the two jobs never hold RouterOS API sessions at the same time.
  *
  * An additional startup pass fires 10 min after backend boot so a fresh
- * deploy converges the fleet the same day instead of waiting for 03:50.
+ * deploy converges the online fleet right away instead of waiting for :50.
  *
  * Sequentially processes routers (no Promise.all) to avoid flooding the API
  * on large fleets. One router failure never stops the sweep.
@@ -25,9 +37,17 @@ import { connectToRouter, ensureNtpClient } from '../services/routerOs.service';
 
 let running = false;
 
+/**
+ * Router IDs whose NTP client has been confirmed (repaired or already
+ * configured) by this process. Skipped on later passes; failures are not
+ * added, so they are retried next hour.
+ */
+const converged = new Set<string>();
+
 /** Exported so tests can reset state between runs. */
 export function _resetJobState(): void {
   running = false;
+  converged.clear();
 }
 
 interface RouterRow {
@@ -53,6 +73,7 @@ export async function runNtpConvergence(): Promise<{
   let repaired = 0;
   let alreadyConfigured = 0;
   let failed = 0;
+  let skipped = 0;
 
   try {
     const result = await pool.query<RouterRow>(`
@@ -65,6 +86,10 @@ export async function runNtpConvergence(): Promise<{
     `);
 
     for (const row of result.rows) {
+      if (converged.has(row.id)) {
+        skipped++;
+        continue;
+      }
       let client: import('routeros-client').RouterOSClient | undefined;
       try {
         const conn = await connectToRouter(row.id, row.user_id);
@@ -76,6 +101,7 @@ export async function runNtpConvergence(): Promise<{
         if (outcome.status === 'repaired') {
           repaired++;
           checked++;
+          converged.add(row.id);
           logger.info('NTP convergence: repaired router', {
             routerId: row.id,
             tunnelIp: row.tunnel_ip,
@@ -84,6 +110,7 @@ export async function runNtpConvergence(): Promise<{
         } else if (outcome.status === 'already_configured') {
           alreadyConfigured++;
           checked++;
+          converged.add(row.id);
           logger.debug('NTP convergence: router already configured', {
             routerId: row.id,
             tunnelIp: row.tunnel_ip,
@@ -118,6 +145,7 @@ export async function runNtpConvergence(): Promise<{
       repaired,
       alreadyConfigured,
       failed,
+      skipped,
       durationMs,
     });
   } finally {
@@ -128,9 +156,10 @@ export async function runNtpConvergence(): Promise<{
 }
 
 export function startNtpConvergenceJob(): void {
-  // Daily sweep at 03:50 UTC — 20 min after the MAC-cookie sweep (03:30) so
-  // the two jobs never hold RouterOS API sessions at the same time.
-  cron.schedule('0 50 3 * * *', () => {
+  // Hourly sweep at :50 — the 03:50 run lands 20 min after the MAC-cookie
+  // sweep (03:30) so the two jobs never hold RouterOS API sessions at the
+  // same time. Already-confirmed routers are skipped, so this is cheap.
+  cron.schedule('0 50 * * * *', () => {
     runNtpConvergence().catch((error) => {
       logger.error('NTP convergence job failed unexpectedly', {
         error: error instanceof Error ? error.message : String(error),
@@ -139,7 +168,7 @@ export function startNtpConvergenceJob(): void {
   });
 
   // Startup pass: run once 10 min after backend boot so a deploy converges
-  // the fleet the same day rather than waiting for 03:50 UTC.
+  // the online fleet right away rather than waiting for the next :50.
   setTimeout(() => {
     runNtpConvergence().catch((error) => {
       logger.error('NTP convergence startup pass failed', {
@@ -148,5 +177,5 @@ export function startNtpConvergenceJob(): void {
     });
   }, 10 * 60 * 1000);
 
-  logger.info('NTP convergence job scheduled (daily at 03:50 UTC, startup pass at +10 min)');
+  logger.info('NTP convergence job scheduled (hourly at :50, startup pass at +10 min)');
 }
