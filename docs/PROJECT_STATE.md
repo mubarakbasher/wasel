@@ -19,6 +19,7 @@
   - Up routers were not touched. No code, config or compose change.
 - **Confirmed by operators (17:05 UTC):** vouchers work again. In the 16:50 bucket, 45 routers came online and Access-Accept went from 864 to 1,362 per 10 min. The "online routers where vouchers fail" that operators reported were routers *with internet* whose tunnel the server was refusing; the app showed them as offline.
 - **Separate open item, NOT the cause of this incident:** a steady stream of rejects for real `unused` vouchers, about 40% of all rejects, both before and after the fix (about 200–300 per 10 min, rising with traffic). Their radcheck rows are identical to accepted vouchers'. FR logs only about 1/15 as many reject lines for them as radpostauth has rows, and that discrepancy is unexplained. Top FR reasons overall: `chap: &control:Cleartext-Password is required` (843/h), `No Auth-Type found` (789/h), `User-Name contains whitespace` (400/h). Investigate with aggregate queries.
+  - **Explained 18:15 UTC: the rejects are correct.** All 2,352 "unused" codes FR rejected as `expiration` in one hour had radacct sessions and an earlier Access-Accept, and `Expiration` = first login + `validity_seconds`. They are expired cards that phones keep retrying. The real defect is that **`voucher_meta.status` never advances** (prod: 1,992,800 `unused`, 157 `active`, 146,579 `expired`), so it can't be used to classify rejects; use the FR reason. `chap` / `No Auth-Type found` rejects are almost all non-voucher usernames (typos, MAC addresses, `0000000000000`, `[object HTMLInputElement]`).
 - **It will come back** with every power cut until the fix ships. To re-run the mitigation: re-add only the stale peers, never `docker restart wireguard` (that drops every up router too).
 - **Clock theory CONFIRMED (read-only RouterOS API, 6 prod routers, 17:13 UTC):**
   - All six are MikroTik L009 (no RTC), and every one has `/system/ntp/client` disabled with empty servers.
@@ -35,10 +36,31 @@
   - Tests: backend tsc clean, 993 passed / 6 skipped; mobile analyze clean, 544 passed.
   - Local dev boot: server stays up through the monitor ticks without `wg`.
 - **Still open:**
-  - Prod promotion: `dev` also carries unpromoted `fde5d81`, `210ff13` and `1e68533`. Promote together, or ship this as a `main` hotfix.
+  - Prod promotion of the **NTP half** of `c099b36` (setup step 12, `ensureNtpClient`, `ntpConvergence`). The safety net is already on prod (see the recurrence block below). `dev` also carries unpromoted `fde5d81`, `210ff13` and `1e68533`.
   - Real-router smoke test of `ensureNtpClient` (staging has no live router).
-  - The 5 still-unanswered senders, possibly orphan routers with keys that are no longer on the server.
-  - The unused-voucher reject pattern below.
+  - The 5 still-unanswered senders, possibly orphan routers with keys that are no longer on the server. Same 5 IPs at 17:00, 18:06 and 18:40; no reset helps them.
+  - ~~The unused-voucher reject pattern~~ — explained above (status column never advances).
+
+**2026-10-19 18:06–18:42 UTC: RECURRENCE, then the safety net was hotfixed to prod (`main` = `44f9481`).**
+- **Report:** "vouchers don't work on online routers" again, about 70 min after the 16:55 mitigation. The user confirmed the reported routers were on the stuck list.
+- **Evidence (read-only):**
+  - 27 peers were stale again, and **all 27 had handshook after the 16:55 re-add** before going silent.
+  - 17 senders got no reply in a 30 s capture.
+  - DB-online routers with live tunnels were fine: 196/212 had a Login OK in 30 min.
+- **Mitigation, 18:28 (user-approved):** the same remove+re-add for 29 stale peers, 0 failures. Unanswered senders 17 → 5.
+- **Hotfix, user-approved straight to prod (dev VPS reported not working):**
+  - `44f9481` = only the 4 safety-net files from `c099b36` (`wireguardMonitor.ts`, `wireguardPeer.ts` + tests), which are byte-identical on `main`.
+  - No migration, and no router-side change.
+  - Gates: backend `tsc` clean, 952 passed / 6 skipped; a local boot survived monitor ticks without `wg`.
+  - `main` fast-forwarded `92bfe2d` → `44f9481`, then merged back into `dev` (`7d46898`, no content change).
+  - Prod `/root/wasel`: `build backend`, then `up -d --no-deps backend`. Healthy in 11 s; FR/WG/Postgres/Redis untouched (47 h uptime kept). Rollback SHA `92bfe2d` (code-only).
+- **Verified on prod:**
+  - The first monitor tick (18:38:48) reset 4 peers, `failed: 0`. Two of them handshook again within a minute.
+  - Those two had **rebooted again** (uptime 3–7 min, clocks 5–7.5 h behind, NTP disabled; RouterOS API read-only). Flickering power re-sticks a tunnel within minutes, and the safety net now clears it in ≤ ~6 min.
+  - 18:40: 229 fresh, **0 stale**, DB online 213 → 227, unanswered 5 (the persistent ones).
+- **Also seen, separate follow-ups:**
+  - FR SQL pool `max = 10` logs "Cannot open new connection, already at max" 125–440×/h all day (peak 17:00), plus "unfinished request" duplicates. Postgres was idle (no slow queries or lock waits; `max_connections` 100), so the pool size is the limit.
+  - The Postgres container is at 2.9 of 3 GiB.
 
 **2026-10-15: Voucher router lock (bug: "a voucher works on every MikroTik in the system").**
 - **Root cause:** `8cecf56` / migration `023` removed the per-voucher lock instead of replacing it. The old lock (`588eeb5`) compared `NAS-IP-Address`, which is NAS-self-reported per RFC 2865 §5.4. Since then, any router with a valid NAS secret accepted any voucher, including other operators' routers.
@@ -111,7 +133,7 @@ Security hardening (Critical RCE + 4 High findings) plus several follow-on featu
 - **Open decisions / follow-ups:** rlm_sql `query_timeout` (closes the last timed-free window, changes failure behaviour under DB stalls); FreeRADIUS 3.2.10 upgrade; hotspot pages sending username `[object HTMLInputElement]` (8,551 rejects in 13 h on prod); radacct/radpostauth/radcheck retention and unused/duplicate radacct indexes.
 
 ## Branch / deploy state
-- `main` — production; at merge commit `32ea369` (`--no-ff` merge of `dev` through `9867376`), **deployed to prod 2026-09-12**. (Previous: `b916b53`, 2026-07-23 → `479ec68`.)
+- `main` — production; at **`44f9481`** (WireGuard stale-peer safety-net hotfix, fast-forward from `92bfe2d`), **deployed to prod 2026-10-19 18:38 UTC** (backend only). Earlier: `92bfe2d` 2026-10-07; merge commit `32ea369` (`--no-ff` merge of `dev` through `9867376`), deployed 2026-09-12. (Previous: `b916b53`, 2026-07-23 → `479ec68`.)
 - `dev` — pushed to `origin/dev` (`github.com/mubarakbasher/wasel`); this is what the staging VPS pulls. Carries, on top of security hardening `7aa841f`: localized errors/offline session `2700de7`, splash-gate `253cef2`, compose healthcheck fix `840b9e0`, CI-on-dev + Admin CI `b1bb560`, voucher-collision fix `cbb3553`, admin polish/responsive `a02cb54`, the hotspot login page `32253b8`, the voucher provider test-stub alignment `98ef162`, the payment-flow fix `9a9b38a`, the email-notification system `4073289`, the admin Dashboard redesign `f89abb8`, the **hotspot voucher fixes** `999ecaf` (blank login page, MAC-randomization re-login, `Simultaneous-Use`=20, interim accounting + stale-session reaper), the **mobile payment-recovery fix** (Upload/Cancel for pending payments + paymentId rehydration + back-guard), and the **hotspot picker display fix** (RouterModel read the template fields as snake_case while the backend sends camelCase → the selected design was invisible; + apply success snackbar and router-side failure surfacing).
 - `staging-vps-setup` — feature branch, already fast-forward-merged into `dev`; safe to delete.
 
