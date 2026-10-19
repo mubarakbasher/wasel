@@ -1,6 +1,7 @@
 import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
+import { buildVoucherStatusConditions } from './voucher.service';
 
 // ----- Interfaces -----
 
@@ -151,13 +152,23 @@ export async function getVoucherSalesReport(
 
   const whereClause = conditions.join(' AND ');
 
+  // Count each status the way the voucher list shows it per row
+  // (assembleVoucherInfo): voucher_meta.status is only 'unused', 'disabled'
+  // or — when a data/time limit is used up — 'expired'; nothing advances it to
+  // 'active' or 'used', so those are derived from radacct/radcheck with the
+  // list's own filter fragments.
+  const statusSql = (status: string) => buildVoucherStatusConditions(status).join(' AND ');
+  const expiredSql = `(${statusSql('expired')}) OR (vm.status = 'expired')`;
+  const activeSql = `${statusSql('active')} AND vm.status <> 'expired' AND NOT (${statusSql('expired')})`;
+  const usedSql = `${statusSql('used')} AND vm.status <> 'expired'`;
+
   const result = await pool.query(
     `SELECT
        DATE(vm.created_at) AS date,
        COUNT(*) FILTER (WHERE vm.status IS NOT NULL)::int AS created,
-       COUNT(*) FILTER (WHERE vm.status = 'used')::int AS used,
-       COUNT(*) FILTER (WHERE vm.status = 'expired')::int AS expired,
-       COUNT(*) FILTER (WHERE vm.status = 'active')::int AS remaining
+       COUNT(*) FILTER (WHERE ${usedSql})::int AS used,
+       COUNT(*) FILTER (WHERE ${expiredSql})::int AS expired,
+       COUNT(*) FILTER (WHERE ${activeSql})::int AS remaining
      FROM voucher_meta vm
      WHERE ${whereClause}
      GROUP BY DATE(vm.created_at)
