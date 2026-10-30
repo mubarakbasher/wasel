@@ -167,12 +167,36 @@ void main() {
       );
     });
 
-    testWidgets('259200 s → "3 يوم" (ar)', (t) async {
-      expect(
-        await _resolve(t, const Locale('ar'), (c) => voucherValidityText(c, 259200)),
-        '3 يوم',
-      );
-    });
+    // Arabic number agreement: 3-10 take the plural, 1 and 2 keep the digit so
+    // numbers read alike everywhere. No tanween on 11+ days: these strings are
+    // printed on cards and the PDF renderer misplaces the mark onto the digits.
+    for (final (seconds, en, ar) in const [
+      (60, '1 minute', '1 دقيقة'),
+      (300, '5 minutes', '5 دقائق'),
+      (3600, '1 hour', '1 ساعة'),
+      (7200, '2 hours', '2 ساعة'),
+      (21600, '6 hours', '6 ساعات'),
+      (43200, '12 hours', '12 ساعة'),
+      (86400, '1 day', '1 يوم'),
+      (172800, '2 days', '2 يوم'),
+      (259200, '3 days', '3 أيام'),
+      (604800, '7 days', '7 أيام'),
+      (864000, '10 days', '10 أيام'),
+      (950400, '11 days', '11 يوم'),
+      (2592000, '30 days', '30 يوم'),
+      (8640000, '100 days', '100 يوم'),
+    ]) {
+      testWidgets('$seconds s → "$en" / "$ar"', (t) async {
+        expect(
+          await _resolve(t, const Locale('en'), (c) => voucherValidityText(c, seconds)),
+          en,
+        );
+        expect(
+          await _resolve(t, const Locale('ar'), (c) => voucherValidityText(c, seconds)),
+          ar,
+        );
+      });
+    }
   });
 
   // ── voucherLimitTextOrNull ────────────────────────────────────────────────

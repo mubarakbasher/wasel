@@ -181,12 +181,15 @@ String voucherValidityText(BuildContext c, int? validitySeconds) {
     return c.tr('vouchers.validityOpen');
   }
   if (validitySeconds < 3600) {
-    return c.tr('vouchers.durationMinutes', [(validitySeconds / 60).round().toString()]);
+    final minutes = (validitySeconds / 60).round();
+    return c.trPlural('vouchers.durationMinutes', minutes, [minutes.toString()]);
   }
   if (validitySeconds < 86400) {
-    return c.tr('vouchers.durationHours', [(validitySeconds / 3600).round().toString()]);
+    final hours = (validitySeconds / 3600).round();
+    return c.trPlural('vouchers.durationHours', hours, [hours.toString()]);
   }
-  return c.tr('vouchers.durationDays', [(validitySeconds / 86400).round().toString()]);
+  final days = (validitySeconds / 86400).round();
+  return c.trPlural('vouchers.durationDays', days, [days.toString()]);
 }
 
 /// Returns a localized usage string like "{used} of {limit} used", or null if

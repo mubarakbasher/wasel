@@ -202,6 +202,38 @@ void main() {
     });
   });
 
+  // ── Arabic locale: validity buttons use correct number agreement ──────────
+
+  group('CreateVoucherWizard validity buttons (Arabic)', () {
+    testWidgets('show correct Arabic forms', (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextFormField).first, '2');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'التالي'));
+      await tester.pumpAndSettle();
+
+      for (final label in [
+        '1 ساعة',
+        '6 ساعات',
+        '12 ساعة',
+        '1 يوم',
+        '3 أيام',
+        '7 أيام',
+        '30 يوم',
+      ]) {
+        expect(find.text(label), findsOneWidget, reason: label);
+      }
+      for (final wrong in ['6 ساعة', '3 يوم', '7 يوم']) {
+        expect(find.text(wrong), findsNothing, reason: wrong);
+      }
+    });
+  });
+
   // ── Arabic locale: custom validity field follows unit ─────────────────────
 
   group('CreateVoucherWizard custom validity field label (Arabic)', () {

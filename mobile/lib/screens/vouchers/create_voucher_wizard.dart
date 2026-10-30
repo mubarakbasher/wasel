@@ -678,12 +678,15 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
   String _formatDuration(int seconds) {
     if (seconds < 3600) {
-      return context.tr('vouchers.durationMinutes', [(seconds ~/ 60).toString()]);
+      final minutes = seconds ~/ 60;
+      return context.trPlural('vouchers.durationMinutes', minutes, [minutes.toString()]);
     }
     if (seconds < 86400) {
-      return context.tr('vouchers.durationHours', [(seconds ~/ 3600).toString()]);
+      final hours = seconds ~/ 3600;
+      return context.trPlural('vouchers.durationHours', hours, [hours.toString()]);
     }
-    return context.tr('vouchers.durationDays', [(seconds ~/ 86400).toString()]);
+    final days = seconds ~/ 86400;
+    return context.trPlural('vouchers.durationDays', days, [days.toString()]);
   }
 
   // ---- Step 3: Count & Price ----
