@@ -14,6 +14,12 @@ const double _kMarginV = 16;
 const double _kGutterH = 4;
 const double _kGutterV = 3;
 
+/// Minimum column count the print slider exposes to operators.
+const int kMinPrintColumns = 2;
+
+/// Maximum column count the print slider exposes to operators.
+const int kMaxPrintColumns = 9;
+
 // ---------------------------------------------------------------------------
 // Public grid-math API
 // ---------------------------------------------------------------------------
@@ -84,6 +90,20 @@ int voucherPdfPageCount(int itemCount, int columns) {
   final perPage = voucherGridLayoutFor(columns).perPage;
   return (itemCount / perPage).ceil();
 }
+
+/// Returns the horizontal/vertical card padding (in points) for [columns] columns.
+///
+/// Gives 6, 5.5, 5, 4.5, 4 pt at 2–6 columns (unchanged from prior behaviour)
+/// and continues to decrease to 2.5 pt at 9 columns.
+double voucherCardPadding(int columns) =>
+    (6 - (columns - 2) * 0.5).clamp(2.5, 6.0);
+
+/// Returns the letter spacing (in points) for the voucher code at [columns] columns.
+///
+/// Stays at 1 pt for 2–6 columns (matching prior behaviour) and decreases to
+/// 0.4 pt at 9 columns to keep 8-digit codes legible in narrower cards.
+double voucherCodeLetterSpacing(int columns) =>
+    (1 - (columns - 6) * 0.2).clamp(0.4, 1.0);
 
 /// Immutable data transfer object passed to [PrintService.generateVouchersPdf].
 ///
@@ -249,12 +269,13 @@ class _VouchersPdfBuilder {
     double h,
     int columns,
   ) {
-    // Responsive sizing — legible at every column count (2–6).
+    // Responsive sizing — legible at every column count (2–9).
     // At 6 cols: 7pt header / 10pt code / 6.6pt info (~50pt inner height).
     final double headerFs = (11 - (columns - 2) * 1.0).clamp(7.0, 11.0);
     final double codeFs = (16 - (columns - 2) * 1.5).clamp(10.0, 16.0);
     final double infoFs = (9 - (columns - 2) * 0.6).clamp(6.6, 9.0);
-    final double pad = (6 - (columns - 2) * 0.5).clamp(4.0, 6.0);
+    final double pad = voucherCardPadding(columns);
+    final double codeLetterSpacing = voucherCodeLetterSpacing(columns);
 
     return pw.Container(
       width: w,
@@ -304,7 +325,7 @@ class _VouchersPdfBuilder {
                       fontSize: codeFs,
                       font: pw.Font.courierBold(),
                       fontWeight: pw.FontWeight.bold,
-                      letterSpacing: 1,
+                      letterSpacing: codeLetterSpacing,
                       fontFallback: [cairo],
                     ),
                   ),

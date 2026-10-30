@@ -218,9 +218,9 @@ class _ColumnSliderBar extends StatelessWidget {
                   ),
                   child: Slider(
                     value: sliderColumns.toDouble(),
-                    min: 2,
-                    max: 6,
-                    divisions: 4,
+                    min: kMinPrintColumns.toDouble(),
+                    max: kMaxPrintColumns.toDouble(),
+                    divisions: kMaxPrintColumns - kMinPrintColumns,
                     activeColor: AppColors.primary,
                     onChanged: (v) => onChanged(v.round()),
                     onChangeEnd: (v) => onChangeEnd(v.round()),
