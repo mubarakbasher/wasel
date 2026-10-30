@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import { createVouchersSchema } from '../validators/voucher.validators';
-import { allocateVoucherUsernames } from '../services/voucher.service';
+import { allocateVoucherUsernames, VOUCHER_CODE_TAKEN_SQL } from '../services/voucher.service';
 import { AppError } from '../middleware/errorHandler';
 import {
   TEST_USER,
@@ -242,6 +242,84 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     const insertArgs = radreplyInserts[0][1] as unknown[];
     expect(insertArgs).toContain('Session-Timeout');
     expect(insertArgs).toContain('86400');
+  });
+});
+
+// ─── allocateVoucherUsernames / collision-check SQL ──────────────────────────
+
+describe('VOUCHER_CODE_TAKEN_SQL covers both radcheck and radacct', () => {
+  it('VOUCHER_CODE_TAKEN_SQL references radcheck', () => {
+    expect(VOUCHER_CODE_TAKEN_SQL).toMatch(/radcheck/);
+  });
+
+  it('VOUCHER_CODE_TAKEN_SQL references radacct', () => {
+    expect(VOUCHER_CODE_TAKEN_SQL).toMatch(/radacct/);
+  });
+
+  it('VOUCHER_CODE_TAKEN_SQL uses UNION so it is a single query', () => {
+    expect(VOUCHER_CODE_TAKEN_SQL).toMatch(/UNION/i);
+  });
+
+  it('POST /vouchers passes a UNION query (covering both tables) to pool.query for the collision check', async () => {
+    // requireSubscription (2 queries)
+    mockSubscriptionQuery(mockQuery);
+    // checkQuota (2 queries)
+    mockCheckQuotaQueries(mockQuery);
+    // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    // collision-check: no taken codes
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 11 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 });
+
+    // The uniqueness check is the 6th pool.query call (indices 0-4 are auth/quota/router).
+    const collisionCall = mockQuery.mock.calls[5];
+    expect(collisionCall).toBeDefined();
+    const sql: string = typeof collisionCall[0] === 'string'
+      ? collisionCall[0]
+      : (collisionCall[0] as { text?: string }).text ?? '';
+    expect(sql).toMatch(/radcheck/);
+    expect(sql).toMatch(/radacct/);
+    expect(sql).toMatch(/UNION/i);
+  });
+});
+
+describe('allocateVoucherUsernames regenerates taken codes', () => {
+  it('a code returned by usernameExists does not appear in the final batch', async () => {
+    // First call: report code[0] as taken; second call: all clear.
+    let callCount = 0;
+    const taken = new Set<string>();
+    const usernameExists = async (candidates: string[]): Promise<string[]> => {
+      callCount++;
+      if (callCount === 1) {
+        // Record the first candidate as taken so we can verify it is replaced.
+        taken.add(candidates[0]);
+        return [candidates[0]];
+      }
+      return [];
+    };
+
+    const results = await allocateVoucherUsernames(3, usernameExists);
+
+    expect(results).toHaveLength(3);
+    // The taken code must not appear in the final result.
+    for (const code of taken) {
+      expect(results).not.toContain(code);
+    }
+    // At least two rounds were needed (first returned a collision).
+    expect(callCount).toBeGreaterThanOrEqual(2);
   });
 });
 

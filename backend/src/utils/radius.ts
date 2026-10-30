@@ -2,3 +2,27 @@
 export function isSafeAcctSessionId(id: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(id);
 }
+
+const RADIUS_EXPIRATION_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * Format an ISO date string (or Date) as the FreeRADIUS Expiration attribute value.
+ * FreeRADIUS expects: "January 01 2026 00:00:00" (UTC, zero-padded day/time).
+ *
+ * Used by both the validity-expiration job and the repair script so that any
+ * Expiration written by the job can be reproduced exactly for comparison.
+ */
+export function formatRadiusExpiration(isoDate: string | Date): string {
+  const d = typeof isoDate === 'string' ? new Date(isoDate) : isoDate;
+  return (
+    `${RADIUS_EXPIRATION_MONTHS[d.getUTCMonth()]} ` +
+    `${String(d.getUTCDate()).padStart(2, '0')} ` +
+    `${d.getUTCFullYear()} ` +
+    `${String(d.getUTCHours()).padStart(2, '0')}:` +
+    `${String(d.getUTCMinutes()).padStart(2, '0')}:` +
+    `${String(d.getUTCSeconds()).padStart(2, '0')}`
+  );
+}

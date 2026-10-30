@@ -3,7 +3,7 @@ import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import crypto from 'crypto';
 import { decrypt } from '../utils/encryption';
-import { isSafeAcctSessionId } from '../utils/radius';
+import { isSafeAcctSessionId, formatRadiusExpiration } from '../utils/radius';
 import { sendDisconnectRequest } from './radclient.service';
 import { encodeCursor, decodeCursor, TimestampUuidCursor } from '../utils/cursor';
 
@@ -120,10 +120,26 @@ function generateRandomString(length: number, charset = 'ABCDEFGHJKLMNPQRSTUVWXY
 }
 
 /**
+ * SQL used by createVouchers to check whether a candidate username is already taken.
+ * It covers BOTH radcheck and radacct in a single round-trip because radacct rows
+ * outlive the voucher that created them: deleting a voucher removes its radcheck rows
+ * but leaves its session history intact. A new card that reuses the same code would
+ * inherit that history, causing the validity-expiration job to compute an Expiration
+ * already in the past on the card's very first nightly run.
+ *
+ * radacct_username_idx on (username) already serves this query — no migration needed.
+ */
+export const VOUCHER_CODE_TAKEN_SQL = `
+SELECT username FROM radcheck WHERE username = ANY($1::text[])
+UNION
+SELECT username FROM radacct  WHERE username = ANY($1::text[])
+`.trim();
+
+/**
  * Allocate `count` numeric voucher codes that are unique within the batch AND not already
- * present in the shared RADIUS namespace. Collisions are REGENERATED, not rejected — the
- * namespace is global across all routers/operators, so collisions are expected as it fills
- * and must never abort the creation.
+ * present in the shared RADIUS namespace (radcheck + radacct). Collisions are REGENERATED,
+ * not rejected — the namespace is global across all routers/operators, so collisions are
+ * expected as it fills and must never abort the creation.
  *
  * @param usernameExists - returns the subset of candidates already taken (the DB check).
  */
@@ -432,17 +448,6 @@ async function verifyRouterOwnership(userId: string, routerId: string): Promise<
   return { tunnelIp: result.rows[0].tunnel_ip };
 }
 
-/**
- * Format expiration date for FreeRADIUS.
- * FreeRADIUS expects: "January 01 2026 00:00:00" format.
- */
-function formatRadiusExpiration(isoDate: string): string {
-  const expDate = new Date(isoDate);
-  const months = ['January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'];
-  return `${months[expDate.getUTCMonth()]} ${String(expDate.getUTCDate()).padStart(2, '0')} ${expDate.getUTCFullYear()} ${String(expDate.getUTCHours()).padStart(2, '0')}:${String(expDate.getUTCMinutes()).padStart(2, '0')}:${String(expDate.getUTCSeconds()).padStart(2, '0')}`;
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PgClient = { query: (...args: any[]) => Promise<any> };
 
@@ -577,11 +582,13 @@ export async function createVouchers(
   const count = data.count;
   const normalizedValue = normalizeLimit(data.limitValue, data.limitUnit);
 
-  // Generate codes, regenerating any that collide with the shared global RADIUS namespace
-  // (instead of aborting the whole batch on the first collision).
+  // Generate codes, regenerating any that collide with the shared global RADIUS namespace.
+  // VOUCHER_CODE_TAKEN_SQL checks radcheck AND radacct: radacct rows outlive the deleted
+  // card, so a reused code would inherit old session history and the validity-expiration
+  // job would compute an Expiration already in the past on the card's first nightly run.
   const usernames = await allocateVoucherUsernames(count, async (candidates) => {
     const res = await pool.query<{ username: string }>(
-      `SELECT DISTINCT username FROM radcheck WHERE username = ANY($1)`,
+      VOUCHER_CODE_TAKEN_SQL,
       [candidates],
     );
     return res.rows.map((r) => r.username);

@@ -6,6 +6,7 @@ import {
   createRadacctCandidateTracker,
   type RadacctCandidateTracker,
 } from '../services/voucherEnforcement.service';
+import { formatRadiusExpiration } from '../utils/radius';
 
 /**
  * Validity-from-first-use job.
@@ -42,11 +43,6 @@ let tracker: RadacctCandidateTracker = createRadacctCandidateTracker();
 // ---- Constants ----
 
 const CHUNK_SIZE = 5000; // max usernames per $1 array in the fast-pass query
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
 
 // ---- SQL ----
 
@@ -111,13 +107,7 @@ async function applyValidityRow(row: ValidityRow): Promise<void> {
   }
 
   const expDate = new Date(row.first_login.getTime() + row.validity_seconds * 1000);
-  const formatted =
-    `${MONTHS[expDate.getUTCMonth()]} ` +
-    `${String(expDate.getUTCDate()).padStart(2, '0')} ` +
-    `${expDate.getUTCFullYear()} ` +
-    `${String(expDate.getUTCHours()).padStart(2, '0')}:` +
-    `${String(expDate.getUTCMinutes()).padStart(2, '0')}:` +
-    `${String(expDate.getUTCSeconds()).padStart(2, '0')}`;
+  const formatted = formatRadiusExpiration(expDate);
 
   // Guard against a concurrent cron tick inserting a second Expiration
   // row for the same voucher: emit the INSERT conditionally so two
