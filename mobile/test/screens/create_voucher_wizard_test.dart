@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -116,6 +118,215 @@ void main() {
       expect(notifier.loadRoutersCalled, isFalse,
           reason: 'wizard must not redundantly re-fetch when the router '
               'is already present in state');
+    });
+  });
+
+  // ── Arabic locale: limit field label follows selected unit ────────────────
+
+  group('CreateVoucherWizard limit field label (Arabic)', () {
+    testWidgets('default shows أدخل عدد الساعات and القيمة appears nowhere',
+        (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      expect(find.textContaining('أدخل عدد الساعات'), findsOneWidget,
+          reason: 'default hours unit must show أدخل عدد الساعات');
+      expect(find.textContaining('القيمة'), findsNothing,
+          reason: 'generic label القيمة must not appear anywhere');
+    });
+
+    testWidgets('tapping Data Limit changes label to أدخل عدد الجيجابايت',
+        (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      await tester.tap(find.textContaining('حد بيانات'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('أدخل عدد الجيجابايت'), findsOneWidget,
+          reason: 'switching to data limit must show أدخل عدد الجيجابايت');
+    });
+
+    testWidgets('changing unit to minutes changes label to أدخل عدد الدقائق',
+        (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      // Open the unit dropdown and select دقائق
+      await tester.tap(find.text('ساعات'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('دقائق').last);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('أدخل عدد الدقائق'), findsOneWidget,
+          reason: 'selecting minutes unit must show أدخل عدد الدقائق');
+    });
+
+    testWidgets('info line mentions price in time mode', (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      expect(find.textContaining('السعر تدخله في الخطوة الأخيرة'), findsOneWidget,
+          reason: 'time-limit hint must contain the price-step sentence');
+    });
+
+    testWidgets('info line mentions price in data mode', (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      await tester.tap(find.textContaining('حد بيانات'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('السعر تدخله في الخطوة الأخيرة'), findsOneWidget,
+          reason: 'data-limit hint must contain the price-step sentence');
+    });
+  });
+
+  // ── Arabic locale: custom validity field follows unit ─────────────────────
+
+  group('CreateVoucherWizard custom validity field label (Arabic)', () {
+    testWidgets('custom validity field shows أدخل عدد الساعات for hours',
+        (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      // Advance to step 1 (validity)
+      await tester.enterText(find.byType(TextFormField).first, '2');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'التالي'));
+      await tester.pumpAndSettle();
+
+      // Tap the "مخصص" chip to reveal the custom field
+      await tester.tap(find.text('مخصص'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('أدخل عدد الساعات'), findsOneWidget,
+          reason: 'custom validity field (hours) must show أدخل عدد الساعات');
+    });
+
+    testWidgets('custom validity field shows أدخل عدد الأيام after switching to days',
+        (tester) async {
+      final notifier = _FakeRoutersNotifier(routers: [_fakeRouter()]);
+
+      await tester.pumpWidget(
+        _buildApp(routersNotifier: notifier, locale: const Locale('ar')),
+      );
+      await tester.pump();
+
+      // Advance to step 1
+      await tester.enterText(find.byType(TextFormField).first, '2');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'التالي'));
+      await tester.pumpAndSettle();
+
+      // Tap مخصص
+      await tester.tap(find.text('مخصص'));
+      await tester.pumpAndSettle();
+
+      // Switch unit to days
+      await tester.tap(find.text('ساعات').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('أيام').last);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('أدخل عدد الأيام'), findsOneWidget,
+          reason: 'custom validity field (days) must show أدخل عدد الأيام');
+    });
+  });
+
+  // ── 320-wide layout: no overflow ──────────────────────────────────────────
+
+  group('CreateVoucherWizard layout on 320-wide screen', () {
+    // flutter_test renders every glyph as a full-width square unless the real
+    // font is loaded, which reports overflows no phone would ever show.
+    setUpAll(() async {
+      final loader = FontLoader('Cairo');
+      for (final weight in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+        loader.addFont(rootBundle.load('assets/fonts/Cairo-$weight.ttf'));
+      }
+      await loader.load();
+    });
+
+    Future<void> pumpNarrow(WidgetTester tester, Locale locale) async {
+      tester.view.physicalSize = const Size(320 * 3, 640 * 3);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(_buildApp(
+        routersNotifier: _FakeRoutersNotifier(routers: [_fakeRouter()]),
+        locale: locale,
+      ));
+      await tester.pump();
+    }
+
+    for (final (locale, dataLimit, next, custom) in const [
+      (Locale('ar'), 'حد بيانات', 'التالي', 'مخصص'),
+      (Locale('en'), 'Data Limit', 'Next', 'Custom'),
+    ]) {
+      testWidgets('limit step fits in time and data modes (${locale.languageCode})',
+          (tester) async {
+        await pumpNarrow(tester, locale);
+        expect(tester.takeException(), isNull);
+
+        await tester.tap(find.text(dataLimit));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('custom validity fits (${locale.languageCode})', (tester) async {
+        await pumpNarrow(tester, locale);
+
+        await tester.enterText(find.byType(TextFormField).first, '2');
+        await tester.tap(find.widgetWithText(ElevatedButton, next));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(custom));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('long unit names are not cut off (ar)', (tester) async {
+      void expectFits(String unit) {
+        final text = tester.renderObject<RenderParagraph>(find.text(unit));
+        expect(text.getMaxIntrinsicWidth(double.infinity),
+            lessThanOrEqualTo(text.size.width),
+            reason: '$unit must fit the unit picker');
+      }
+
+      await pumpNarrow(tester, const Locale('ar'));
+      await tester.tap(find.text('حد بيانات'));
+      await tester.pumpAndSettle();
+      expectFits('جيجابايت');
+
+      await tester.tap(find.text('جيجابايت'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ميجابايت').last);
+      await tester.pumpAndSettle();
+      expectFits('ميجابايت');
     });
   });
 

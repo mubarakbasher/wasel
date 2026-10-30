@@ -376,8 +376,9 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
-                    labelText: context.tr('vouchers.value'),
-                    hintText: context.tr('vouchers.exampleHint', ['2']),
+                    labelText: localizedLimitPrompt(context, _limitUnit),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    hintText: localizedLimitExample(context, _limitUnit),
                   ),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return context.tr('common.required');
@@ -391,6 +392,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: _limitUnit,
                   decoration: InputDecoration(labelText: context.tr('vouchers.unit')),
                   items: _limitType == 'time'
@@ -579,8 +581,9 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
-                    labelText: context.tr('vouchers.value'),
-                    hintText: context.tr('vouchers.exampleHint', ['5']),
+                    labelText: localizedLimitPrompt(context, _customValidityUnit),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    hintText: localizedLimitExample(context, _customValidityUnit),
                   ),
                   onChanged: (_) => _updateCustomValidity(),
                 ),
@@ -589,6 +592,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: _customValidityUnit,
                   decoration: InputDecoration(labelText: context.tr('vouchers.unit')),
                   items: [

@@ -48,6 +48,55 @@ String localizedUnitLabel(BuildContext c, String unit) {
   }
 }
 
+/// Returns the localized input prompt (field label) for a limit entry field,
+/// matching the selected unit so the operator knows exactly what to type.
+///
+/// - `'minutes'` → "Enter number of minutes" / "أدخل عدد الدقائق"
+/// - `'hours'`   → "Enter number of hours"   / "أدخل عدد الساعات"
+/// - `'days'`    → "Enter number of days"     / "أدخل عدد الأيام"
+/// - `'MB'`      → "Enter number of MB"       / "أدخل عدد الميجابايت"
+/// - `'GB'`      → "Enter number of GB"       / "أدخل عدد الجيجابايت"
+///
+/// Any other unit falls back to [localizedUnitLabel].
+String localizedLimitPrompt(BuildContext c, String unit) {
+  switch (unit) {
+    case 'minutes':
+      return c.tr('vouchers.enterMinutes');
+    case 'hours':
+      return c.tr('vouchers.enterHours');
+    case 'days':
+      return c.tr('vouchers.enterDays');
+    case 'MB':
+      return c.tr('vouchers.enterMb');
+    case 'GB':
+      return c.tr('vouchers.enterGb');
+    default:
+      return localizedUnitLabel(c, unit);
+  }
+}
+
+/// Returns the localized example hint text for a limit entry field.
+///
+/// Minutes uses [vouchers.durationMinutes], hours uses [vouchers.durationHours],
+/// days uses `3 ${vouchers.days}` (correct Arabic plural), MB and GB use the
+/// unit label directly.  All are wrapped in [vouchers.exampleHint].
+String localizedLimitExample(BuildContext c, String unit) {
+  switch (unit) {
+    case 'minutes':
+      return c.tr('vouchers.exampleHint', [c.tr('vouchers.durationMinutes', ['30'])]);
+    case 'hours':
+      return c.tr('vouchers.exampleHint', [c.tr('vouchers.durationHours', ['2'])]);
+    case 'days':
+      return c.tr('vouchers.exampleHint', ['3 ${c.tr('vouchers.days')}']);
+    case 'MB':
+      return c.tr('vouchers.exampleHint', ['500 ${c.tr('vouchers.unitMb')}']);
+    case 'GB':
+      return c.tr('vouchers.exampleHint', ['2 ${c.tr('vouchers.unitGb')}']);
+    default:
+      return c.tr('vouchers.exampleHint', ['2']);
+  }
+}
+
 /// Localized limit string from raw limit fields, or `null` when any field is
 /// missing.
 ///
