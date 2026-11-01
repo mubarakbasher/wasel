@@ -18,6 +18,8 @@ class Voucher {
   final double? price;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? firstUsedAt;
+  final DateTime? expiresAt;
 
   const Voucher({
     required this.id,
@@ -39,6 +41,8 @@ class Voucher {
     this.price,
     required this.createdAt,
     required this.updatedAt,
+    this.firstUsedAt,
+    this.expiresAt,
   });
 
   bool get isUnused => status == 'unused';
@@ -150,6 +154,12 @@ class Voucher {
           : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      firstUsedAt: json['firstUsedAt'] != null
+          ? DateTime.tryParse(json['firstUsedAt'] as String)
+          : null,
+      expiresAt: json['expiresAt'] != null
+          ? DateTime.tryParse(json['expiresAt'] as String)
+          : null,
     );
   }
 
@@ -174,6 +184,8 @@ class Voucher {
       'price': price,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'firstUsedAt': firstUsedAt?.toIso8601String(),
+      'expiresAt': expiresAt?.toIso8601String(),
     };
   }
 }

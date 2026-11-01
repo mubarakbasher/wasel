@@ -13,6 +13,7 @@ import {
   TEST_VOUCHER_ID,
   TEST_PROFILE_ID,
 } from './helpers';
+import { parseRadiusExpiration } from '../utils/radius';
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof vi.fn>;
 const mockClientQuery = (globalThis as Record<string, unknown>).__mockClientQuery as ReturnType<typeof vi.fn>;
@@ -1101,5 +1102,137 @@ describe('allocateVoucherUsernames', () => {
         err.code === 'USERNAME_TAKEN'
       );
     });
+  });
+});
+
+// ─── parseRadiusExpiration unit tests ────────────────────────────────────────
+
+describe('parseRadiusExpiration', () => {
+  it('parses a valid RADIUS expiration string as UTC and returns the correct Date', () => {
+    const result = parseRadiusExpiration('August 15 2026 18:05:00');
+    expect(result).not.toBeNull();
+    expect(result!.toISOString()).toBe('2026-08-15T18:05:00.000Z');
+  });
+
+  it('returns null for null input', () => {
+    expect(parseRadiusExpiration(null)).toBeNull();
+  });
+
+  it('returns null for undefined input', () => {
+    expect(parseRadiusExpiration(undefined)).toBeNull();
+  });
+
+  it('returns null for an unparseable string', () => {
+    expect(parseRadiusExpiration('not-a-date')).toBeNull();
+  });
+
+  it('returns null for an empty string', () => {
+    expect(parseRadiusExpiration('')).toBeNull();
+  });
+});
+
+// ─── firstUsedAt / expiresAt DTO fields ──────────────────────────────────────
+
+describe('GET /api/v1/routers/:id/vouchers/:vid — firstUsedAt and expiresAt fields', () => {
+  const EXPIRATION_RADIUS = 'August 15 2026 18:05:00';
+  const EXPIRATION_ISO    = '2026-08-15T18:05:00.000Z';
+  const FIRST_USE_DATE    = new Date('2026-08-01T10:00:00.000Z');
+
+  function setupGetVoucher(
+    radcheckRows: { username: string; attribute: string; value: string }[],
+    radacctRows: object[],
+  ) {
+    mockSubscriptionQuery(mockQuery);
+    // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: TEST_ROUTER_ID }] });
+    // SELECT voucher_meta
+    mockQuery.mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] });
+    // radcheck batch
+    mockQuery.mockResolvedValueOnce({ rows: radcheckRows });
+    // radacct batch
+    mockQuery.mockResolvedValueOnce({ rows: radacctRows });
+    // profiles batch
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ group_name: 'basic-plan', user_id: TEST_USER.userId, display_name: 'Basic Plan' }],
+    });
+  }
+
+  it('used card: firstUsedAt and expiresAt are correct ISO strings', async () => {
+    setupGetVoucher(
+      [
+        { username: 'testuser1', attribute: 'Cleartext-Password', value: 'pass123' },
+        { username: 'testuser1', attribute: 'Expiration', value: EXPIRATION_RADIUS },
+      ],
+      [
+        {
+          username: 'testuser1',
+          active_count: 0,
+          total_count: 3,
+          total_time_used: '7200',
+          total_data_used: '0',
+          first_used_at: FIRST_USE_DATE,
+        },
+      ],
+    );
+
+    const res = await request(app)
+      .get(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.firstUsedAt).toBe(FIRST_USE_DATE.toISOString());
+    expect(res.body.data.expiresAt).toBe(EXPIRATION_ISO);
+    // Legacy field must still be present and raw
+    expect(res.body.data.expiration).toBe(EXPIRATION_RADIUS);
+  });
+
+  it('unused card: firstUsedAt and expiresAt are both null', async () => {
+    setupGetVoucher(
+      [
+        { username: 'testuser1', attribute: 'Cleartext-Password', value: 'pass123' },
+      ],
+      // No radacct rows → voucher has never been used
+      [],
+    );
+
+    const res = await request(app)
+      .get(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.firstUsedAt).toBeNull();
+    expect(res.body.data.expiresAt).toBeNull();
+    expect(res.body.data.expiration).toBeNull();
+  });
+
+  it('unparseable Expiration: expiresAt is null but expiration is still returned raw', async () => {
+    const BAD_EXPIRATION = 'bad-date-value';
+    setupGetVoucher(
+      [
+        { username: 'testuser1', attribute: 'Cleartext-Password', value: 'pass123' },
+        { username: 'testuser1', attribute: 'Expiration', value: BAD_EXPIRATION },
+      ],
+      [
+        {
+          username: 'testuser1',
+          active_count: 0,
+          total_count: 1,
+          total_time_used: '3600',
+          total_data_used: '0',
+          first_used_at: FIRST_USE_DATE,
+        },
+      ],
+    );
+
+    const res = await request(app)
+      .get(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.expiresAt).toBeNull();
+    // Raw field must still be the unparseable string
+    expect(res.body.data.expiration).toBe(BAD_EXPIRATION);
+    // firstUsedAt is still computed correctly
+    expect(res.body.data.firstUsedAt).toBe(FIRST_USE_DATE.toISOString());
   });
 });

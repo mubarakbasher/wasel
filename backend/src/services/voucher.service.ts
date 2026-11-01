@@ -3,7 +3,7 @@ import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import crypto from 'crypto';
 import { decrypt } from '../utils/encryption';
-import { isSafeAcctSessionId, formatRadiusExpiration } from '../utils/radius';
+import { isSafeAcctSessionId, formatRadiusExpiration, parseRadiusExpiration } from '../utils/radius';
 import { sendDisconnectRequest } from './radclient.service';
 import { encodeCursor, decodeCursor, TimestampUuidCursor } from '../utils/cursor';
 
@@ -37,6 +37,10 @@ export interface VoucherInfo {
   comment: string | null;
   status: string;
   expiration: string | null;
+  /** ISO 8601 UTC timestamp of the voucher's first RADIUS session, or null if never used. */
+  firstUsedAt: string | null;
+  /** ISO 8601 UTC timestamp when the voucher expires (parsed from the RADIUS Expiration attribute), or null. */
+  expiresAt: string | null;
   simultaneousUse: number | null;
   limitType: string | null;
   limitValue: number | null;
@@ -219,6 +223,7 @@ interface RadacctBatchRow {
   total_count: number;
   total_time_used: string;   // bigint as string from pg
   total_data_used: string;   // bigint as string from pg
+  first_used_at: Date | null;
 }
 
 interface ProfileBatchRow {
@@ -268,7 +273,8 @@ async function batchFetchRadacct(usernames: string[]): Promise<Map<string, Radac
        COUNT(*) FILTER (WHERE acctstoptime IS NULL)::int AS active_count,
        COUNT(*)::int                                      AS total_count,
        COALESCE(SUM(acctsessiontime), 0)::bigint          AS total_time_used,
-       COALESCE(SUM(acctinputoctets + acctoutputoctets), 0)::bigint AS total_data_used
+       COALESCE(SUM(acctinputoctets + acctoutputoctets), 0)::bigint AS total_data_used,
+       MIN(acctstarttime)                                 AS first_used_at
      FROM radacct
      WHERE username = ANY($1)
      GROUP BY username`,
@@ -368,6 +374,9 @@ function assembleVoucherInfo(
     profileName = buildLimitDisplayName(row.limit_type, Number(row.limit_value), row.limit_unit);
   }
 
+  const firstUsedAt = ra?.first_used_at ? new Date(ra.first_used_at).toISOString() : null;
+  const expiresAt = parseRadiusExpiration(rc.expiration)?.toISOString() ?? null;
+
   return {
     id: row.id,
     userId: row.user_id,
@@ -379,6 +388,8 @@ function assembleVoucherInfo(
     comment: row.comment,
     status: computedStatus,
     expiration: rc.expiration,
+    firstUsedAt,
+    expiresAt,
     simultaneousUse: rc.simultaneousUse,
     limitType: row.limit_type,
     limitValue: row.limit_value ? Number(row.limit_value) : null,
