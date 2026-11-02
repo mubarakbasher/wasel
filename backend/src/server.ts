@@ -15,6 +15,8 @@ import { startValidityCoaDisconnectJob } from './jobs/validityCoaDisconnect';
 import { startDataUsageCoaDisconnectJob } from './jobs/dataUsageCoaDisconnect';
 import { startUsageLimitEnforcementJob } from './jobs/usageLimitEnforcement';
 import { startStaleSessionReaperJob } from './jobs/staleSessionReaper';
+import { startMacCookieConvergenceJob } from './jobs/macCookieConvergence';
+import { startNtpConvergenceJob } from './jobs/ntpConvergence';
 import { startMonitoring } from './services/wireguardMonitor';
 import { startFreeradiusMonitor } from './services/freeradiusMonitor';
 import { syncPeersFromDatabase } from './services/wireguardPeer';
@@ -123,6 +125,8 @@ async function startServer(): Promise<void> {
     startDataUsageCoaDisconnectJob();
     startUsageLimitEnforcementJob();
     startStaleSessionReaperJob();
+    startMacCookieConvergenceJob();
+    startNtpConvergenceJob();
     startMonitoring();
     startFreeradiusMonitor();
 

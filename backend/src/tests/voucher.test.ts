@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import { createVouchersSchema } from '../validators/voucher.validators';
-import { allocateVoucherUsernames } from '../services/voucher.service';
+import { allocateVoucherUsernames, VOUCHER_CODE_TAKEN_SQL } from '../services/voucher.service';
 import { AppError } from '../middleware/errorHandler';
 import {
   TEST_USER,
@@ -13,6 +13,7 @@ import {
   TEST_VOUCHER_ID,
   TEST_PROFILE_ID,
 } from './helpers';
+import { parseRadiusExpiration } from '../utils/radius';
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof vi.fn>;
 const mockClientQuery = (globalThis as Record<string, unknown>).__mockClientQuery as ReturnType<typeof vi.fn>;
@@ -242,6 +243,84 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     const insertArgs = radreplyInserts[0][1] as unknown[];
     expect(insertArgs).toContain('Session-Timeout');
     expect(insertArgs).toContain('86400');
+  });
+});
+
+// ─── allocateVoucherUsernames / collision-check SQL ──────────────────────────
+
+describe('VOUCHER_CODE_TAKEN_SQL covers both radcheck and radacct', () => {
+  it('VOUCHER_CODE_TAKEN_SQL references radcheck', () => {
+    expect(VOUCHER_CODE_TAKEN_SQL).toMatch(/radcheck/);
+  });
+
+  it('VOUCHER_CODE_TAKEN_SQL references radacct', () => {
+    expect(VOUCHER_CODE_TAKEN_SQL).toMatch(/radacct/);
+  });
+
+  it('VOUCHER_CODE_TAKEN_SQL uses UNION so it is a single query', () => {
+    expect(VOUCHER_CODE_TAKEN_SQL).toMatch(/UNION/i);
+  });
+
+  it('POST /vouchers passes a UNION query (covering both tables) to pool.query for the collision check', async () => {
+    // requireSubscription (2 queries)
+    mockSubscriptionQuery(mockQuery);
+    // checkQuota (2 queries)
+    mockCheckQuotaQueries(mockQuery);
+    // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    // collision-check: no taken codes
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 11 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 });
+
+    // The uniqueness check is the 6th pool.query call (indices 0-4 are auth/quota/router).
+    const collisionCall = mockQuery.mock.calls[5];
+    expect(collisionCall).toBeDefined();
+    const sql: string = typeof collisionCall[0] === 'string'
+      ? collisionCall[0]
+      : (collisionCall[0] as { text?: string }).text ?? '';
+    expect(sql).toMatch(/radcheck/);
+    expect(sql).toMatch(/radacct/);
+    expect(sql).toMatch(/UNION/i);
+  });
+});
+
+describe('allocateVoucherUsernames regenerates taken codes', () => {
+  it('a code returned by usernameExists does not appear in the final batch', async () => {
+    // First call: report code[0] as taken; second call: all clear.
+    let callCount = 0;
+    const taken = new Set<string>();
+    const usernameExists = async (candidates: string[]): Promise<string[]> => {
+      callCount++;
+      if (callCount === 1) {
+        // Record the first candidate as taken so we can verify it is replaced.
+        taken.add(candidates[0]);
+        return [candidates[0]];
+      }
+      return [];
+    };
+
+    const results = await allocateVoucherUsernames(3, usernameExists);
+
+    expect(results).toHaveLength(3);
+    // The taken code must not appear in the final result.
+    for (const code of taken) {
+      expect(results).not.toContain(code);
+    }
+    // At least two rounds were needed (first returned a collision).
+    expect(callCount).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -906,5 +985,137 @@ describe('allocateVoucherUsernames', () => {
         err.code === 'USERNAME_TAKEN'
       );
     });
+  });
+});
+
+// ─── parseRadiusExpiration unit tests ────────────────────────────────────────
+
+describe('parseRadiusExpiration', () => {
+  it('parses a valid RADIUS expiration string as UTC and returns the correct Date', () => {
+    const result = parseRadiusExpiration('August 15 2026 18:05:00');
+    expect(result).not.toBeNull();
+    expect(result!.toISOString()).toBe('2026-08-15T18:05:00.000Z');
+  });
+
+  it('returns null for null input', () => {
+    expect(parseRadiusExpiration(null)).toBeNull();
+  });
+
+  it('returns null for undefined input', () => {
+    expect(parseRadiusExpiration(undefined)).toBeNull();
+  });
+
+  it('returns null for an unparseable string', () => {
+    expect(parseRadiusExpiration('not-a-date')).toBeNull();
+  });
+
+  it('returns null for an empty string', () => {
+    expect(parseRadiusExpiration('')).toBeNull();
+  });
+});
+
+// ─── firstUsedAt / expiresAt DTO fields ──────────────────────────────────────
+
+describe('GET /api/v1/routers/:id/vouchers/:vid — firstUsedAt and expiresAt fields', () => {
+  const EXPIRATION_RADIUS = 'August 15 2026 18:05:00';
+  const EXPIRATION_ISO    = '2026-08-15T18:05:00.000Z';
+  const FIRST_USE_DATE    = new Date('2026-08-01T10:00:00.000Z');
+
+  function setupGetVoucher(
+    radcheckRows: { username: string; attribute: string; value: string }[],
+    radacctRows: object[],
+  ) {
+    mockSubscriptionQuery(mockQuery);
+    // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: TEST_ROUTER_ID }] });
+    // SELECT voucher_meta
+    mockQuery.mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] });
+    // radcheck batch
+    mockQuery.mockResolvedValueOnce({ rows: radcheckRows });
+    // radacct batch
+    mockQuery.mockResolvedValueOnce({ rows: radacctRows });
+    // profiles batch
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ group_name: 'basic-plan', user_id: TEST_USER.userId, display_name: 'Basic Plan' }],
+    });
+  }
+
+  it('used card: firstUsedAt and expiresAt are correct ISO strings', async () => {
+    setupGetVoucher(
+      [
+        { username: 'testuser1', attribute: 'Cleartext-Password', value: 'pass123' },
+        { username: 'testuser1', attribute: 'Expiration', value: EXPIRATION_RADIUS },
+      ],
+      [
+        {
+          username: 'testuser1',
+          active_count: 0,
+          total_count: 3,
+          total_time_used: '7200',
+          total_data_used: '0',
+          first_used_at: FIRST_USE_DATE,
+        },
+      ],
+    );
+
+    const res = await request(app)
+      .get(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.firstUsedAt).toBe(FIRST_USE_DATE.toISOString());
+    expect(res.body.data.expiresAt).toBe(EXPIRATION_ISO);
+    // Legacy field must still be present and raw
+    expect(res.body.data.expiration).toBe(EXPIRATION_RADIUS);
+  });
+
+  it('unused card: firstUsedAt and expiresAt are both null', async () => {
+    setupGetVoucher(
+      [
+        { username: 'testuser1', attribute: 'Cleartext-Password', value: 'pass123' },
+      ],
+      // No radacct rows → voucher has never been used
+      [],
+    );
+
+    const res = await request(app)
+      .get(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.firstUsedAt).toBeNull();
+    expect(res.body.data.expiresAt).toBeNull();
+    expect(res.body.data.expiration).toBeNull();
+  });
+
+  it('unparseable Expiration: expiresAt is null but expiration is still returned raw', async () => {
+    const BAD_EXPIRATION = 'bad-date-value';
+    setupGetVoucher(
+      [
+        { username: 'testuser1', attribute: 'Cleartext-Password', value: 'pass123' },
+        { username: 'testuser1', attribute: 'Expiration', value: BAD_EXPIRATION },
+      ],
+      [
+        {
+          username: 'testuser1',
+          active_count: 0,
+          total_count: 1,
+          total_time_used: '3600',
+          total_data_used: '0',
+          first_used_at: FIRST_USE_DATE,
+        },
+      ],
+    );
+
+    const res = await request(app)
+      .get(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.expiresAt).toBeNull();
+    // Raw field must still be the unparseable string
+    expect(res.body.data.expiration).toBe(BAD_EXPIRATION);
+    // firstUsedAt is still computed correctly
+    expect(res.body.data.firstUsedAt).toBe(FIRST_USE_DATE.toISOString());
   });
 });

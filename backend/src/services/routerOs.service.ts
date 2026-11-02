@@ -573,6 +573,232 @@ export async function ensureHotspotRadiusSettings(
 }
 
 /**
+ * Resolve the hotspot server profile names that are actively in use (enabled
+ * servers' `profile`), falling back to ['default'] when no enabled server exists.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function resolveActiveServerProfileNames(api: any): Promise<string[]> {
+  const servers = await listHotspotServers(api);
+  const names = Array.from(
+    new Set(
+      servers
+        .filter((s) => !s.disabled)
+        .map((s) => s.profile)
+        .filter((p): p is string => Boolean(p)),
+    ),
+  );
+  return names.length > 0 ? names : ['default'];
+}
+
+/**
+ * Minimal-drift repair for MAC-cookie auto-relogin.
+ *
+ * Unlike {@link ensureHotspotRadiusSettings} (which overwrites `login-by` with a
+ * fixed string and forces a 30 d mac-cookie timeout), this helper only mutates
+ * the attributes that are actually wrong, preserving every operator
+ * customization (extra login methods, long cookie timeouts, etc.).
+ *
+ * Auto-relogin requires BOTH:
+ *   - server profile `login-by` must include `mac-cookie`
+ *   - user profile `default` must have `add-mac-cookie=yes` and a non-zero
+ *     `mac-cookie-timeout`
+ *
+ * MAC-cookie relogin still issues a fresh RADIUS Access-Request on each
+ * reconnect, so rlm_expiration / Auth-Type := Reject enforcement is intact
+ * (same guarantee as the ensureHotspotRadiusSettings docstring).
+ *
+ * KEY-SHAPE GOTCHA: routeros-client's `.get()` strips the leading dot and
+ * camel-cases keys (`login-by` → `loginBy`, `.id` → `id`), and converts
+ * `"true"`/`"false"` to booleans and pure-digit strings to numbers. Reads use
+ * the camelCase form with dashed fallback for safety; writes stay dashed to
+ * match the native RouterOS API.
+ */
+export async function ensureMacCookieRelogin(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api: any,
+  opts: { serverProfileNames: string[] },
+): Promise<{ checked: boolean; repaired: string[]; error?: string }> {
+  const repaired: string[] = [];
+  try {
+    // --- /ip/hotspot/profile — repair login-by only on drift ---
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hsProfiles = (await (api as any).menu('/ip/hotspot/profile').get()) as Array<
+      Record<string, unknown>
+    >;
+
+    const targets: Array<Record<string, unknown>> = [];
+    if (hsProfiles && hsProfiles.length > 0) {
+      const wanted = new Set((opts.serverProfileNames ?? []).map((n) => n.toLowerCase()));
+      if (wanted.size > 0) {
+        for (const p of hsProfiles) {
+          if (wanted.has(String(p.name ?? '').toLowerCase())) targets.push(p);
+        }
+      }
+      if (targets.length === 0) {
+        const fallback =
+          hsProfiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ??
+          hsProfiles[0];
+        if (fallback) targets.push(fallback);
+      }
+    }
+
+    for (const profile of targets) {
+      const profileId = String(profile.id ?? profile['.id'] ?? '');
+      if (!profileId) continue;
+      const name = String(profile.name ?? '');
+      const current = String(profile.loginBy ?? profile['login-by'] ?? '').trim();
+      const methods = current ? current.split(',').map((m) => m.trim()).filter(Boolean) : [];
+      if (methods.map((m) => m.toLowerCase()).includes('mac-cookie')) continue;
+      const next = methods.length === 0 ? 'mac-cookie' : `${methods.join(',')},mac-cookie`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (api as any)
+        .menu('/ip/hotspot/profile')
+        .where('.id', profileId)
+        .update({ 'login-by': next });
+      logger.info('ensureMacCookieRelogin: hotspot profile login-by updated', {
+        profileId,
+        name,
+        loginBy: next,
+      });
+      repaired.push(`login-by:${name}`);
+    }
+
+    // --- /ip/hotspot/user/profile — repair default user profile only on drift ---
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const userProfiles = (await (api as any).menu('/ip/hotspot/user/profile').get()) as Array<
+      Record<string, unknown>
+    >;
+    if (userProfiles && userProfiles.length > 0) {
+      const userProfile =
+        userProfiles.find((p) => String(p.name ?? '').toLowerCase() === 'default') ??
+        userProfiles[0];
+      const userProfileId = String(userProfile.id ?? userProfile['.id'] ?? '');
+      if (userProfileId) {
+        const amcRaw = userProfile.addMacCookie ?? userProfile['add-mac-cookie'];
+        const addMacCookieOn =
+          amcRaw === true ||
+          (typeof amcRaw === 'string' && ['yes', 'true'].includes(amcRaw.toLowerCase()));
+
+        const toRaw = userProfile.macCookieTimeout ?? userProfile['mac-cookie-timeout'];
+        const toStr =
+          toRaw === undefined || toRaw === null ? '' : String(toRaw).trim().toLowerCase();
+        const timeoutZero =
+          toStr === '' || toStr === '0' || toStr === '0s' || toStr === '00:00:00';
+
+        const payload: Record<string, string> = {};
+        if (!addMacCookieOn) {
+          payload['add-mac-cookie'] = 'yes';
+          repaired.push('add-mac-cookie');
+        }
+        if (timeoutZero) {
+          payload['mac-cookie-timeout'] = MAC_COOKIE_TIMEOUT;
+          repaired.push('mac-cookie-timeout');
+        }
+
+        if (Object.keys(payload).length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (api as any)
+            .menu('/ip/hotspot/user/profile')
+            .where('.id', userProfileId)
+            .update(payload);
+          logger.info('ensureMacCookieRelogin: hotspot user profile updated', {
+            userProfileId,
+            name: String(userProfile.name ?? ''),
+            payload,
+          });
+        }
+      }
+    }
+
+    return { checked: true, repaired };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn('ensureMacCookieRelogin: best-effort update failed (non-fatal)', {
+      error: message,
+    });
+    return { checked: false, repaired, error: message };
+  }
+}
+
+/**
+ * Default NTP servers written when repairing the client. Public anycast pools
+ * that work from anywhere; chosen for diversity (Cloudflare, NTP Pool, Google)
+ * so a single provider outage does not strand the fleet with stale clocks.
+ */
+const DEFAULT_NTP_SERVERS = 'time.cloudflare.com,pool.ntp.org,time.google.com';
+
+/**
+ * Drift-only repair for the RouterOS NTP client.
+ *
+ * Why this exists: MikroTik boards without an RTC battery (L009 and similar)
+ * lose their clock on power cut and come back with the system time hours in
+ * the past. WireGuard's handshake carries a TAI64N timestamp and the kernel
+ * silently rejects an initiation whose timestamp is ≤ the server-side peer's
+ * stored latest_timestamp (replay protection). The router keeps re-sending
+ * initiations every 5 s and the tunnel never comes up until the clock is
+ * corrected. Keeping an NTP client enabled fixes the clock within seconds of
+ * the router regaining upstream connectivity.
+ *
+ * Policy (minimal drift):
+ *   - enabled && servers non-empty            → already_configured (no write)
+ *   - !enabled                                → repair (enabled + servers)
+ *   - enabled && servers empty                → repair (servers; and set
+ *                                                enabled=yes defensively)
+ *
+ * KEY-SHAPE GOTCHA: routeros-client's `.get()` strips the leading dot and
+ * camel-cases keys, and converts yes/no/true/false to booleans — the prod read
+ * returned `enabled: false` and `servers: ""` as transformed values. Reads
+ * here consult both the camelCase and dashed form for safety; writes stay
+ * dashed to match the native RouterOS API. `/system/ntp/client` is a
+ * singleton menu (no `.id`), so the write uses `.exec('set', payload)` which
+ * maps directly to the shell `/system ntp client set ...` command rather than
+ * `.update()` (which would call queryForIdsIfNeeded on a menu that has no id).
+ */
+export async function ensureNtpClient(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api: any,
+): Promise<{ status: 'repaired' | 'already_configured' | 'failed'; detail: string; error?: string }> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (await (api as any).menu('/system/ntp/client').get()) as Array<
+      Record<string, unknown>
+    >;
+    const current = (rows && rows[0]) || {};
+
+    const enabledRaw = current.enabled ?? current['enabled'];
+    const enabled =
+      enabledRaw === true ||
+      (typeof enabledRaw === 'string' && ['yes', 'true'].includes(enabledRaw.toLowerCase()));
+
+    const serversRaw = current.servers ?? current['servers'];
+    const serversStr =
+      serversRaw === undefined || serversRaw === null ? '' : String(serversRaw).trim();
+    const serversEmpty = serversStr === '';
+
+    if (enabled && !serversEmpty) {
+      return { status: 'already_configured', detail: 'NTP client already enabled with servers' };
+    }
+
+    const payload: Record<string, string> = { enabled: 'yes' };
+    if (serversEmpty) {
+      payload['servers'] = DEFAULT_NTP_SERVERS;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (api as any).menu('/system/ntp/client').exec('set', payload);
+
+    const changed = serversEmpty ? ['enabled', 'servers'] : ['enabled'];
+    logger.info('ensureNtpClient: NTP client repaired', { changed });
+
+    return { status: 'repaired', detail: `set ${changed.join(',')}` };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn('ensureNtpClient: best-effort update failed (non-fatal)', { error: message });
+    return { status: 'failed', detail: 'read or write failed', error: message };
+  }
+}
+
+/**
  * List all IP addresses configured on the router.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

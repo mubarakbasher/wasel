@@ -4,7 +4,14 @@ import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getPeerStatus } from './wireguardPeer';
-import { connectToRouter, testConnection, listHotspotServers, ensureHotspotRadiusSettings } from './routerOs.service';
+import {
+  connectToRouter,
+  testConnection,
+  listHotspotServers,
+  ensureHotspotRadiusSettings,
+  ensureMacCookieRelogin,
+  resolveActiveServerProfileNames,
+} from './routerOs.service';
 import { sendAccessRequest } from './radclient.service';
 
 const execFileAsync = promisify(execFile);
@@ -232,16 +239,7 @@ async function probeHotspotUsesRadius(
 
       // Check the profile(s) actually used by active hotspot servers. Falling
       // back to 'default' when no hotspot server exists yet (bootstrap case).
-      const servers = await listHotspotServers(api);
-      const activeProfileNames = Array.from(
-        new Set(
-          servers
-            .filter((s) => !s.disabled)
-            .map((s) => s.profile)
-            .filter((p): p is string => Boolean(p)),
-        ),
-      );
-      const targetNames = activeProfileNames.length > 0 ? activeProfileNames : ['default'];
+      const targetNames = await resolveActiveServerProfileNames(api);
       const targetProfiles = targetNames
         .map((n) => profiles.find((p) => p.name === n))
         .filter((p): p is Record<string, unknown> => Boolean(p));
@@ -261,8 +259,12 @@ async function probeHotspotUsesRadius(
         targetProfiles.push(fallback);
       }
 
+      // routeros-client camelCases keys and converts "true"/"false" to booleans.
+      // Read `useRadius` (treated shape) with `'use-radius'` as a dashed fallback.
       const failing = targetProfiles.filter((p) => {
-        const v = String(p['use-radius'] ?? '').toLowerCase();
+        const raw = p.useRadius ?? p['use-radius'];
+        if (typeof raw === 'boolean') return !raw;
+        const v = String(raw ?? '').toLowerCase();
         return v !== 'yes' && v !== 'true';
       });
 
@@ -290,6 +292,59 @@ async function probeHotspotUsesRadius(
         remediation: ok
           ? undefined
           : `Set use-radius=yes on the profile used by your hotspot server: \`/ip hotspot profile set [find name=${failNames.split(',')[0].trim()}] use-radius=yes\`.`,
+      };
+    } finally {
+      try { await client.disconnect(); } catch { /* ignore */ }
+    }
+  });
+}
+
+async function probeHotspotMacCookieRelogin(
+  userId: string,
+  routerId: string,
+): Promise<ProbeResult> {
+  return timed(async () => {
+    const { client, api } = await connectToRouter(routerId, userId);
+    try {
+      const serverProfileNames = await resolveActiveServerProfileNames(api);
+      const result = await ensureMacCookieRelogin(api, { serverProfileNames });
+
+      if (!result.checked) {
+        // Raw RouterOS errors stay server-side; the client gets a generic detail.
+        logger.warn('Health probe: MAC-cookie check failed', {
+          routerId,
+          error: result.error,
+          repairedBeforeFailure: result.repaired,
+        });
+        const partial = result.repaired.length > 0
+          ? ` (partially repaired: ${result.repaired.join(', ')})`
+          : '';
+        return {
+          id: 'hotspotMacCookieRelogin',
+          label: 'Returning customers re-login automatically',
+          status: 'fail',
+          detail: `Could not verify MAC-cookie auto-login on the router${partial}`,
+          remediation:
+            'Add mac-cookie to login-by on the hotspot server\'s profile: ' +
+            '`/ip hotspot profile set [find name=<profile>] login-by=<existing>,mac-cookie` ' +
+            'and `/ip hotspot user profile set default add-mac-cookie=yes mac-cookie-timeout=30d`',
+        };
+      }
+
+      if (result.repaired.length > 0) {
+        return {
+          id: 'hotspotMacCookieRelogin',
+          label: 'Returning customers re-login automatically',
+          status: 'pass',
+          detail: `MAC-cookie auto-login was off — repaired: ${result.repaired.join(', ')}`,
+        };
+      }
+
+      return {
+        id: 'hotspotMacCookieRelogin',
+        label: 'Returning customers re-login automatically',
+        status: 'pass',
+        detail: 'MAC-cookie auto-login already enabled',
       };
     } finally {
       try { await client.disconnect(); } catch { /* ignore */ }
@@ -555,7 +610,7 @@ async function persistReport(routerId: string, report: RouterHealthReport): Prom
 }
 
 /**
- * Run the 9-probe router health check in order, short-circuiting where
+ * Run the 11-probe router health check in order, short-circuiting where
  * a failure makes later probes meaningless, and persist the result.
  *
  * Rate-limited to one run per 30 s per router unless `opts.force` is
@@ -632,6 +687,11 @@ export async function runHealthCheck(
       6,
     ));
     probes.push(skipped(
+      'hotspotMacCookieRelogin',
+      'Returning customers re-login automatically',
+      'Skipped — RouterOS API unreachable',
+    ));
+    probes.push(skipped(
       'radiusClientConfigured',
       'RADIUS client points at Wasel',
       'Skipped — RouterOS API unreachable',
@@ -645,6 +705,7 @@ export async function runHealthCheck(
     ));
   } else {
     probes.push(await probeHotspotUsesRadius(userId, routerId));
+    probes.push(await probeHotspotMacCookieRelogin(userId, routerId));
     probes.push(await probeRadiusClientConfigured(userId, routerId));
     probes.push(await probeFirewallAllowsRadius(userId, routerId));
   }
