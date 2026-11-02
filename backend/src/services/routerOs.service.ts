@@ -1,3 +1,7 @@
+// Side-effect import: patches node-routeros' Channel.processPacket to tolerate
+// the `!empty` reply word that RouterOS 7.18+ emits for data-less commands.
+// Without it, one empty list from a router exits the whole backend.
+import './routerOsEmptyReply';
 import { RouterOSClient } from 'routeros-client';
 import { pool } from '../config/database';
 import logger from '../config/logger';

@@ -54,6 +54,9 @@
  * (not `p['.id']`). The `.update()` payload still expects the dashed keys
  * (`endpoint-address`), matching how RouterOS accepts writes.
  */
+// Side-effect import: patches node-routeros' Channel to tolerate RouterOS
+// 7.18+ `!empty` replies. See routerOsEmptyReply.ts for details.
+import '../services/routerOsEmptyReply';
 import { RouterOSClient } from 'routeros-client';
 import { pool } from '../config/database';
 import { config } from '../config';
