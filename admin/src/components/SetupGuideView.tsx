@@ -61,6 +61,9 @@ export default function SetupGuideView({ routerId }: { routerId: string }) {
     );
   }
 
+  // Same commands as the step cards, joined so the operator pastes once.
+  const script = data.steps.map((s) => s.command).join('\n');
+
   return (
     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
       <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-800 text-xs">
@@ -82,23 +85,40 @@ export default function SetupGuideView({ routerId }: { routerId: string }) {
         )}
       </div>
 
-      <div className="space-y-2">
-        {data.steps.map((s) => (
-          <StepCard key={s.step} step={s} />
-        ))}
-      </div>
+      {data.steps.length > 0 ? (
+        <>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-slate-500">
+                Copy the command below and paste it into the router&apos;s terminal in one go
+                (WinBox → New Terminal → paste → Enter).
+              </p>
+              <CopyButton text={script} label="Copy setup command" />
+            </div>
+            <pre className="text-xs bg-slate-900 text-slate-100 rounded p-3 max-h-64 overflow-auto whitespace-pre-wrap break-all">
+              {script}
+            </pre>
+          </div>
 
-      <details className="border border-slate-200 rounded-lg">
-        <summary className="px-3 py-2 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50">
-          Full script
-        </summary>
-        <div className="p-3 space-y-2">
+          <details className="border border-slate-200 rounded-lg">
+            <summary className="px-3 py-2 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50">
+              Show individual steps
+            </summary>
+            <div className="p-3 space-y-2">
+              {data.steps.map((s) => (
+                <StepCard key={s.step} step={s} />
+              ))}
+            </div>
+          </details>
+        </>
+      ) : (
+        <div className="space-y-2">
           <CopyButton text={data.setupGuide} label="Copy all" />
           <pre className="text-xs bg-slate-900 text-slate-100 rounded p-3 overflow-x-auto whitespace-pre-wrap break-all">
             {data.setupGuide}
           </pre>
         </div>
-      </details>
+      )}
     </div>
   );
 }

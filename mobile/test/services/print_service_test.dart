@@ -128,7 +128,7 @@ void main() {
     //   cardW = (usableW - gutterH*(c-1)) / c
     //   cardH = (cardW * 0.62).clamp(56, 150)
     //   rows  = floor((usableH + gutterV) / (cardH + gutterV))
-    const expectedPerPage = {2: 10, 3: 18, 4: 36, 5: 55, 6: 78};
+    const expectedPerPage = {2: 10, 3: 18, 4: 36, 5: 55, 6: 78, 7: 91, 8: 104, 9: 117};
 
     for (final entry in expectedPerPage.entries) {
       final c = entry.key;
@@ -148,6 +148,61 @@ void main() {
 
     test('voucherPdfPageCount(3000, 6) == 39', () {
       expect(voucherPdfPageCount(3000, 6), equals(39));
+    });
+
+    test('voucherPdfPageCount(3000, 9) == 26', () {
+      expect(voucherPdfPageCount(3000, 9), equals(26));
+    });
+
+    // Padding and letter spacing helpers stay backwards-compatible at 2–6 cols.
+    test('voucherCardPadding gives 6, 5.5, 5, 4.5, 4 at columns 2–6', () {
+      expect(voucherCardPadding(2), equals(6.0));
+      expect(voucherCardPadding(3), equals(5.5));
+      expect(voucherCardPadding(4), equals(5.0));
+      expect(voucherCardPadding(5), equals(4.5));
+      expect(voucherCardPadding(6), equals(4.0));
+    });
+
+    test('voucherCodeLetterSpacing returns 1.0 for columns 2–6', () {
+      for (final c in [2, 3, 4, 5, 6]) {
+        expect(
+          voucherCodeLetterSpacing(c),
+          equals(1.0),
+          reason: 'columns=$c should give 1.0',
+        );
+      }
+    });
+
+    test('voucherCardPadding clamps to 2.5 at 9 columns', () {
+      expect(voucherCardPadding(9), equals(2.5));
+    });
+
+    test('voucherCodeLetterSpacing clamps to 0.4 at 9 columns', () {
+      expect(voucherCodeLetterSpacing(9), equals(0.4));
+    });
+
+    test('8-digit code at 10 pt fits inside a 9-column card with new margins', () {
+      // Courier advance = 0.6 em.  An 8-digit code at 10 pt occupies:
+      //   glyphs : 8 × (10 × 0.6) = 48 pt
+      //   gaps   : 7 × letterSpacing = 7 × 0.4 = 2.8 pt
+      //   total  : 50.8 pt
+      // The available inner width is cardW − 2 × pad.
+      final layout = voucherGridLayoutFor(9);
+      final pad = voucherCardPadding(9);
+      final spacing = voucherCodeLetterSpacing(9);
+      const double courierAdvance = 0.6;
+      const int digits = 8;
+      const double fontSize = 10.0;
+      final double codeWidth =
+          digits * fontSize * courierAdvance + (digits - 1) * spacing;
+      final double innerWidth = layout.cardW - 2 * pad;
+      expect(
+        codeWidth,
+        lessThanOrEqualTo(innerWidth),
+        reason:
+            'codeWidth=$codeWidth must fit in innerWidth=$innerWidth '
+            '(cardW=${layout.cardW}, pad=$pad)',
+      );
     });
 
     test('voucherPdfPageCount(0, 4) == 0', () {
@@ -250,6 +305,42 @@ void main() {
       expect(bytes.length, greaterThan(5000));
       final header = utf8.decode(bytes.sublist(0, 5));
       expect(header, equals('%PDF-'));
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'generateVouchersPdf builds a valid PDF at 9 columns with Arabic and long-code fixtures',
+    () async {
+      final items = [
+        // Arabic limit + validity
+        const VoucherPrintItem(
+          code: 'WSL-AR-9COL',
+          limitText: '500 ميجابايت',
+          validityText: '30 يوم',
+        ),
+        // Long code
+        const VoucherPrintItem(
+          code: 'WSL-VERY-LONG-CODE-THAT-SHOULD-SCALE-DOWN-1234',
+          limitText: '1 GB',
+          validityText: '1 day',
+        ),
+        // Typical 8-digit code
+        const VoucherPrintItem(
+          code: '12345678',
+          limitText: null,
+          validityText: 'مفتوح',
+        ),
+      ];
+
+      final bytes = await svc.generateVouchersPdf(
+        items,
+        'شركة واصل',
+        columns: 9,
+      );
+
+      expect(bytes.length, greaterThan(5000));
+      expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
     },
     timeout: const Timeout(Duration(minutes: 2)),
   );

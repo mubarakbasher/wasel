@@ -180,7 +180,7 @@ function deriveNetwork30(ip: string): string {
 
 /**
  * Generate RouterOS CLI commands that configure WireGuard + RADIUS + hotspot +
- * firewall on a Mikrotik router. The operator pastes all 11 lines into a
+ * firewall on a Mikrotik router. The operator pastes all 12 lines into a
  * Mikrotik terminal (SSH or Winbox terminal) in one shot — no Stage-2 push needed.
  *
  * service=hotspot,login is required on some RouterOS versions for the PPP/hotspot
@@ -239,6 +239,14 @@ export function generateMikrotikConfig(params: {
 
     // 11. Firewall — allow WireGuard
     `/ip firewall filter add chain=input action=accept protocol=udp dst-port=51820 comment=wasel-wg place-before=2`,
+
+    // 12. NTP client — appended at the end so mobile step-numbering is stable for
+    //    released APKs (translations are keyed by step number). Boards without an
+    //    RTC battery lose their clock on power cut and WireGuard silently drops
+    //    initiations whose TAI64N timestamp is ≤ the peer's stored latest_timestamp
+    //    (replay protection). The 5-min stale-peer reset covers the rare case
+    //    where the clock jumps backward after the first handshake succeeded.
+    `/system ntp client set enabled=yes servers=time.cloudflare.com,pool.ntp.org,time.google.com`,
   ];
 
   return lines.join('\n') + '\n';
@@ -370,6 +378,13 @@ STEP 11: Firewall — allow WireGuard
      protocol=udp dst-port=51820 comment=wasel-wg place-before=2
 
 --------------------------------------------------------------------------------
+STEP 12: Enable the NTP client
+--------------------------------------------------------------------------------
+
+  /system ntp client set enabled=yes \\
+     servers=time.cloudflare.com,pool.ntp.org,time.google.com
+
+--------------------------------------------------------------------------------
 VERIFICATION
 --------------------------------------------------------------------------------
 After pasting, tap "Verify connection" in the app. You can also run:
@@ -399,10 +414,18 @@ export interface SetupStep {
  * backend can run health probes and read live sessions.
  * Steps 7–11 configure RADIUS and firewall so voucher auth works immediately
  * after the operator pastes the script — no Stage-2 push required.
- * Hotspot RADIUS settings (formerly steps 9–10) are omitted here because they
- * are applied by the router health check (ensureHotspotRadiusSettings when
- * use-radius is off, ensureMacCookieRelogin on every health run), by the
- * login-page template apply, and by the daily macCookieConvergence job.
+ * Step 12 enables the NTP client. It is appended at the END (not inserted at
+ * the top) because the mobile app keys step title/description translations by
+ * step NUMBER, and released APKs only ship translations for 1–11; renumbering
+ * would mislabel every step in operators' pockets. Running NTP after the WG
+ * steps is acceptable: if the clock jumps forward after the first successful
+ * handshake, the next handshake carries a newer TAI64N timestamp and is
+ * accepted; the server-side 5-min stale-peer reset covers the rare backward
+ * case.
+ * Hotspot RADIUS settings are omitted here because they are applied by the
+ * router health check (ensureHotspotRadiusSettings when use-radius is off,
+ * ensureMacCookieRelogin on every health run), by the login-page template
+ * apply, and by the daily macCookieConvergence job.
  *
  * service=hotspot,login on step 7 is required on some RouterOS versions; using
  * only hotspot causes the login flow to not route auth requests to FreeRADIUS.
@@ -490,6 +513,12 @@ export function generateSetupSteps(params: {
       title: 'Firewall — allow WireGuard',
       description: 'Allows UDP port 51820 so the WireGuard tunnel can be established even if the default firewall has a drop rule.',
       command: `/ip firewall filter add chain=input action=accept protocol=udp dst-port=51820 comment=wasel-wg place-before=2`,
+    },
+    {
+      step: 12,
+      title: 'Enable the NTP client',
+      description: 'Keeps the router clock correct after a power cut, so the tunnel to the Wasel VPS reconnects and vouchers keep working.',
+      command: `/system ntp client set enabled=yes servers=time.cloudflare.com,pool.ntp.org,time.google.com`,
     },
   ];
 }

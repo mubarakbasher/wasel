@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart' show Share;
 
 import '../../i18n/app_localizations.dart';
 import '../../i18n/voucher_format.dart';
+import '../../models/voucher.dart';
 import '../../providers/vouchers_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -383,6 +384,11 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   }
 
   Widget _buildInfoCard(dynamic voucher) {
+    final v = voucher as Voucher;
+    final firstUsedAt = v.firstUsedAt;
+    final expiresAt = v.expiresAt;
+    final expiration = v.expiration;
+
     return AppCard(
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
@@ -392,54 +398,73 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
           const SizedBox(height: AppSpacing.lg),
           _InfoRow(
             label: context.tr('vouchers.limit'),
-            value: voucherLimitText(context, voucher),
+            value: voucherLimitText(context, v),
             icon: Icons.layers,
           ),
-          if (voucher.price != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+            label: context.tr('vouchers.validity'),
+            value: voucherValidityText(context, v.validitySeconds),
+            icon: Icons.hourglass_bottom,
+          ),
+          if (v.price != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
               label: context.tr('vouchers.price'),
-              value: (voucher.price as double).toStringAsFixed(2),
+              value: v.price!.toStringAsFixed(2),
               icon: Icons.attach_money,
             ),
           ],
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             label: context.tr('vouchers.status'),
-            value: localizedVoucherStatus(context, voucher.status as String),
+            value: localizedVoucherStatus(context, v.status),
             icon: Icons.circle,
-            valueColor: AppColors.voucherStatus(voucher.status as String),
+            valueColor: AppColors.voucherStatus(v.status),
           ),
-          if (voucher.expiration != null) ...[
-            const SizedBox(height: AppSpacing.md),
-            _InfoRow(
-              label: context.tr('vouchers.expires'),
-              value: voucher.expiration! as String,
-              icon: Icons.timer,
-            ),
-          ],
-          if (voucher.simultaneousUse != null) ...[
+          if (v.simultaneousUse != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
               label: context.tr('vouchers.simultaneousUse'),
-              value: '${voucher.simultaneousUse}',
+              value: '${v.simultaneousUse}',
               icon: Icons.devices,
             ),
           ],
-          if (voucher.comment != null && (voucher.comment as String).isNotEmpty) ...[
+          if (v.comment != null && v.comment!.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(
               label: context.tr('vouchers.comment'),
-              value: voucher.comment! as String,
+              value: v.comment!,
               icon: Icons.comment,
             ),
           ],
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             label: context.tr('vouchers.created'),
-            value: _formatDateTime(voucher.createdAt as DateTime),
+            value: _formatDateTime(v.createdAt),
             icon: Icons.calendar_today,
+            ltrValue: true,
           ),
+          const SizedBox(height: AppSpacing.md),
+          _InfoRow(
+            label: context.tr('vouchers.firstUse'),
+            value: firstUsedAt != null
+                ? _formatDateTime(firstUsedAt)
+                : context.tr('vouchers.notUsedYet'),
+            icon: Icons.play_circle_outline,
+            ltrValue: firstUsedAt != null,
+          ),
+          if (expiration != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+              label: context.tr('vouchers.expires'),
+              value: expiresAt != null
+                  ? _formatDateTime(expiresAt)
+                  : expiration,
+              icon: Icons.timer,
+              ltrValue: expiresAt != null,
+            ),
+          ],
         ],
       ),
     );
@@ -486,8 +511,9 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
   }
 
   String _formatDateTime(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
-        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    final local = date.toLocal();
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -496,33 +522,40 @@ class _InfoRow extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color? valueColor;
+  final bool ltrValue;
 
   const _InfoRow({
     required this.label,
     required this.value,
     required this.icon,
     this.valueColor,
+    this.ltrValue = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 18, color: AppColors.textSecondary),
         const SizedBox(width: AppSpacing.sm),
-        Text(label,
-            style:
-                AppTypography.subhead.copyWith(color: AppColors.textSecondary)),
-        const Spacer(),
-        Flexible(
-          child: Text(
-            value,
-            style: AppTypography.subhead.copyWith(
-              fontWeight: FontWeight.w600,
-              color: valueColor,
+        Text(
+          label,
+          style: AppTypography.subhead.copyWith(color: AppColors.textSecondary),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: Text(
+              value,
+              style: AppTypography.subhead.copyWith(
+                fontWeight: FontWeight.w600,
+                color: valueColor,
+              ),
+              textAlign: TextAlign.end,
+              textDirection: ltrValue ? TextDirection.ltr : null,
             ),
-            textAlign: TextAlign.end,
-            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

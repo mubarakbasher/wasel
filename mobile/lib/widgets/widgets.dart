@@ -8,4 +8,5 @@ export 'section_header.dart';
 export 'skeleton_loader.dart';
 export 'stat_card.dart';
 export 'status_badge.dart';
+export 'setup_script_block.dart';
 export 'status_dot.dart';

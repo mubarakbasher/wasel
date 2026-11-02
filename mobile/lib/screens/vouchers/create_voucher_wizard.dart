@@ -376,8 +376,9 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
-                    labelText: context.tr('vouchers.value'),
-                    hintText: context.tr('vouchers.exampleHint', ['2']),
+                    labelText: localizedLimitPrompt(context, _limitUnit),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    hintText: localizedLimitExample(context, _limitUnit),
                   ),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return context.tr('common.required');
@@ -391,6 +392,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: _limitUnit,
                   decoration: InputDecoration(labelText: context.tr('vouchers.unit')),
                   items: _limitType == 'time'
@@ -579,8 +581,9 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
-                    labelText: context.tr('vouchers.value'),
-                    hintText: context.tr('vouchers.exampleHint', ['5']),
+                    labelText: localizedLimitPrompt(context, _customValidityUnit),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    hintText: localizedLimitExample(context, _customValidityUnit),
                   ),
                   onChanged: (_) => _updateCustomValidity(),
                 ),
@@ -589,6 +592,7 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: _customValidityUnit,
                   decoration: InputDecoration(labelText: context.tr('vouchers.unit')),
                   items: [
@@ -674,12 +678,15 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
   String _formatDuration(int seconds) {
     if (seconds < 3600) {
-      return context.tr('vouchers.durationMinutes', [(seconds ~/ 60).toString()]);
+      final minutes = seconds ~/ 60;
+      return context.trPlural('vouchers.durationMinutes', minutes, [minutes.toString()]);
     }
     if (seconds < 86400) {
-      return context.tr('vouchers.durationHours', [(seconds ~/ 3600).toString()]);
+      final hours = seconds ~/ 3600;
+      return context.trPlural('vouchers.durationHours', hours, [hours.toString()]);
     }
-    return context.tr('vouchers.durationDays', [(seconds ~/ 86400).toString()]);
+    final days = seconds ~/ 86400;
+    return context.trPlural('vouchers.durationDays', days, [days.toString()]);
   }
 
   // ---- Step 3: Count & Price ----

@@ -68,12 +68,19 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
     return _stepKeys.putIfAbsent(step, () => GlobalKey());
   }
 
-  void _copyToClipboard(String text) {
+  String _joinedScript(RouterSetupGuide guide) =>
+      guide.steps.isNotEmpty
+          ? guide.steps.map((s) => s.command).join('\n')
+          : guide.setupGuide;
+
+  void _copyAll(RouterSetupGuide guide) {
     // Longer auto-clear window than the 30s default: the setup script contains
     // secrets the operator pastes into RouterOS, which can take a while.
-    ClipboardService.instance
-        .copyWithAutoClear(text, duration: const Duration(minutes: 2));
-    AppSnackbar.success(context, context.tr('routers.guideCopied'));
+    ClipboardService.instance.copyWithAutoClear(
+      _joinedScript(guide),
+      duration: const Duration(minutes: 2),
+    );
+    AppSnackbar.success(context, context.tr('routers.setupCommandCopied'));
   }
 
   @override
@@ -88,7 +95,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
           if (guide != null)
             IconButton(
               icon: const Icon(Icons.copy),
-              onPressed: () => _copyToClipboard(guide.setupGuide),
+              onPressed: () => _copyAll(guide),
               tooltip: context.tr('routers.copyTooltip'),
             ),
         ],
@@ -114,7 +121,6 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
   }
 
   Widget _buildGuide(RouterSetupGuide guide) {
-    // Scroll to the target step after the list is first laid out.
     if (widget.initialStep != null && !_didScrollToInitialStep) {
       _didScrollToInitialStep = true;
       WidgetsBinding.instance.addPostFrameCallback(
@@ -149,11 +155,31 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.xxl),
-        if (guide.steps.isNotEmpty)
-          ...guide.steps.map(
-              (step) => _buildStepCard(step, key: _keyForStep(step.step)))
-        else
+        const SizedBox(height: AppSpacing.lg),
+        if (guide.steps.isNotEmpty) ...[
+          Text(
+            context.tr('routers.scriptInstructions'),
+            style: AppTypography.subhead
+                .copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          SetupScriptBlock(steps: guide.steps),
+          const SizedBox(height: AppSpacing.lg),
+          ExpansionTile(
+            title: Text(context.tr('routers.showIndividualSteps')),
+            initiallyExpanded: widget.initialStep != null,
+            onExpansionChanged: (expanded) {
+              if (expanded && widget.initialStep != null) {
+                WidgetsBinding.instance
+                    .addPostFrameCallback((_) => _scrollToInitialStep());
+              }
+            },
+            children: guide.steps
+                .map((step) =>
+                    _buildStepCard(step, key: _keyForStep(step.step)))
+                .toList(),
+          ),
+        ] else
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
@@ -166,23 +192,12 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
               style: AppTypography.monoSmall.copyWith(height: 1.5),
             ),
           ),
-        const SizedBox(height: AppSpacing.xxl),
-        SizedBox(
-          height: 48,
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () => _copyToClipboard(guide.setupGuide),
-            icon: const Icon(Icons.copy),
-            label: Text(context.tr('routers.copyAllClipboard')),
-          ),
-        ),
         const SizedBox(height: AppSpacing.lg),
       ],
     );
   }
 
   Widget _buildStepCard(SetupStep step, {Key? key}) {
-    final isVerification = step.step >= 9;
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -194,11 +209,7 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(
-              color: isVerification
-                  ? AppColors.success.withValues(alpha: 0.4)
-                  : AppColors.border,
-            ),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,24 +222,19 @@ class _SetupGuideScreenState extends ConsumerState<SetupGuideScreen> {
                     Container(
                       width: 28,
                       height: 28,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isVerification
-                            ? AppColors.success
-                            : AppColors.primary,
+                        color: AppColors.primary,
                       ),
                       alignment: Alignment.center,
-                      child: isVerification
-                          ? const Icon(Icons.check,
-                              size: 16, color: AppColors.textInverse)
-                          : Text(
-                              '${step.step}',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textInverse,
-                              ),
-                            ),
+                      child: Text(
+                        '${step.step}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textInverse,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(

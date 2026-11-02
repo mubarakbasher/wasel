@@ -39,13 +39,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   String _formatDuration(double seconds) {
     if (seconds < 60) return '${seconds.toInt()}s';
     if (seconds < 3600) {
-      return context.tr('vouchers.durationMinutes', [(seconds / 60).toInt().toString()]);
+      final minutes = (seconds / 60).toInt();
+      return context.trPlural('vouchers.durationMinutes', minutes, [minutes.toString()]);
     }
     final hours = (seconds / 3600).toInt();
     final mins = ((seconds % 3600) / 60).toInt();
-    final hoursStr = context.tr('vouchers.durationHours', [hours.toString()]);
+    final hoursStr = context.trPlural('vouchers.durationHours', hours, [hours.toString()]);
     if (mins == 0) return hoursStr;
-    return '$hoursStr ${context.tr('vouchers.durationMinutes', [mins.toString()])}';
+    return '$hoursStr ${context.trPlural('vouchers.durationMinutes', mins, [mins.toString()])}';
   }
 
   String _formatDate(DateTime date) {
