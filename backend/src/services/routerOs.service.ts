@@ -2,6 +2,12 @@
 // the `!empty` reply word that RouterOS 7.18+ emits for data-less commands.
 // Without it, one empty list from a router exits the whole backend.
 import './routerOsEmptyReply';
+// Side-effect import: patches node-routeros so a router-side socket close
+// (mid-command, during /login, or after going silent) settles pending
+// requests instead of hanging. Without this, the hourly NTP sweep gets
+// stuck on the first unresponsive router and only clears on backend
+// restart.
+import './routerOsConnectionClose';
 import { RouterOSClient } from 'routeros-client';
 import { pool } from '../config/database';
 import logger from '../config/logger';
@@ -137,9 +143,18 @@ const MAC_COOKIE_TIMEOUT = '30d';
  *
  * IMPORTANT: The caller is responsible for disconnecting the client when done.
  */
+export interface ConnectToRouterOpts {
+  /** Aborted by the caller (e.g. withRouterDeadline) — stops retries. */
+  signal?: AbortSignal;
+  /** Invoked for every client instance created, including abandoned retries. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onClient?: (client: any) => void;
+}
+
 export async function connectToRouter(
   routerId: string,
-  userId: string
+  userId: string,
+  opts?: ConnectToRouterOpts,
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ client: RouterOSClient; api: any }> {
   if (circuitIsOpen(routerId)) {
@@ -157,6 +172,14 @@ export async function connectToRouter(
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    if (opts?.signal?.aborted) {
+      throw new AppError(
+        502,
+        'Router connection aborted by deadline',
+        'ROUTER_UNREACHABLE'
+      );
+    }
+
     const client = new RouterOSClient({
       host: router.tunnel_ip,
       user: router.api_user,
@@ -164,6 +187,13 @@ export async function connectToRouter(
       port: 8728,
       timeout: 30, // seconds
     });
+
+    // Let the deadline helper destroy the socket on expiry.
+    try {
+      opts?.onClient?.(client);
+    } catch {
+      // never let the caller's callback break connect
+    }
 
     // Attach error listener immediately — before connect() — so that any socket
     // timeout events re-emitted by routeros-client after a successful login do
@@ -184,6 +214,14 @@ export async function connectToRouter(
     } catch (err: unknown) {
       lastError = err;
       await client.disconnect().catch(() => {});
+
+      if (opts?.signal?.aborted) {
+        throw new AppError(
+          502,
+          'Router connection aborted by deadline',
+          'ROUTER_UNREACHABLE'
+        );
+      }
 
       if (attempt < RETRY_DELAYS.length) {
         const delay = RETRY_DELAYS[attempt];
@@ -799,6 +837,172 @@ export async function ensureNtpClient(
     const message = err instanceof Error ? err.message : String(err);
     logger.warn('ensureNtpClient: best-effort update failed (non-fatal)', { error: message });
     return { status: 'failed', detail: 'read or write failed', error: message };
+  }
+}
+
+/**
+ * Parse a RouterOS duration string to milliseconds.
+ *
+ * Accepted shapes:
+ *   - Compound units:   `300ms`, `2s`, `1s500ms`, `1m`, `1h2m3s`, `1d2h`
+ *   - HH:MM:SS clock:   `00:00:02`, `01:30:00`, optional `.mmm` fractional
+ *                       seconds (`00:00:00.300`). This is the form RouterOS
+ *                       prints for stored timeouts.
+ *   - Bare number:      treated as seconds — routeros-client converts pure
+ *                       digit strings to numbers before handing them back,
+ *                       so `.get()` on a `/radius` row commonly delivers
+ *                       `timeout: 2` rather than `"2s"`.
+ *
+ * Returns `null` for anything unparseable (including undefined/null input)
+ * so callers can distinguish "missing/unknown" from "explicitly 0".
+ */
+export function parseRouterOsDurationMs(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+
+  // Bare number (or Number-string that routeros-client already coerced).
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v) || v < 0) return null;
+    return Math.round(v * 1000);
+  }
+
+  if (typeof v !== 'string') return null;
+  const s = v.trim().toLowerCase();
+  if (s === '') return null;
+
+  // HH:MM:SS[.mmm]
+  const clock = /^(\d+):(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?$/.exec(s);
+  if (clock) {
+    const h = parseInt(clock[1], 10);
+    const m = parseInt(clock[2], 10);
+    const sec = parseInt(clock[3], 10);
+    const msStr = clock[4] ?? '';
+    const ms = msStr === '' ? 0 : parseInt(msStr.padEnd(3, '0').slice(0, 3), 10);
+    return ((h * 3600) + (m * 60) + sec) * 1000 + ms;
+  }
+
+  // Pure digits → seconds.
+  if (/^\d+$/.test(s)) {
+    return parseInt(s, 10) * 1000;
+  }
+
+  // Compound units: 1w2d3h4m5s6ms
+  const unitRe = /(\d+)(ms|w|d|h|m|s)/g;
+  let total = 0;
+  let matched = false;
+  let lastIndex = 0;
+  for (;;) {
+    const m = unitRe.exec(s);
+    if (!m) break;
+    if (m.index !== lastIndex) return null; // junk between units
+    matched = true;
+    const n = parseInt(m[1], 10);
+    switch (m[2]) {
+      case 'ms': total += n; break;
+      case 's':  total += n * 1000; break;
+      case 'm':  total += n * 60_000; break;
+      case 'h':  total += n * 3_600_000; break;
+      case 'd':  total += n * 86_400_000; break;
+      case 'w':  total += n * 604_800_000; break;
+    }
+    lastIndex = m.index + m[0].length;
+  }
+  if (!matched || lastIndex !== s.length) return null;
+  return total;
+}
+
+/** RouterOS default /radius timeout is 300 ms when omitted. */
+const RADIUS_DEFAULT_TIMEOUT_MS = 300;
+/** Minimum we want so FreeRADIUS has time to answer before the router gives up. */
+const RADIUS_MIN_TIMEOUT_MS = 2_000;
+
+export interface EnsureRadiusTimeoutResult {
+  status: 'already' | 'raised' | 'none' | 'failed';
+  /** Human-readable summary, suitable for logs / health detail. */
+  detail?: string;
+}
+
+/**
+ * Ensure every matching `/radius` entry has a timeout ≥ 2 s.
+ *
+ * Why: MikroTik's default is 300 ms, which is shorter than FreeRADIUS's
+ * reject_delay (1 s) and the tail of its worker-queue latency at peak.
+ * The router gives up and the user sees "network busy" even when
+ * FreeRADIUS eventually returns the correct answer.
+ *
+ * Match rule — every entry where:
+ *   - `comment === 'wasel'`, OR
+ *   - `address === radiusServerIp` AND `service` includes 'hotspot'
+ *
+ * For each matched row whose parsed timeout is `< minMs` (or missing /
+ * unparseable → treated as the 300 ms default), raise it to `'2s'`.
+ * Higher values are left alone. Follows the `ensureHotspotRadiusSettings`
+ * pattern (`.menu(...).where('.id', id).update(...)`); reads use the
+ * camelCased key shape that routeros-client produces (`id`, `comment`,
+ * `address`, `service`, `timeout`).
+ */
+export async function ensureRadiusTimeout(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api: any,
+  opts?: { radiusServerIp?: string; minMs?: number },
+): Promise<EnsureRadiusTimeoutResult> {
+  const minMs = opts?.minMs ?? RADIUS_MIN_TIMEOUT_MS;
+  const targetValue = '2s';
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entries = (await (api as any).menu('/radius').get()) as Array<
+      Record<string, unknown>
+    >;
+    if (!entries || entries.length === 0) {
+      return { status: 'none', detail: 'no /radius entries' };
+    }
+
+    const matches: Array<{ id: string; oldMs: number | null; oldRaw: unknown }> = [];
+    for (const e of entries) {
+      const id = String(e.id ?? e['.id'] ?? '');
+      if (!id) continue;
+      const comment = String(e.comment ?? '').toLowerCase();
+      const address = String(e.address ?? '');
+      const service = String(e.service ?? '').toLowerCase();
+      const isWasel =
+        comment === 'wasel' ||
+        (!!opts?.radiusServerIp && address === opts.radiusServerIp && service.includes('hotspot'));
+      if (!isWasel) continue;
+
+      const raw = e.timeout ?? e['timeout'];
+      const parsed = parseRouterOsDurationMs(raw);
+      // Missing / unparseable → treat as the router default (300 ms).
+      const effective = parsed ?? RADIUS_DEFAULT_TIMEOUT_MS;
+      if (effective < minMs) {
+        matches.push({ id, oldMs: parsed, oldRaw: raw });
+      }
+    }
+
+    if (matches.length === 0) {
+      return { status: 'already', detail: `all matching /radius entries at >= ${minMs}ms` };
+    }
+
+    for (const m of matches) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (api as any)
+        .menu('/radius')
+        .where('.id', m.id)
+        .update({ timeout: targetValue });
+      logger.info('ensureRadiusTimeout: raised /radius timeout', {
+        id: m.id,
+        oldRaw: m.oldRaw,
+        oldMs: m.oldMs,
+        newValue: targetValue,
+      });
+    }
+
+    return {
+      status: 'raised',
+      detail: `raised ${matches.length} /radius entr${matches.length === 1 ? 'y' : 'ies'} to ${targetValue}`,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn('ensureRadiusTimeout: best-effort update failed (non-fatal)', { error: message });
+    return { status: 'failed', detail: 'read or write failed' };
   }
 }
 

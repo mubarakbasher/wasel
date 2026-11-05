@@ -46,7 +46,7 @@ describe('generateMikrotikConfig', () => {
     const lines = output.split('\n').filter((l) => l.trim().length > 0);
     const radiusLine = lines[6]; // 0-indexed step 7
     expect(radiusLine).toBe(
-      `/radius add service=hotspot,login address=10.10.0.1 secret="supersecretradius" src-address=10.10.0.2 comment=wasel`,
+      `/radius add service=hotspot,login address=10.10.0.1 secret="supersecretradius" src-address=10.10.0.2 timeout=2s comment=wasel`,
     );
   });
 

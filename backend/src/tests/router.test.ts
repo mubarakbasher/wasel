@@ -50,7 +50,7 @@ vi.mock('../services/wireguardConfig', () => ({
       title: `Step ${i + 1}`,
       description: `Description ${i + 1}`,
       command: i === 6
-        ? '/radius add service=hotspot,login address=10.10.0.1 secret="test-secret" src-address=10.10.0.2 comment=wasel'
+        ? '/radius add service=hotspot,login address=10.10.0.1 secret="test-secret" src-address=10.10.0.2 timeout=2s comment=wasel'
         : `/command-${i + 1}`,
     })),
   ),

@@ -117,4 +117,32 @@ describe('connectToRouter() error-listener guard', () => {
     // each must have called disconnect()
     expect(rosClientState.disconnectCalls).toBe(3);
   });
+
+  it('(d) opts.onClient is invoked for every attempted client', async () => {
+    primeRouterRow();
+    rosClientState.connectShouldReject = true;
+
+    const seen: unknown[] = [];
+    await expect(
+      connectToRouter(ROUTER_ID, USER_ID, { onClient: (c) => seen.push(c) }),
+    ).rejects.toMatchObject({ statusCode: 502 });
+
+    expect(seen).toHaveLength(3);
+  });
+
+  it('(e) opts.signal.aborted stops the retry loop immediately', async () => {
+    primeRouterRow();
+    rosClientState.connectShouldReject = true;
+
+    const ac = new AbortController();
+    ac.abort();
+
+    await expect(
+      connectToRouter(ROUTER_ID, USER_ID, { signal: ac.signal }),
+    ).rejects.toMatchObject({ statusCode: 502 });
+
+    // No client should have been constructed because the first loop iteration
+    // sees .aborted = true and throws before `new RouterOSClient(...)`.
+    expect(rosClientState.instanceCount).toBe(0);
+  });
 });

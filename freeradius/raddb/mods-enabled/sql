@@ -38,24 +38,59 @@ sql {
     $INCLUDE ${modconfdir}/sql/main/${dialect}/queries.conf
 
     # Time to wait for a new Postgres connection before giving up (seconds).
+    #
+    # Scope note: `connect_timeout` is a module-level directive on rlm_sql
+    # in FR 3.2.x (parsed from the sql { } scope, not the pool { } scope);
+    # it is placed here on purpose and must not be moved inside pool { }.
     connect_timeout = 5
 
     pool {
-        start = 5
-        min = 4
-        # One connection per worker thread, the stock default. With fewer
-        # connections than threads, a request that finds every connection
-        # busy fails at once ("Cannot open new connection, already at max")
-        # instead of waiting a few ms; the stock mods-available/sql warns that
-        # threads starve when max is below the thread count. Postgres allows
-        # 100 connections and the backend pool uses at most DB_POOL_MAX (10).
+        # Keep the full set of DB connections hot. The thread pool runs
+        # 32 workers warm (radiusd.conf → thread pool). The upstream pool
+        # documentation shipped with FR 3.2.x (see mods-available/ldap,
+        # same rlm_pool code path) says of `max`:
+        #
+        #   "Setting 'max' to LESS than the number of threads means that
+        #    some threads may starve, and you will see errors like 'No
+        #    connections available and at max connection limit'.
+        #    Setting 'max' to MORE than the number of threads means that
+        #    there are more connections than necessary."
+        #
+        # So max tracks thread[pool].max_servers exactly.
         max = ${thread[pool].max_servers}
-        spare = 3
+
+        # Start half the pool and keep at least half open. The remaining
+        # workers acquire a connection on first use.
+        start = 16
+        min = 16
+        spare = 8
         uses = 0
         lifetime = 0
-        idle_timeout = 60
-        # Retry a dead connection every 5s instead of the default long back-off,
-        # so a Postgres restart recovers in seconds rather than a minute.
+
+        # idle_timeout = 0 disables idle reaping. Upstream FR 3.2.x pool
+        # docs (mods-available/ldap, same connection-pool code):
+        #
+        #   "NOTE: Idle connections WILL be closed if 'idle_timeout' is
+        #    set."
+        #   "All configuration settings are enforced. If a connection is
+        #    closed because of 'idle_timeout', 'uses', or 'lifetime', then
+        #    the total number of connections MAY fall below 'min'. When
+        #    that happens, it will open a new connection. It will also
+        #    log a WARNING message. The solution is to either lower the
+        #    'min' connections, or increase lifetime/idle_timeout."
+        #
+        # With min = 16 and the previous idle_timeout = 60, overnight
+        # when traffic falls below 16 connections/min the pool would
+        # close idle connections then immediately reopen them to meet
+        # min — one log WARNING per churn, and a cold Postgres backend
+        # for the next request. Setting idle_timeout = 0 keeps all 16
+        # min connections resident; 0 is the explicit "no idle reaping"
+        # value accepted by rlm_pool.
+        idle_timeout = 0
+
+        # Retry a dead connection every 5s instead of the default long
+        # back-off, so a Postgres restart recovers in seconds rather
+        # than a minute.
         retry_delay = 5
     }
 }

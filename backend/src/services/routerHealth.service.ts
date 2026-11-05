@@ -11,6 +11,7 @@ import {
   ensureHotspotRadiusSettings,
   ensureMacCookieRelogin,
   resolveActiveServerProfileNames,
+  parseRouterOsDurationMs,
 } from './routerOs.service';
 import { sendAccessRequest } from './radclient.service';
 
@@ -371,13 +372,28 @@ async function probeRadiusClientConfigured(
         return address === '10.10.0.1' && service.includes('hotspot') && secret.length > 0;
       });
 
+      let detail = match
+        ? `Found /radius entry with address=10.10.0.1 service=${match.service}`
+        : 'No /radius entry with address=10.10.0.1, hotspot service, and a non-empty secret';
+
+      // Low /radius timeout is NOT a fail — the hourly ensureRadiusTimeout
+      // sweep raises it under the `RADIUS_TIMEOUT_ROLLOUT` gate. Routers
+      // must not turn red for a condition that auto-remediates.
+      if (match) {
+        const timeoutMs = parseRouterOsDurationMs(
+          (match as Record<string, unknown>).timeout ?? (match as Record<string, unknown>)['timeout'],
+        );
+        const effective = timeoutMs ?? 300; // RouterOS default when absent
+        if (effective < 2000) {
+          detail += `; RADIUS timeout ${effective}ms — the hourly check will raise it to 2s`;
+        }
+      }
+
       return {
         id: 'radiusClientConfigured',
         label: 'RADIUS client points at Wasel',
         status: match ? 'pass' : 'fail',
-        detail: match
-          ? `Found /radius entry with address=10.10.0.1 service=${match.service}`
-          : 'No /radius entry with address=10.10.0.1, hotspot service, and a non-empty secret',
+        detail,
         setupStep: 5,
         remediation: match
           ? undefined

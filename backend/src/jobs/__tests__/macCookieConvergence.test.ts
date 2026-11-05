@@ -49,6 +49,12 @@ function makeConn(disconnect = makeDisconnect()) {
   return { client: { disconnect }, api: {} };
 }
 
+/** Opts matcher — the job always passes signal + onClient to connectToRouter. */
+const anyOpts = expect.objectContaining({
+  signal: expect.any(AbortSignal),
+  onClient: expect.any(Function),
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockQuery.mockReset();
@@ -65,7 +71,7 @@ describe('runMacCookieConvergence', () => {
 
     const result = await runMacCookieConvergence();
 
-    expect(result).toEqual({ checked: 0, repaired: 0, failed: 0 });
+    expect(result).toMatchObject({ checked: 0, repaired: 0, failed: 0, timedOut: 0 });
     expect(connectToRouterMock).not.toHaveBeenCalled();
   });
 
@@ -86,9 +92,9 @@ describe('runMacCookieConvergence', () => {
     const result = await runMacCookieConvergence();
 
     expect(connectToRouterMock).toHaveBeenCalledTimes(2);
-    expect(connectToRouterMock).toHaveBeenNthCalledWith(1, 'router-1', 'user-a');
-    expect(connectToRouterMock).toHaveBeenNthCalledWith(2, 'router-2', 'user-b');
-    expect(result).toEqual({ checked: 2, repaired: 0, failed: 0 });
+    expect(connectToRouterMock).toHaveBeenNthCalledWith(1, 'router-1', 'user-a', anyOpts);
+    expect(connectToRouterMock).toHaveBeenNthCalledWith(2, 'router-2', 'user-b', anyOpts);
+    expect(result).toMatchObject({ checked: 2, repaired: 0, failed: 0 });
     expect(disconnect1).toHaveBeenCalledTimes(1);
     expect(disconnect2).toHaveBeenCalledTimes(1);
   });
@@ -103,7 +109,7 @@ describe('runMacCookieConvergence', () => {
 
     const result = await runMacCookieConvergence();
 
-    expect(result).toEqual({ checked: 1, repaired: 1, failed: 0 });
+    expect(result).toMatchObject({ checked: 1, repaired: 1, failed: 0 });
   });
 
   it('continues processing second router when first router connect throws', async () => {
@@ -122,7 +128,7 @@ describe('runMacCookieConvergence', () => {
     const result = await runMacCookieConvergence();
 
     expect(connectToRouterMock).toHaveBeenCalledTimes(2);
-    expect(result).toEqual({ checked: 1, repaired: 0, failed: 1 });
+    expect(result).toMatchObject({ checked: 1, repaired: 0, failed: 1 });
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
 
@@ -137,7 +143,7 @@ describe('runMacCookieConvergence', () => {
 
     const result = await runMacCookieConvergence();
 
-    expect(result).toEqual({ checked: 0, repaired: 0, failed: 1 });
+    expect(result).toMatchObject({ checked: 0, repaired: 0, failed: 1 });
   });
 
   it('disconnect is always called in finally even when ensureMacCookieRelogin throws', async () => {
@@ -165,15 +171,90 @@ describe('runMacCookieConvergence', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const second = await runMacCookieConvergence();
 
-    expect(second).toEqual({ checked: 0, repaired: 0, failed: 0 });
-    // The second call should not have triggered a new DB query
-    // (mockQuery was called once for the first run's blocker; the second
-    // runMacCookieConvergence should have been rejected by the guard before
-    // even reaching the DB query).
+    expect(second).toMatchObject({ checked: 0, repaired: 0, failed: 0 });
     expect(connectToRouterMock).not.toHaveBeenCalled();
 
     // Unblock first run
     resolveQuery({ rows: [] });
     await first;
+  });
+
+  // ---- Deadline / timeout tests (use real withRouterDeadline + fake timers) ----
+
+  it('never-settling connectToRouter → deadline fires, sweep continues and completes, running cleared', async () => {
+    vi.useFakeTimers();
+    try {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          { id: 'r1', user_id: 'u1' },
+          { id: 'r2', user_id: 'u2' },
+        ],
+      });
+
+      // r1 never resolves; r2 succeeds immediately
+      connectToRouterMock
+        .mockReturnValueOnce(new Promise(() => { /* never resolves */ }))
+        .mockResolvedValueOnce(makeConn());
+
+      const perRouterMs = 200;
+      const runPromise = runMacCookieConvergence({ perRouterMs, sweepBudgetMs: 60_000 });
+
+      await vi.advanceTimersByTimeAsync(perRouterMs + 50);
+      const result = await runPromise;
+
+      expect(result.timedOut).toBe(1);
+      expect(result.failed).toBe(1);
+      expect(result.checked).toBe(1); // r2 succeeded
+      expect(connectToRouterMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never-settling ensureMacCookieRelogin → deadline fires, sweep continues', async () => {
+    vi.useFakeTimers();
+    try {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          { id: 'r1', user_id: 'u1' },
+          { id: 'r2', user_id: 'u2' },
+        ],
+      });
+
+      connectToRouterMock
+        .mockResolvedValueOnce(makeConn())
+        .mockResolvedValueOnce(makeConn());
+      ensureMacCookieReloginMock
+        .mockReturnValueOnce(new Promise(() => { /* never resolves */ }))
+        .mockResolvedValueOnce({ checked: true, repaired: [] });
+
+      const perRouterMs = 200;
+      const runPromise = runMacCookieConvergence({ perRouterMs, sweepBudgetMs: 60_000 });
+
+      await vi.advanceTimersByTimeAsync(perRouterMs + 50);
+      const result = await runPromise;
+
+      expect(result.timedOut).toBe(1);
+      expect(result.checked).toBe(1); // r2 succeeded
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('20-min sweep budget stops starting new routers and reports leftForNextRun', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { id: 'r1', user_id: 'u1' },
+        { id: 'r2', user_id: 'u2' },
+        { id: 'r3', user_id: 'u3' },
+      ],
+    });
+    connectToRouterMock.mockResolvedValue(makeConn());
+
+    // sweepBudgetMs = -1 → deadline already passed before first router
+    const result = await runMacCookieConvergence({ perRouterMs: 120_000, sweepBudgetMs: -1 });
+
+    expect(result.leftForNextRun).toBe(3);
+    expect(connectToRouterMock).not.toHaveBeenCalled();
   });
 });

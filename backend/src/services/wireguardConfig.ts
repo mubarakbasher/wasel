@@ -3,6 +3,18 @@ import { config } from '../config';
 import logger from '../config/logger';
 
 // ---------------------------------------------------------------------------
+// WireGuard constants
+// ---------------------------------------------------------------------------
+
+/**
+ * IPv4 address of the VPS wg0 interface (the server end of every /30 tunnel).
+ * Routers are configured to reach RADIUS and backend APIs at this address.
+ * All other call-sites that currently hardcode '10.10.0.1' are listed in
+ * docs/follow-ups.md and should be migrated to this export in a later pass.
+ */
+export const WG_VPS_TUNNEL_IP = '10.10.0.1';
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -226,7 +238,7 @@ export function generateMikrotikConfig(params: {
     // 7. RADIUS client — service=hotspot,login required on some ROS versions for hotspot
     //    login to route auth to FreeRADIUS; src-address ties the NAS-IP to the tunnel IP
     //    so FreeRADIUS matches the correct per-router shared secret.
-    `/radius add service=hotspot,login address=${params.radiusServerIp} secret="${params.radiusSecret}" src-address=${params.routerTunnelIp} comment=wasel`,
+    `/radius add service=hotspot,login address=${params.radiusServerIp} secret="${params.radiusSecret}" src-address=${params.routerTunnelIp} timeout=2s comment=wasel`,
 
     // 8. CoA listener — accept=yes lets FreeRADIUS disconnect sessions and push policy updates
     `/radius incoming set accept=yes port=3799`,
@@ -345,6 +357,7 @@ this NAS to the correct per-router shared secret on the Wasel server.
      address=${params.radiusServerIp} \\
      secret="${params.radiusSecret}" \\
      src-address=${params.routerTunnelIp} \\
+     timeout=2s \\
      comment=wasel
 
 --------------------------------------------------------------------------------
@@ -488,7 +501,7 @@ export function generateSetupSteps(params: {
       step: 7,
       title: 'Add the RADIUS server',
       description: 'Points your router at the Wasel RADIUS server for voucher authentication. service=hotspot,login is required on some RouterOS versions.',
-      command: `/radius add service=hotspot,login address=${params.radiusServerIp} secret="${params.radiusSecret}" src-address=${params.routerTunnelIp} comment=wasel`,
+      command: `/radius add service=hotspot,login address=${params.radiusServerIp} secret="${params.radiusSecret}" src-address=${params.routerTunnelIp} timeout=2s comment=wasel`,
     },
     {
       step: 8,

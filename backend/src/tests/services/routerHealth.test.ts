@@ -46,6 +46,27 @@ vi.mock('../../services/routerOs.service', () => ({
   // must be present in the mock so the import resolves to a callable function.
   ensureHotspotRadiusSettings: vi.fn().mockResolvedValue(undefined),
   ensureMacCookieRelogin: ensureMacCookieReloginMock,
+  // Lightweight pure helper — safe to re-export the real-shape here. The
+  // /radius probe uses it to append a note when the router's RADIUS timeout
+  // is under 2 s (not a fail; the hourly sweep raises it).
+  parseRouterOsDurationMs: (v: unknown): number | null => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return Math.round(v * 1000);
+    if (typeof v !== 'string') return null;
+    const s = v.trim().toLowerCase();
+    if (s === '') return null;
+    if (/^\d+$/.test(s)) return parseInt(s, 10) * 1000;
+    const re = /(\d+)(ms|s|m|h|d|w)/g;
+    let total = 0, last = 0, matched = false, m: RegExpExecArray | null;
+    while ((m = re.exec(s))) {
+      if (m.index !== last) return null;
+      matched = true;
+      const n = parseInt(m[1], 10);
+      total += { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[m[2] as 'ms']! * n;
+      last = m.index + m[0].length;
+    }
+    return matched && last === s.length ? total : null;
+  },
 }));
 
 vi.mock('../../services/radclient.service', () => ({
