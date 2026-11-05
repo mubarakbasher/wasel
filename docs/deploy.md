@@ -555,7 +555,18 @@ docker compose logs wireguard
 
 ## Backups
 
-Regular PostgreSQL and WireGuard configuration backups are essential. The database holds all user accounts, routers, subscriptions, vouchers, and RADIUS records. The WireGuard config holds server private keys and peer definitions.
+The nightly backup script (`scripts/backup.sh`) runs at 01:15 UTC via a systemd timer, produces two encrypted artifacts, verifies the DB dump, and uploads to a dedicated Google Drive account. Retention: 7 daily + 4 weekly copies on Drive (~9 GB of the 15 GB free tier), 7 days locally on disk.
+
+> **Backup window: 01:15–01:45 UTC.** Do not deploy or run manual DDL during this window. It runs before the daily backend jobs (02:10, 02:40, 03:30 UTC).
+
+### What is backed up
+
+| Artifact | Contents |
+|----------|----------|
+| `wasel-db-<date>.dump.gpg` | PostgreSQL custom-format dump (`-Fc`), `radpostauth` rows excluded (1.3 GB login log, schema kept), GnuPG symmetric AES-256 (authenticated encryption — decryption fails hard on tampering) |
+| `wasel-settings-<date>.tar.gpg` | Single gzip tar containing: `/root/wasel/backend/.env` (holds ENCRYPTION_KEY), `backend/secrets`, `/etc/wireguard`, `/etc/wasel/compose.env` and related files, plus `backend_uploads.tar.gz` (the uploads volume — payment receipts). GnuPG symmetric AES-256 encrypted. |
+
+The uploads volume is embedded as an inner archive (`backend_uploads.tar.gz`) inside the outer tar. The restore untars the outer archive, then separately untars `backend_uploads.tar.gz` into the volume (see restore procedure below).
 
 ### RTO / RPO
 
@@ -563,83 +574,250 @@ Regular PostgreSQL and WireGuard configuration backups are essential. The databa
 |--------|--------|
 | RPO (Recovery Point Objective) | 24 hours |
 | RTO (Recovery Time Objective) | 2 hours |
-| Local backup retention | 30 days |
-| Off-host backup retention | 90 days |
+| Local backup retention | 7 days (~6 GB on 96 GB disk) |
+| Drive backup retention | 7 daily + 4 weekly ≈ 28 days (fits in 15 GB free tier) |
 
-### Step 0 — Create Backup Encryption Key (one-time, on VPS)
+### Install (one-time, on each VPS)
 
-All backups are AES-256-CBC encrypted at rest. Generate a key and protect it:
-
-```bash
-sudo mkdir -p /etc/wasel
-openssl rand -hex 32 | sudo tee /etc/wasel/backup.key
-sudo chmod 600 /etc/wasel/backup.key
-sudo chown root:root /etc/wasel/backup.key
-```
-
-Store a copy of `/etc/wasel/backup.key` in a separate secure location (password manager, off-site vault). Without it, encrypted backups cannot be restored.
-
-### Manual Backup (encrypted)
+**Step 1 — Create the encryption key**
 
 ```bash
-mkdir -p /opt/wasel-backups
-
-# PostgreSQL dump — encrypted
-docker compose -f /opt/wasel/docker-compose.yml exec -T postgres pg_dump -U wasel wasel \
-  | gzip \
-  | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/etc/wasel/backup.key \
-  > /opt/wasel-backups/wasel-$(date +%F).sql.gz.enc
-
-# WireGuard config — encrypted
-sudo tar -czf - /etc/wireguard/wg0.conf \
-  | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/etc/wasel/backup.key \
-  > /opt/wasel-backups/wg0-$(date +%F).tar.gz.enc
+mkdir -p /etc/wasel
+openssl rand -hex 32 > /etc/wasel/backup.key
+chmod 600 /etc/wasel/backup.key
+chown root:root /etc/wasel/backup.key
 ```
 
-### Automated Daily Backup (crontab)
+Save the key in your password manager immediately. Without it, the backups cannot be opened.
 
-Edit root's crontab with `sudo crontab -e` and add the following lines. They run at 03:00 daily, produce encrypted archives, and prune local copies older than 30 days.
+> **The backup key is the master key.** It decrypts everything: the router-credential `ENCRYPTION_KEY`, the Postgres password, the WireGuard private keys — everything in the settings bundle. Keep it in a password manager that is off the server. Never upload it to Google Drive or any cloud storage. If the VPS is compromised and the key is also on the server, all backups are exposed.
 
+**Step 2 — Create `/etc/wasel/backup.env`**
+
+```ini
+WASEL_DIR=/root/wasel          # /opt/wasel on staging
+BACKUP_ENV=prod                # prod | staging
+UPLOAD=1                       # 0 on staging (local-only)
+BACKUP_DIR=/root/backups/auto
+# Optional overrides:
+# RCLONE_REMOTE=gdrive
+# DRIVE_DAILY_KEEP=7
+# DRIVE_WEEKLY_KEEP=4
+# LOCAL_RETAIN_DAYS=7
 ```
-# Daily DB backup (encrypted)
-0 3 * * * cd /opt/wasel && docker compose exec -T postgres pg_dump -U wasel wasel | gzip | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/etc/wasel/backup.key > /opt/wasel-backups/wasel-$(date +\%F).sql.gz.enc && find /opt/wasel-backups -name "*.sql.gz.enc" -mtime +30 -delete
-
-# Daily WireGuard config backup (encrypted)
-5 3 * * * tar -czf - /etc/wireguard/wg0.conf | openssl enc -aes-256-cbc -pbkdf2 -salt -pass file:/etc/wasel/backup.key > /opt/wasel-backups/wg0-$(date +\%F).tar.gz.enc && find /opt/wasel-backups -name "wg0-*.tar.gz.enc" -mtime +30 -delete
-
-# Monthly radacct archival (moves rows >90 days old to radacct_archive)
-0 3 1 * * cd /opt/wasel && docker compose exec -T postgres psql -U wasel -d wasel < /opt/wasel/scripts/radacct-archive.sql
-```
-
-Note: cron treats unescaped `%` as a newline — hence the `\%F` escaping above.
-
-### Restore from Encrypted Backup
 
 ```bash
-# Restore PostgreSQL
-openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/etc/wasel/backup.key \
-  -in /opt/wasel-backups/wasel-2026-04-17.sql.gz.enc \
-  | gunzip \
-  | docker compose exec -T postgres psql -U wasel -d wasel
-
-# Restore WireGuard config
-openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/etc/wasel/backup.key \
-  -in /opt/wasel-backups/wg0-2026-04-17.tar.gz.enc \
-  | tar -xzf - -C /
-sudo chmod 600 /etc/wireguard/wg0.conf
+chmod 600 /etc/wasel/backup.env
 ```
 
-### Off-Host Copies
+**Step 3 — Set up Google Drive (one-time)**
 
-Local backups do not protect against VPS loss. Copy encrypted archives to a second host on a regular schedule:
+The token is generated on your Windows PC and transferred to the server via scp. It never passes through chat.
+
+**On your Windows PC (PowerShell):**
+
+```powershell
+# Download rclone 1.68.2 for Windows (amd64) and unzip it.
+# Direct URL:
+Invoke-WebRequest -Uri "https://downloads.rclone.org/v1.68.2/rclone-v1.68.2-windows-amd64.zip" `
+  -OutFile "$env:TEMP\rclone.zip"
+Expand-Archive "$env:TEMP\rclone.zip" -DestinationPath "$env:TEMP\rclone"
+$rclone = (Get-ChildItem "$env:TEMP\rclone" -Filter rclone.exe -Recurse).FullName
+
+# Authorize with drive.file scope.
+# This opens your browser. Sign in with the dedicated backup Google account.
+# rclone will print: "Paste the following into your remote machine --->"
+# followed by a JSON token block. Copy the entire JSON object ({...}).
+& $rclone authorize "drive" --drive-scope drive.file
+
+# Save the printed token (the JSON block between the dashes) to a file.
+# Replace the placeholder below with what rclone printed.
+$token = @'
+{"access_token":"...","token_type":"Bearer","refresh_token":"...","expiry":"..."}
+'@
+$token | Out-File -Encoding utf8 -NoNewline "$env:TEMP\wasel-gdrive-token.json"
+
+# Transfer to the server root home directory
+scp -i "$env:USERPROFILE\.ssh\wasel_ops" `
+  "$env:TEMP\wasel-gdrive-token.json" `
+  root@<VPS-IP>:/root/gdrive-token.json
+
+# Delete the local copy immediately
+Remove-Item "$env:TEMP\wasel-gdrive-token.json"
+```
+
+**On the VPS:**
 
 ```bash
-# Push the latest backup to a remote server via scp
-scp /opt/wasel-backups/wasel-$(date +%F).sql.gz.enc backup-user@backup-host:/path/to/wasel-backups/
-scp /opt/wasel-backups/wg0-$(date +%F).tar.gz.enc   backup-user@backup-host:/path/to/wasel-backups/
+mkdir -p /etc/wasel/rclone
+chmod 700 /etc/wasel/rclone
+
+# Pinned rclone image (same digest as committed in backup.sh)
+RCLONE_IMAGE="rclone/rclone:1.68.2@sha256:74c51b8817e5431bd6d7ed27cb2a50d8ee78d77f6807b72a41ef6f898845942b"
+
+# Create the rclone remote using the token file
+docker run --rm \
+  -v /etc/wasel/rclone:/config/rclone \
+  "${RCLONE_IMAGE}" \
+  rclone config create gdrive drive \
+    scope=drive.file \
+    "token=$(cat /root/gdrive-token.json)" \
+    --non-interactive
+
+chmod 600 /etc/wasel/rclone/rclone.conf
+
+# Securely delete the token file — it's now in rclone.conf
+shred -u /root/gdrive-token.json
+
+# Verify the remote works
+docker run --rm -v /etc/wasel/rclone:/config/rclone "${RCLONE_IMAGE}" \
+  rclone about gdrive:
 ```
 
-Consider a dedicated offsite target (another VPS, S3-compatible object storage, or a home server). Rotate off-host credentials independently from the production VPS. Retain off-host archives for 90 days before pruning.
+The rclone config uses Google's own published OAuth client (built-in to rclone). Refresh tokens from the `drive.file` scope do not expire while the app grant is active. rclone stores the refreshed token in `/etc/wasel/rclone/rclone.conf` automatically on each run.
+
+**To revoke a single server's Drive access:** delete `/etc/wasel/rclone/rclone.conf` on that server — the next backup upload attempt will fail (no config). **To revoke all servers at once:** visit Google Account → Security → Third-party apps with account access → remove the rclone grant on the backup Google account. This immediately cuts off every server using that account's OAuth token.
+
+**Step 4 — Install and enable the systemd timer**
+
+```bash
+cp /root/wasel/scripts/wasel-backup.service /etc/systemd/system/
+cp /root/wasel/scripts/wasel-backup.timer   /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now wasel-backup.timer
+systemctl list-timers wasel-backup.timer
+```
+
+**Step 5 — Verify the pinned rclone digest**
+
+The rclone digest `sha256:74c51b8817e5431bd6d7ed27cb2a50d8ee78d77f6807b72a41ef6f898845942b` is committed directly in `scripts/backup.sh` and used by default — no manual pinning needed. To verify it matches the image on this machine:
+
+```bash
+docker pull rclone/rclone:1.68.2
+docker inspect --format '{{index .RepoDigests 0}}' rclone/rclone:1.68.2
+# Should print: rclone/rclone@sha256:74c51b8817e5431bd6d7ed27cb2a50d8ee78d77f6807b72a41ef6f898845942b
+```
+
+If you need to use a different rclone version, set `RCLONE_IMAGE=rclone/rclone@sha256:<new-digest>` in `/etc/wasel/backup.env` after auditing the image.
+
+**Step 6 — Verify the script with shellcheck (on the VPS)**
+
+Docker Hub pulls work from the VPS. Run this after the first git pull:
+
+```bash
+docker run --rm \
+  -v /root/wasel/scripts:/s \
+  koalaman/shellcheck:stable \
+  /s/backup.sh /s/backup-restore.sh
+```
+
+**Step 7 — Optional: heartbeat via healthchecks.io**
+
+```bash
+echo "https://hc-ping.com/<your-uuid>" > /etc/wasel/backup-heartbeat.url
+chmod 600 /etc/wasel/backup-heartbeat.url
+```
+
+The script pings `<url>/start` at start, `<url>` on success, `<url>/fail` on failure.
+
+### Manual run
+
+```bash
+# Full run (uploads to Drive):
+/bin/bash /root/wasel/scripts/backup.sh
+
+# Local-only (no Drive upload):
+UPLOAD=0 /bin/bash /root/wasel/scripts/backup.sh
+
+# Check the last run result:
+journalctl -u wasel-backup.service --since "today" -n 50
+```
+
+### Restore procedure
+
+**A. Inspect the settings bundle (without extracting)**
+
+> **Never extract a settings bundle into `/` on a running server.** The bundle overwrites `/root/wasel/backend/.env`, `/etc/wireguard`, and `/etc/wasel` config files in place, which will disrupt the running stack. Use `--settings` to list contents, or extract into a scratch directory for inspection. Only extract into `/` on a **fresh replacement VPS** during disaster recovery (step C below).
+
+```bash
+/bin/bash /root/wasel/scripts/backup-restore.sh \
+  --settings /root/backups/auto/wasel-settings-2026-11-06.tar.gpg
+```
+
+**B. Restore drill — DB (always use a throwaway container, never the live Postgres)**
+
+```bash
+# Download the dump from Drive if needed:
+docker run --rm \
+  -v /etc/wasel/rclone:/config/rclone \
+  -v /root/backups:/data \
+  "rclone/rclone:1.68.2@sha256:74c51b8817e5431bd6d7ed27cb2a50d8ee78d77f6807b72a41ef6f898845942b" \
+  rclone copy gdrive:wasel-backups/prod/daily/wasel-db-2026-11-06.dump.gpg /data/
+
+# Run the restore drill — prints row counts, removes the throwaway container:
+/bin/bash /root/wasel/scripts/backup-restore.sh \
+  /root/backups/wasel-db-2026-11-06.dump.gpg
+
+# Keep the container for further inspection:
+/bin/bash /root/wasel/scripts/backup-restore.sh --keep \
+  /root/backups/wasel-db-2026-11-06.dump.gpg
+```
+
+**C. Disaster recovery (new VPS)**
+
+1. Provision a fresh VPS with Docker.
+2. Clone the repo: `git clone ... /root/wasel && git checkout main`
+3. Load `backup.key` from your password manager into `/etc/wasel/backup.key` (chmod 600). Do not restore it from the bundle — it is intentionally excluded from the bundle.
+4. Restore the settings bundle — this places `backend/.env`, `/etc/wireguard`, etc. at their original paths and puts the uploads archive at `/uploads/backend_uploads.tar.gz`. The `.sha256` file is a transfer/corruption check only; integrity against tampering is guaranteed by gpg's authenticated decryption (the command below will fail with a non-zero exit if the file has been tampered with):
+
+   ```bash
+   # Only run this on a FRESH VPS — it overwrites /etc/wireguard, /root/wasel/backend/.env, etc.
+   gpg --batch --quiet --pinentry-mode loopback \
+     --passphrase-file /etc/wasel/backup.key \
+     --no-symkey-cache \
+     -d wasel-settings-<date>.tar.gpg | tar -xzf - -C /
+   ```
+
+5. Restore the uploads volume from the inner archive, then remove the extracted copy:
+
+   ```bash
+   docker volume create wasel_backend_uploads
+   docker run --rm \
+     -v wasel_backend_uploads:/v \
+     -v /uploads/backend_uploads.tar.gz:/uploads.tar.gz:ro \
+     alpine:3.20 \
+     tar -xzf /uploads.tar.gz -C /v
+   rm -r /uploads
+   ```
+
+6. Bring Postgres up: `docker compose --env-file /etc/wasel/compose.env -f /root/wasel/docker-compose.yml up -d postgres`
+7. Restore the DB:
+
+   ```bash
+   gpg --batch --quiet --pinentry-mode loopback \
+     --passphrase-file /etc/wasel/backup.key \
+     --no-symkey-cache \
+     -d wasel-db-<date>.dump.gpg \
+     | docker compose --env-file /etc/wasel/compose.env \
+         -f /root/wasel/docker-compose.yml \
+         exec -T postgres pg_restore -U wasel -d wasel --no-owner --no-privileges
+   ```
+
+8. Start the full stack: `docker compose --env-file /etc/wasel/compose.env -f /root/wasel/docker-compose.yml up -d`
+9. Run the restore drill (step B above) to verify row counts before cutting DNS.
+
+RTO target: 2 hours. RPO: 24 hours (nightly backup).
+
+### Key rotation
+
+If you suspect the backup key has been exposed, or as a routine rotation:
+
+1. Generate a new key: `openssl rand -hex 32 > /tmp/new-backup.key && chmod 600 /tmp/new-backup.key`
+2. Run a full backup with the new key: `BACKUP_KEY_FILE=/tmp/new-backup.key /bin/bash /root/wasel/scripts/backup.sh`
+3. Run the restore drill against the new archive to confirm it decrypts correctly.
+4. Install the new key: `mv /tmp/new-backup.key /etc/wasel/backup.key`
+5. Update your password manager with the new key.
+6. Keep the old key in your password manager until the old archives age out of local and Drive retention (default: 28 days). Old archives encrypted with the old key cannot be decrypted with the new one.
 
 ---
 

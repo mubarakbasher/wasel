@@ -1,0 +1,50 @@
+[Unit]
+Description=Wasel nightly backup (database + settings bundle → Google Drive)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# /etc/wasel/backup.env sets WASEL_DIR, BACKUP_ENV, UPLOAD and optional overrides.
+# systemd expands ${WASEL_DIR} from EnvironmentFile in ExecStart.
+EnvironmentFile=/etc/wasel/backup.env
+
+ExecStart=/bin/bash ${WASEL_DIR}/scripts/backup.sh
+
+# Low-priority host-side work; the CPU/IO pressure inside the container is
+# controlled via `nice -n 19` on the pg_dump command.
+Nice=19
+IOSchedulingClass=idle
+
+# A full dump + verify + upload should finish in well under 30 min.
+TimeoutStartSec=1800
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wasel-backup
+
+# ── Hardening ─────────────────────────────────────────────────────────────────
+NoNewPrivileges=true
+
+# PrivateTmp gives the unit its own /tmp namespace so that the throwaway
+# GNUPGHOME created by backup.sh (mktemp -d) cannot be read by other processes.
+# The concurrency lock is in /run (not /tmp) so that it is accessible to both
+# the systemd unit and manual runs outside systemd.
+PrivateTmp=true
+
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# NOT added: ProtectSystem / ProtectHome — the script writes to /root/backups
+# and reads from /root/wasel; ProtectHome would block those paths.
+# ProtectSystem=strict would also block writes to /run and /root.
+#
+# NOT added: MemoryDenyWriteExecute — gpg / libgcrypt uses executable memory
+# on some builds; this directive would cause it to crash with SIGSEGV.

@@ -1,0 +1,14 @@
+[Unit]
+Description=Run Wasel nightly backup at 01:15 UTC
+
+[Timer]
+# 01:15 UTC — after the quietest hour starts (~01:00), before the 02:10 daily jobs.
+OnCalendar=*-*-* 01:15:00 UTC
+# If the timer was missed while the machine was off, run it once on next boot.
+Persistent=true
+# No jitter — keep the window predictable so deploys can avoid it.
+RandomizedDelaySec=0
+Unit=wasel-backup.service
+
+[Install]
+WantedBy=timers.target

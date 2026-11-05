@@ -112,33 +112,58 @@ git log --all -p -- docker-compose.yml \
 
 ## 2. Disaster recovery from backup
 
-Assumes daily encrypted `pg_dump` backups exist (see deploy.md).
+Full procedure: see `docs/deploy.md §Backups → Restore procedure`.
+
+The nightly backup script (`scripts/backup.sh`, runs 01:15 UTC) produces two encrypted artifacts:
+- `wasel-db-<date>.dump.gpg` — PostgreSQL custom-format dump (GnuPG symmetric AES-256, authenticated encryption)
+- `wasel-settings-<date>.tar.gpg` — single gzip tar containing: `backend/.env`, `backend/secrets`, `/etc/wireguard`, `/etc/wasel` config files, and `backend_uploads.tar.gz` (the uploads volume, as an inner archive)
+
+Both live in `/root/backups/auto/` (7 days) and in `gdrive:wasel-backups/prod/daily/` (7 daily + 4 weekly). Encryption key: `/etc/wasel/backup.key` — also in your password manager.
+
+> **The backup key is the master key.** It decrypts everything: the router-credential `ENCRYPTION_KEY`, the Postgres password, the WireGuard private keys. Keep it in a password manager that is off the server. Never upload it to Google Drive or any cloud storage.
+
+> **Never extract the settings bundle into `/` on a running server.** It overwrites live config files in place. Only do it on a fresh replacement VPS during disaster recovery.
+
+**Quick steps (new VPS):**
 
 ```bash
-# On a fresh VPS with docker compose installed
-cd /opt/wasel
-# Restore compose env
-sudo mkdir -p /etc/wasel
-sudo cp <backup>/compose.env /etc/wasel/compose.env
-sudo chmod 0600 /etc/wasel/compose.env
+# 1. Clone repo; load backup.key from your password manager into /etc/wasel/backup.key (chmod 600)
 
-# Start Postgres + Redis
-docker compose --env-file /etc/wasel/compose.env up -d postgres redis
+# 2. Restore settings bundle — extracts backend/.env, /etc/wireguard, /etc/wasel files
+#    to their original paths, and the uploads archive to /uploads/backend_uploads.tar.gz.
+#    gpg exits non-zero if the file has been tampered with (authenticated decryption).
+gpg --batch --quiet --pinentry-mode loopback \
+  --passphrase-file /etc/wasel/backup.key --no-symkey-cache \
+  -d wasel-settings-<date>.tar.gpg | tar -xzf - -C /
 
-# Decrypt + restore
-openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/etc/wasel/backup.key \
-  -in <backup>/wasel-<date>.sql.gz.enc \
-  | gunzip \
-  | docker compose exec -T postgres psql -U wasel -d wasel
+# 3. Restore the uploads volume from the inner archive, then remove the extracted copy
+docker volume create wasel_backend_uploads
+docker run --rm \
+  -v wasel_backend_uploads:/v \
+  -v /uploads/backend_uploads.tar.gz:/u.tar.gz:ro \
+  alpine:3.20 tar -xzf /u.tar.gz -C /v
+rm -r /uploads
 
-# Restore WireGuard config
-sudo cp <backup>/wg0.conf /etc/wireguard/wg0.conf
+# 4. Bring up Postgres
+docker compose --env-file /etc/wasel/compose.env -f /root/wasel/docker-compose.yml \
+  up -d postgres
 
-# Start everything
-docker compose --env-file /etc/wasel/compose.env up -d
+# 5. Restore the database (use pg_restore with --no-owner, never psql)
+gpg --batch --quiet --pinentry-mode loopback \
+  --passphrase-file /etc/wasel/backup.key --no-symkey-cache \
+  -d wasel-db-<date>.dump.gpg \
+  | docker compose --env-file /etc/wasel/compose.env \
+      -f /root/wasel/docker-compose.yml \
+      exec -T postgres pg_restore -U wasel -d wasel --no-owner --no-privileges
+
+# 6. Start the full stack
+docker compose --env-file /etc/wasel/compose.env -f /root/wasel/docker-compose.yml up -d
+
+# 7. Verify row counts with the restore drill before cutting DNS
+/bin/bash /root/wasel/scripts/backup-restore.sh /root/backups/wasel-db-<date>.dump.gpg
 ```
 
-RTO target: 2 hours. RPO: 24 hours (daily backup cadence).
+RTO target: 2 hours. RPO: 24 hours (nightly backup).
 
 ## 3. Incident log
 
