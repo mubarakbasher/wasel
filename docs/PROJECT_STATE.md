@@ -6,6 +6,35 @@
 
 **2026-09-14:** operator survey (10 respondents, 9×5/5) analysed in `docs/users/SURVEY_2026-09-10_ANALYSIS.md` — each ask cross-checked against the code; follow-up checklist inside. No code changes. **2026-09-29:** batch 2 (15 more rows, 09-20→09-28, three new 1/5s) added to the same doc. Key finding: the "network is busy" complaint is our captive-page text for a RADIUS timeout, which strengthens the case for promoting the FreeRADIUS-hang fix to prod.
 
+**2026-11-06: fixes for the stuck NTP job, late FreeRADIUS answers and missing backups — on `dev` (`d0ee035`, `9d9915f`) and staging, NOT on prod.** Plan: `C:\Users\mubar\.claude\plans\for-now-i-want-cached-planet.md`. Prod stays at `583f810` until the owner says go.
+- **Why (prod, read-only, 11-03 to 11-05):**
+  - The NTP sweep has been stuck since 11-03 05:50 UTC (0 completions, 27 skips in the kept log by 11-05). It clears only on a backend restart.
+  - FreeRADIUS logs 600–740 `Ignoring duplicate packet … <core> <queue>` lines an hour at peak, plus about 11 `Giving up on old request` a day. Router `bc85d9c8` sends a third of them. These did not fade after the 11-03 restart; the same pattern was recorded before the lock.
+  - No automatic backups exist.
+- **Router `/radius monitor` counters (11-05 22:55 UTC, 9 busy routers, read-only):** routers on MikroTik's default 300 ms timeout get **0 rejects**, because FreeRADIUS holds every reject for 1 s (`reject_delay`). The customer sees "network busy" instead of "wrong code". These routers also show heavy resends. Example `dc4a059d`: 102,633 requests, 0 rejects, 85,790 resends, 13,046 timeouts, round trip 240 ms. About half the routers already have `1s100ms` (not set by Wasel); they get rejects, but 4–19% of requests are still resent. The round trip is 220–310 ms.
+- **On `dev`, deployed to staging 11-05 23:53 UTC:**
+  - A node-routeros patch rejects pending commands (and `connect()` during `/login`) when the socket closes.
+  - `withRouterDeadline` gives each router 120 s.
+  - NTP job: least-recently-attempted first, timed-out routers skipped for 2 h, 45 min sweep budget. MAC-cookie job: 20 min cap.
+  - `/radius add` lines now set `timeout=2s`. `ensureRadiusTimeout` raises existing Wasel entries in the hourly sweep, gated by env `RADIUS_TIMEOUT_ROLLOUT` (empty = off, router IDs, or `all`). The health probe shows a note, not a failure.
+  - FreeRADIUS thread pool now starts all 32 workers; the sql pool runs 16 min / 32 max with `idle_timeout = 0`.
+  - Migration 042 changes the `radpostauth` request columns to `text` (`lock_timeout` 3 s, metadata-only).
+  - Nightly gpg-encrypted backups (`scripts/backup.sh`, timer 01:15 UTC) upload to Google Drive with rclone pinned by digest; see `docs/deploy.md` §Backups.
+- **Verified:**
+  - **Tests:** `tsc` clean, 1,075 tests pass.
+  - **Local fake routers:** the silent one hit the deadline at connect, the closing one failed fast, and the sweep completed in 7 s.
+  - **Migration 042:** on the dev DB, the table and index file nodes were unchanged.
+  - **Staging deploy:** backend healthy and 042 applied at boot. FreeRADIUS `-XC` OK, with 33 threads at rest and 16 sql connections.
+  - **Staging burst test:** the pool previously grew from 6 to 33 threads under the burst; it now starts at 33.
+  - **Staging backup, local-only:** shellcheck clean, a tampered dump is refused by gpg, the restore drill row counts match, and the systemd run succeeds under the hardened unit.
+- **Open:**
+  - **Router `test`:** it has been offline since 11-02 03:29, so the 2 s timeout and the wrong-code page message aren't proven on a real router yet. `RADIUS_TIMEOUT_ROLLOUT` on staging is set to it.
+  - **Google Drive:** upload is waiting on the owner's new Google account and one sign-in.
+  - **Peak evidence:** the peak sampler (plan step 2a) runs 11-06 about 07:52 UTC and may change the FreeRADIUS pool numbers.
+  - **Hardcoded IP:** `10.10.0.1` still appears in router.service.ts, hotspotTemplate.service.ts and routerHealth.service.ts; the shared constant is now `WG_VPS_TUNNEL_IP` in wireguardConfig.ts.
+  - **Login-log retention:** `radpostauth` has none and stores attempted passwords.
+- **Gotcha:** a script piped into `ssh 'bash -s'` loses its remaining lines to any `docker compose exec` without `< /dev/null`; `backup.sh` now redirects stdin on its dump call.
+
 **2026-11-03: router lock LIVE on prod (`main` = `583f810`, deployed 03:26 UTC; `dev` differs only by docs).** Every card now works only on its home router. This completes the 2026-11-02 "update everything" plan.
 - **Roaming measured first (7 days, off-peak):** 3,051 of 136,635 active cards (2.23%) were used on a router other than their home router, under the 5% stop line. 528 were on the same owner's routers, 2,526 on other operators' routers, across 178 owners. It is concentrated in account pairs: `c5e5af8a` sent 798 cards to one other account, `f978e683` 322, and 4 pairs with 50+ cards hold 1,284 cards. 2,665 cards were only ever used away from home. These are the operators most likely to complain. Every card session mapped to a known router (`radacct.nasipaddress` = `tunnel_ip`), so the measure has no blind spot.
 - **Steps, all passed:**
