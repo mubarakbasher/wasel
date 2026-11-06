@@ -27,8 +27,15 @@
   - **Staging deploy:** backend healthy and 042 applied at boot. FreeRADIUS `-XC` OK, with 33 threads at rest and 16 sql connections.
   - **Staging burst test:** the pool previously grew from 6 to 33 threads under the burst; it now starts at 33.
   - **Staging backup, local-only:** shellcheck clean, a tampered dump is refused by gpg, the restore drill row counts match, and the systemd run succeeds under the hardened unit.
+- **Router `test` (back online 11-06 00:13 UTC):**
+  - One manual run of the real sweep raised its `/radius` timeout from `300ms` to `2s` in 3 s (`radiusRaised=1`, NTP already set). The router log shows `/radius set *1 timeout=2s` by api.
+  - The owner then tried a wrong code, and the page said "invalid code" (not "network busy"). A real card logged in.
+  - Router counters since the change: 1 reject, 2 accepts, 0 resends.
+- **Accounting-On fix (`74581e8`, staging):**
+  - At boot a router sends Accounting-On. When it has no open sessions, sql updates 0 rows and returns noop, and FreeRADIUS sent no reply at all. This was reproduced with radclient; Interim and Stop were answered. The router counts each as a timeout (`test`: 9 in its first 10 min).
+  - The accounting section now does `sql` then `if (noop) { ok }`. A real sql `fail` is still unanswered, so routers retry it.
+  - Staging: `-XC` OK, and an Accounting-On with no sessions now gets an Accounting-Response.
 - **Open:**
-  - **Router `test`:** it has been offline since 11-02 03:29, so the 2 s timeout and the wrong-code page message aren't proven on a real router yet. `RADIUS_TIMEOUT_ROLLOUT` on staging is set to it.
   - **Google Drive:** upload is waiting on the owner's new Google account and one sign-in.
   - **Peak evidence:** the peak sampler (plan step 2a) runs 11-06 about 07:52 UTC and may change the FreeRADIUS pool numbers.
   - **Hardcoded IP:** `10.10.0.1` still appears in router.service.ts, hotspotTemplate.service.ts and routerHealth.service.ts; the shared constant is now `WG_VPS_TUNNEL_IP` in wireguardConfig.ts.
