@@ -124,8 +124,27 @@ server default {
     #
     #  Accounting — write Start/Interim/Stop records to radacct
     #
+    #  Force an Accounting-Response even when sql returns noop.
+    #  Accounting-On/Off from a NAS with no open radacct sessions makes
+    #  the rlm_sql accounting-on/off query update 0 rows, so sql returns
+    #  noop. FreeRADIUS only replies when the section's final rcode is
+    #  ok/updated, so without this the NAS (MikroTik on every boot) gets
+    #  no reply and retries until it times out.
+    #
+    #  Unlang basis (shipped stock configs in this image):
+    #    - Bare rcode as a statement sets the section rcode
+    #      (sites-available/coa line 44: "send-coa { ... ok }";
+    #       sites-available/status line 62: "authorize { ok ... }").
+    #    - "if (<rcode>) { ... }" is a valid condition on the last
+    #      module's return code
+    #      (sites-available/dhcp line 527: "if (notfound) { ... ok ... }";
+    #       sites-available/google-ldap-auth line 83: "if (ok) { ... }").
+    #
     accounting {
         sql
+        if (noop) {
+            ok
+        }
     }
 
     #
