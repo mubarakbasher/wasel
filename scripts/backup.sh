@@ -298,7 +298,7 @@ if [[ "$UPLOAD" == "1" ]]; then
       -v "${RCLONE_CONFIG_DIR}:/config/rclone" \
       -v "${BACKUP_DIR}:/data:ro" \
       "${RCLONE_IMAGE}" \
-      rclone "$@"
+      "$@"
   }
 
   _rclone_rw() {
@@ -306,7 +306,7 @@ if [[ "$UPLOAD" == "1" ]]; then
     docker run --rm \
       -v "${RCLONE_CONFIG_DIR}:/config/rclone" \
       "${RCLONE_IMAGE}" \
-      rclone "$@"
+      "$@"
   }
 
   # Check Drive free space: need at least 2× today's total
@@ -314,7 +314,7 @@ if [[ "$UPLOAD" == "1" ]]; then
   FREE_BYTES=0
   if FREE_JSON=$(_rclone_rw about --json "${RCLONE_REMOTE}:" 2>/dev/null); then
     FREE_BYTES=$(printf '%s' "$FREE_JSON" \
-      | grep -o '"free":[0-9]*' | grep -o '[0-9]*' || echo 0)
+      | grep -oE '"free": *[0-9]+' | grep -oE '[0-9]+$' || echo 0)
   fi
   if [[ "${FREE_BYTES:-0}" -gt 0 ]]; then
     MIN_FREE=$(( TODAY_TOTAL * 2 ))

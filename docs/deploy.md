@@ -624,18 +624,22 @@ Invoke-WebRequest -Uri "https://downloads.rclone.org/v1.68.2/rclone-v1.68.2-wind
 Expand-Archive "$env:TEMP\rclone.zip" -DestinationPath "$env:TEMP\rclone"
 $rclone = (Get-ChildItem "$env:TEMP\rclone" -Filter rclone.exe -Recurse).FullName
 
-# Authorize with drive.file scope.
-# This opens your browser. Sign in with the dedicated backup Google account.
-# rclone will print: "Paste the following into your remote machine --->"
-# followed by a JSON token block. Copy the entire JSON object ({...}).
-& $rclone authorize "drive" --drive-scope drive.file
-
-# Save the printed token (the JSON block between the dashes) to a file.
-# Replace the placeholder below with what rclone printed.
-$token = @'
-{"access_token":"...","token_type":"Bearer","refresh_token":"...","expiry":"..."}
-'@
-$token | Out-File -Encoding utf8 -NoNewline "$env:TEMP\wasel-gdrive-token.json"
+# Authorize with the drive.file scope. The second argument is base64 of
+# {"scope":"drive.file"}, exactly as `rclone config create gdrive drive
+# scope=drive.file config_is_local=false` prints it.
+# This opens your browser: choose "Use another account", sign in with the
+# dedicated backup Google account, and click Allow.
+# With a scope argument, rclone prints the result as ONE base64 line between
+# "--->" and "<---End paste" (not raw JSON). The lines below capture it to a
+# file, decode it to the token JSON, and never print the token.
+& $rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ" > "$env:TEMP\rclone-auth.txt"
+$raw = [IO.File]::ReadAllText("$env:TEMP\rclone-auth.txt")
+if ($raw -notmatch '(?s)--->\s*(\S+?)\s*<---') { throw "no token block in rclone output" }
+$b = $Matches[1]; $b += ('=' * ((4 - $b.Length % 4) % 4))
+$token = ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b.Replace('-','+').Replace('_','/'))) | ConvertFrom-Json).token
+if (-not ($token | ConvertFrom-Json).refresh_token) { throw "token has no refresh_token" }
+[IO.File]::WriteAllText("$env:TEMP\wasel-gdrive-token.json", $token)
+Remove-Item "$env:TEMP\rclone-auth.txt"
 
 # Transfer to the server root home directory
 scp -i "$env:USERPROFILE\.ssh\wasel_ops" `
@@ -659,7 +663,7 @@ RCLONE_IMAGE="rclone/rclone:1.68.2@sha256:74c51b8817e5431bd6d7ed27cb2a50d8ee78d7
 docker run --rm \
   -v /etc/wasel/rclone:/config/rclone \
   "${RCLONE_IMAGE}" \
-  rclone config create gdrive drive \
+  config create gdrive drive \
     scope=drive.file \
     "token=$(cat /root/gdrive-token.json)" \
     --non-interactive
@@ -669,9 +673,9 @@ chmod 600 /etc/wasel/rclone/rclone.conf
 # Securely delete the token file — it's now in rclone.conf
 shred -u /root/gdrive-token.json
 
-# Verify the remote works
+# Verify the remote works (the image's entrypoint is already `rclone`)
 docker run --rm -v /etc/wasel/rclone:/config/rclone "${RCLONE_IMAGE}" \
-  rclone about gdrive:
+  about gdrive:
 ```
 
 The rclone config uses Google's own published OAuth client (built-in to rclone). Refresh tokens from the `drive.file` scope do not expire while the app grant is active. rclone stores the refreshed token in `/etc/wasel/rclone/rclone.conf` automatically on each run.
@@ -752,7 +756,7 @@ docker run --rm \
   -v /etc/wasel/rclone:/config/rclone \
   -v /root/backups:/data \
   "rclone/rclone:1.68.2@sha256:74c51b8817e5431bd6d7ed27cb2a50d8ee78d77f6807b72a41ef6f898845942b" \
-  rclone copy gdrive:wasel-backups/prod/daily/wasel-db-2026-11-06.dump.gpg /data/
+  copy gdrive:wasel-backups/prod/daily/wasel-db-2026-11-06.dump.gpg /data/
 
 # Run the restore drill — prints row counts, removes the throwaway container:
 /bin/bash /root/wasel/scripts/backup-restore.sh \

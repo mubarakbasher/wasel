@@ -17,7 +17,7 @@
 #       -v /etc/wasel/rclone:/config/rclone \
 #       -v /root/backups:/data \
 #       "rclone/rclone:1.68.2@sha256:74c51b8817e5431bd6d7ed27cb2a50d8ee78d77f6807b72a41ef6f898845942b" \
-#       rclone copy gdrive:wasel-backups/prod/daily/wasel-db-2026-11-06.dump.gpg /data/
+#       copy gdrive:wasel-backups/prod/daily/wasel-db-2026-11-06.dump.gpg /data/
 #
 # FLAGS
 #   --keep        Leave the throwaway container + volume for manual inspection.
