@@ -36,7 +36,16 @@
   - The accounting section now does `sql` then `if (noop) { ok }`. A real sql `fail` is still unanswered, so routers retry it.
   - Staging: `-XC` OK, and an Accounting-On with no sessions now gets an Accounting-Response.
 - **Open:**
-  - **Google Drive:** upload is waiting on the owner's new Google account and one sign-in.
+  - **Google Drive: proven on staging 11-06, then disconnected from it.**
+    - The owner signed in with the new backup account (15 GiB). The token went from their PC straight to staging and never passed through chat.
+    - With staging at `65a88c2` and `UPLOAD=1`, the real backup:
+      - uploaded both files and their `.sha256`s, and the free-space check read 15354 MB;
+      - pruned planted dummies down to exactly 7 daily and 4 weekly copies (`.sha256` included), with Drive trash at 0 B.
+    - A dump downloaded from Drive matched its `.sha256` and restored in a throwaway container (users 5, routers 4, voucher_meta 12,012).
+    - Afterwards `wasel-backups/staging` was purged from Drive, the staging token was shredded (`/etc/wasel/rclone/` is empty), and staging stays local-only (`UPLOAD=0`). Prod needs its own sign-in at install.
+    - **Gotcha:** staging's `/opt/wasel` had not been updated to `65a88c2`, so the first run hit the old "unknown command rclone" bug. Update staging's repo before testing a scripts-only fix.
+    - **Note:** the 11-06 01:15 staging timer run was skipped ("Another backup is already running") because the earlier, interrupted test still held the lock. That is the lock working as designed.
+    - **Still slow:** about 260 s for a few MB, because every rclone call is its own `docker run`.
   - **Peak evidence:** the peak sampler (plan step 2a) runs 11-06 about 07:52 UTC and may change the FreeRADIUS pool numbers.
   - **Hardcoded IP:** `10.10.0.1` still appears in router.service.ts, hotspotTemplate.service.ts and routerHealth.service.ts; the shared constant is now `WG_VPS_TUNNEL_IP` in wireguardConfig.ts.
   - **Login-log retention:** `radpostauth` has none and stores attempted passwords.
