@@ -61,6 +61,7 @@ Vouchers are RADIUS users (not Mikrotik-local hotspot users). Routers delegate a
 | Dashboard | `/dashboard/` |
 | Reports | `/reports/` (Pro/Ent tier-locked) |
 | Notifications | `/notifications/` |
+| Settings | `/settings/` |
 | Support | `/support/` |
 | Admin | `/admin/*` |
 | Public / Health | `/public/...`, `/health`, `/readyz` |

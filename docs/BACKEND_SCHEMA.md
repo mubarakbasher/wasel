@@ -40,7 +40,7 @@ Both the Node.js backend and the FreeRADIUS container read/write the RADIUS tabl
 
 - **Primary keys:** application tables use `UUID PRIMARY KEY DEFAULT uuid_generate_v4()`. The `uuid-ossp` and `pgcrypto` extensions are enabled in `backend/src/migrations/sql/001_extensions.sql`. (FreeRADIUS tables use `SERIAL`/`BIGSERIAL` integer keys, matching the upstream FreeRADIUS schema.) `system_settings` and `tunnel_subnets` are the exceptions: they use a natural key (`key VARCHAR(100)`) and an integer block index (`subnet_id`) respectively.
 - **Timestamps:** `TIMESTAMPTZ` everywhere; rows carry `created_at`/`updated_at` with `DEFAULT NOW()`.
-- **`updated_at` triggers:** the plpgsql function `update_updated_at_column()` (defined in `003_application_tables.sql`) is attached as a `BEFORE UPDATE` trigger to `users`, `subscriptions`, `routers`, `radius_profiles`, `voucher_meta`, `payments` (003), `device_tokens`, `notification_preferences` (005), and `plans` (008).
+- **`updated_at` triggers:** the plpgsql function `update_updated_at_column()` (defined in `003_application_tables.sql`) is attached as a `BEFORE UPDATE` trigger to `users`, `subscriptions`, `routers`, `radius_profiles`, `voucher_meta`, `payments` (003), `device_tokens`, `notification_preferences` (005), `plans` (008), and `user_print_settings` (043).
 - **Money:** `DECIMAL(10,2)`. Platform currency is **SDG** since migration `019_currency_sdg.sql` (column defaults changed and existing `USD` rows updated).
 - **Encrypted-at-rest columns** carry the `_enc` suffix and hold AES-256-GCM ciphertext in `iv:tag:ciphertext` format, all hex-encoded (`backend/src/utils/encryption.ts`; 16-byte IV, 16-byte auth tag). The key is the `ENCRYPTION_KEY` env var, validated by Zod as exactly 64 hex chars / 32 bytes (`backend/src/config/index.ts`).
 
@@ -89,6 +89,7 @@ There is no down-migration mechanism. Rollbacks are written as new forward migra
 | `022_voucher_nas_scope_backfill.sql` | NAS-IP-Address scoping back-fill *(reverted by 023)* |
 | `023_voucher_nas_scope_rollback.sql` | Deletes all `NAS-IP-Address ==` radcheck rows (RFC 2865 §5.4 — the AVP is NAS-self-reported, never matches the WG peer IP) |
 | `024_drop_router_provision_columns.sql` | Drops the 6 provision columns from `021` |
+| `043_user_print_settings.sql` | `user_print_settings` — per-operator voucher print settings (code length, template, knobs) |
 
 ---
 
@@ -105,6 +106,7 @@ erDiagram
     users ||--o{ payments : "CASCADE"
     users ||--o{ device_tokens : "CASCADE"
     users ||--o{ notification_preferences : "CASCADE"
+    users ||--o| user_print_settings : "CASCADE"
     users ||--o{ notifications : "CASCADE"
     users ||--o{ support_messages : "CASCADE"
     users ||--o{ audit_logs : "SET NULL admin_id"
@@ -183,6 +185,13 @@ erDiagram
     notification_preferences {
         uuid id PK
         uuid user_id FK
+    }
+    user_print_settings {
+        uuid user_id PK
+        smallint code_length
+        varchar template_id
+        smallint default_columns
+        jsonb knobs
     }
     notifications {
         uuid id PK
@@ -476,6 +485,19 @@ Created in `018_tunnel_subnet_pool.sql`. Pre-seeded pool of every /30 block in `
 - Reverse: `subnet_id = thirdOctet * 64 + (fourthOctet - 2) / 4` (used by the 018 back-fill).
 - Allocation is a single `UPDATE … WHERE subnet_id = (SELECT … WHERE router_id IS NULL ORDER BY subnet_id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING subnet_id`, executed inside the router-create transaction (`allocateNextTunnelIp`), so two concurrent creates can never claim the same block.
 
+### 3.15 `user_print_settings`
+
+Created in `043_user_print_settings.sql`. Per-operator voucher print settings — a 1:1 row keyed by `user_id`. Absent row means all defaults (Classic template, 8-digit codes, 4 columns). `code_length` is read on the voucher-creation hot path by `getCodeLength(userId)`.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `user_id` | UUID | **PRIMARY KEY**, FK → `users(id)` **ON DELETE CASCADE** | No surrogate key; one row per operator |
+| `code_length` | SMALLINT | NOT NULL, default 8, CHECK `BETWEEN 6 AND 12` | Applies to new batches only; existing vouchers are untouched |
+| `template_id` | VARCHAR(16) | NOT NULL, default `'classic'`, CHECK `IN ('classic','detailed','strips')` | Card template used at print time |
+| `default_columns` | SMALLINT | NOT NULL, default 4, CHECK `BETWEEN 2 AND 9` | Pre-fills the column slider on the print screen; ignored by Strips template (1 column) |
+| `knobs` | JSONB | NOT NULL, default `'{}'` | Flat settings bag: `headerText`, `footerText`, `hotspotAddress`, `showPrice`, `showQr`, `showBatch`, `stripsPerPage`. Absent keys fall back to defaults at read time |
+| `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, default now() | trigger-maintained |
+
 ---
 
 ## 4. FreeRADIUS Tables
@@ -568,7 +590,7 @@ Indexes: `username`, `acctsessionid`, `acctuniqueid`, `acctstarttime`, `acctstop
 
 | Deleting… | CASCADE deletes | SET NULL on | No action (delete blocked / dangling-safe) |
 |---|---|---|---|
-| a `users` row | `subscriptions`, `routers` (→ which cascades further), `radius_profiles`, `voucher_meta`, `payments`, `device_tokens`, `notification_preferences`, `notifications`, `support_messages` | `audit_logs.admin_id` | `payments.reviewed_by`, `system_settings.updated_by`, `support_messages.admin_id`, `subscriptions.previous_subscription_id` — plain FKs; a delete that would dangle them is rejected by PostgreSQL (RESTRICT-like default) |
+| a `users` row | `subscriptions`, `routers` (→ which cascades further), `radius_profiles`, `voucher_meta`, `payments`, `device_tokens`, `notification_preferences`, `user_print_settings`, `notifications`, `support_messages` | `audit_logs.admin_id` | `payments.reviewed_by`, `system_settings.updated_by`, `support_messages.admin_id`, `subscriptions.previous_subscription_id` — plain FKs; a delete that would dangle them is rejected by PostgreSQL (RESTRICT-like default) |
 | a `routers` row | `voucher_meta` rows for that router | `tunnel_subnets.router_id` (frees the /30 block) | — |
 | a `subscriptions` row | — | — | other subscriptions referencing it via `previous_subscription_id` block the delete |
 

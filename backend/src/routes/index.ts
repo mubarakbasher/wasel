@@ -9,6 +9,7 @@ import sessionRoutes from './session.routes';
 import dashboardRoutes from './dashboard.routes';
 import reportRoutes from './report.routes';
 import notificationRoutes from './notification.routes';
+import printSettingsRoutes from './printSettings.routes';
 import supportRoutes from './support.routes';
 import adminRoutes from './admin.routes';
 import { pool } from '../config/database';
@@ -104,6 +105,7 @@ router.use('/routers/:id/sessions', sessionRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/reports', reportRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/settings', printSettingsRoutes);
 router.use('/support', supportRoutes);
 router.use('/admin', adminRoutes);
 

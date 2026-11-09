@@ -6,6 +6,7 @@ import { decrypt } from '../utils/encryption';
 import { isSafeAcctSessionId, formatRadiusExpiration, parseRadiusExpiration } from '../utils/radius';
 import { sendDisconnectRequest } from './radclient.service';
 import { encodeCursor, decodeCursor, TimestampUuidCursor } from '../utils/cursor';
+import { getCodeLength } from './printSettings.service';
 
 // ----- Interfaces -----
 
@@ -593,6 +594,8 @@ export async function createVouchers(
   const count = data.count;
   const normalizedValue = normalizeLimit(data.limitValue, data.limitUnit);
 
+  const codeLength = await getCodeLength(userId);
+
   // Generate codes, regenerating any that collide with the shared global RADIUS namespace.
   // VOUCHER_CODE_TAKEN_SQL checks radcheck AND radacct: radacct rows outlive the deleted
   // card, so a reused code would inherit old session history and the validity-expiration
@@ -603,7 +606,7 @@ export async function createVouchers(
       [candidates],
     );
     return res.rows.map((r) => r.username);
-  });
+  }, { length: codeLength });
   const credentials: Array<{ username: string }> = usernames.map((username) => ({ username }));
 
   const client = await pool.connect();

@@ -4,6 +4,7 @@ import app from '../app';
 import { createVouchersSchema } from '../validators/voucher.validators';
 import { allocateVoucherUsernames, VOUCHER_CODE_TAKEN_SQL } from '../services/voucher.service';
 import { AppError } from '../middleware/errorHandler';
+import { DEFAULT_CODE_LENGTH } from '../validators/printSettings.validators';
 import {
   TEST_USER,
   authHeader,
@@ -97,6 +98,15 @@ function mockCheckQuotaQueries(mq: ReturnType<typeof vi.fn>, exhausted = false):
   mq.mockResolvedValueOnce({ rows: [] });
 }
 
+/**
+ * Mock the getCodeLength query that runs after verifyRouterOwnership on every
+ * POST /vouchers call. Must be inserted once per POST test, immediately after
+ * the verifyRouterOwnership mock and before the collision-check mock.
+ */
+function mockPrintSettingsQuery(mq: ReturnType<typeof vi.fn>, len = DEFAULT_CODE_LENGTH): void {
+  mq.mockResolvedValueOnce({ rows: [{ code_length: len }] });
+}
+
 // Suppress unused import warning for TEST_PROFILE_ID (legacy tests removed)
 void TEST_PROFILE_ID;
 
@@ -166,6 +176,8 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     mockCheckQuotaQueries(mockQuery);
     // verifyRouterOwnership returns tunnel_ip (used for ROUTER_NOT_READY guard)
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    // getCodeLength
+    mockPrintSettingsQuery(mockQuery);
     // username uniqueness check — not taken
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -208,6 +220,7 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     // Transaction (F3 batched layout with validitySeconds):
@@ -244,6 +257,75 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     expect(insertArgs).toContain('Session-Timeout');
     expect(insertArgs).toContain('86400');
   });
+
+  it('uses code_length=6 from print settings — radcheck usernames match /^\\d{6}$/', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockPrintSettingsQuery(mockQuery, 6); // getCodeLength → 6
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
+      .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 });
+
+    expect(res.status).toBe(201);
+
+    const radcheckInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radcheck'),
+    );
+    expect(radcheckInserts).toHaveLength(1);
+    const rcArgs = radcheckInserts[0][1] as unknown[];
+    // Cleartext-Password value is the generated username (index 1) — check format
+    const passwordIdx = (rcArgs as string[]).indexOf('Cleartext-Password');
+    expect(passwordIdx).toBeGreaterThan(-1);
+    const generatedUsername = rcArgs[passwordIdx - 1] as string;
+    expect(generatedUsername).toMatch(/^\d{6}$/);
+  });
+
+  it('uses code_length=12 from print settings — radcheck usernames match /^\\d{12}$/', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockPrintSettingsQuery(mockQuery, 12); // getCodeLength → 12
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
+      .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 });
+
+    expect(res.status).toBe(201);
+
+    const radcheckInserts = mockClientQuery.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radcheck'),
+    );
+    expect(radcheckInserts).toHaveLength(1);
+    const rcArgs = radcheckInserts[0][1] as unknown[];
+    const passwordIdx = (rcArgs as string[]).indexOf('Cleartext-Password');
+    expect(passwordIdx).toBeGreaterThan(-1);
+    const generatedUsername = rcArgs[passwordIdx - 1] as string;
+    expect(generatedUsername).toMatch(/^\d{12}$/);
+  });
 });
 
 // ─── allocateVoucherUsernames / collision-check SQL ──────────────────────────
@@ -268,6 +350,8 @@ describe('VOUCHER_CODE_TAKEN_SQL covers both radcheck and radacct', () => {
     mockCheckQuotaQueries(mockQuery);
     // verifyRouterOwnership
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    // getCodeLength
+    mockPrintSettingsQuery(mockQuery);
     // collision-check: no taken codes
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -286,7 +370,7 @@ describe('VOUCHER_CODE_TAKEN_SQL covers both radcheck and radacct', () => {
       .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 });
 
     // The uniqueness check is the 6th pool.query call (indices 0-4 are auth/quota/router).
-    const collisionCall = mockQuery.mock.calls[5];
+    const collisionCall = mockQuery.mock.calls[6];
     expect(collisionCall).toBeDefined();
     const sql: string = typeof collisionCall[0] === 'string'
       ? collisionCall[0]
@@ -623,6 +707,7 @@ describe('POST /api/v1/routers/:id/vouchers — F2 quota race regression', () =>
     mockSubscriptionQuery(mockQuery);  // requireSubscription
     mockCheckQuotaQueries(mockQuery);  // checkQuota pre-check passes
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockPrintSettingsQuery(mockQuery); // getCodeLength
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // Transaction: guarded UPDATE returns rowCount 0 (another request beat us)
@@ -699,6 +784,7 @@ describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => 
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery); // getCodeLength
     mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
 
     // Stub the transaction — guarded quota UPDATE succeeds, then batch inserts
@@ -734,6 +820,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockPrintSettingsQuery(mockQuery); // getCodeLength
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // Transaction:
@@ -771,7 +858,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     const insertArgs = radreplyInserts[0][1] as unknown[];
     // Row layout: [username, attribute, op, value] — first row starts at index 0
     expect(insertArgs.slice(0, 4)).toEqual([
-      expect.stringMatching(/^\d{8}$/),
+      expect.stringMatching(new RegExp(`^\\d{${DEFAULT_CODE_LENGTH}}$`)),
       'Mikrotik-Total-Limit',
       ':=',
       String(DATA_100MB),
@@ -805,6 +892,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockPrintSettingsQuery(mockQuery); // getCodeLength
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // Transaction:
@@ -843,13 +931,13 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     // Username is a randomly generated 8-digit code — assert structure, not the exact value.
     const insertArgs = radreplyInserts[0][1] as unknown[];
     expect(insertArgs.slice(0, 4)).toEqual([
-      expect.stringMatching(/^\d{8}$/),
+      expect.stringMatching(new RegExp(`^\\d{${DEFAULT_CODE_LENGTH}}$`)),
       'Mikrotik-Total-Limit',
       ':=',
       String(LOW_WORD),
     ]);
     expect(insertArgs.slice(4, 8)).toEqual([
-      expect.stringMatching(/^\d{8}$/),
+      expect.stringMatching(new RegExp(`^\\d{${DEFAULT_CODE_LENGTH}}$`)),
       'Mikrotik-Total-Limit-Gigawords',
       ':=',
       String(GIGAWORDS),
@@ -878,6 +966,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
+    mockPrintSettingsQuery(mockQuery); // getCodeLength
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // Transaction:
@@ -915,14 +1004,14 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     const insertArgs = radreplyInserts[0][1] as unknown[];
     // Row 0: Session-Timeout
     expect(insertArgs.slice(0, 4)).toEqual([
-      expect.stringMatching(/^\d{8}$/),
+      expect.stringMatching(new RegExp(`^\\d{${DEFAULT_CODE_LENGTH}}$`)),
       'Session-Timeout',
       ':=',
       String(VALIDITY),
     ]);
     // Row 1: Mikrotik-Total-Limit (lowWord == DATA_200MB for ≤4 GB)
     expect(insertArgs.slice(4, 8)).toEqual([
-      expect.stringMatching(/^\d{8}$/),
+      expect.stringMatching(new RegExp(`^\\d{${DEFAULT_CODE_LENGTH}}$`)),
       'Mikrotik-Total-Limit',
       ':=',
       String(DATA_200MB),
@@ -949,6 +1038,7 @@ describe('POST /api/v1/routers/:id/vouchers — Packet-Src-IP-Address router sco
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockOwnership(mockQuery, TUNNEL_IP);
+    mockPrintSettingsQuery(mockQuery); // getCodeLength
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // 3 time vouchers — BEGIN + UPDATE + INSERT voucher_meta + INSERT radcheck + COMMIT
@@ -1001,6 +1091,7 @@ describe('POST /api/v1/routers/:id/vouchers — Packet-Src-IP-Address router sco
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockOwnership(mockQuery, TUNNEL_IP);
+    mockPrintSettingsQuery(mockQuery); // getCodeLength
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     const DATA_100MB = 100 * 1024 * 1024;
@@ -1102,6 +1193,35 @@ describe('allocateVoucherUsernames', () => {
         err.code === 'USERNAME_TAKEN'
       );
     });
+  });
+
+  it('generates 6-digit codes when { length: 6 }', async () => {
+    const usernameExists = vi.fn().mockResolvedValue([]);
+    const result = await allocateVoucherUsernames(5, usernameExists, { length: 6 });
+
+    expect(result).toHaveLength(5);
+    for (const code of result) {
+      expect(code).toMatch(/^\d{6}$/);
+    }
+  });
+
+  it('generates 12-digit codes when { length: 12 }', async () => {
+    const usernameExists = vi.fn().mockResolvedValue([]);
+    const result = await allocateVoucherUsernames(5, usernameExists, { length: 12 });
+
+    expect(result).toHaveLength(5);
+    for (const code of result) {
+      expect(code).toMatch(/^\d{12}$/);
+    }
+  });
+
+  it('defaults to 8-digit codes when opts omitted', async () => {
+    const usernameExists = vi.fn().mockResolvedValue([]);
+    const result = await allocateVoucherUsernames(3, usernameExists);
+
+    for (const code of result) {
+      expect(code).toMatch(/^\d{8}$/);
+    }
   });
 });
 
