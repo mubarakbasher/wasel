@@ -381,6 +381,55 @@ describe('VOUCHER_CODE_TAKEN_SQL covers both radcheck and radacct', () => {
   });
 });
 
+// ─── POST fail-open: print-settings DB error must not block voucher creation ──
+
+describe('POST /api/v1/routers/:id/vouchers — print settings fail-open', () => {
+  const validBody = { limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 };
+
+  it('creates batch with DEFAULT_CODE_LENGTH codes when getCodeLength rejects', async () => {
+    // requireSubscription (2 queries)
+    mockSubscriptionQuery(mockQuery);
+    // checkQuota (2 queries)
+    mockCheckQuotaQueries(mockQuery);
+    // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    // getCodeLength — DB error (fail-open: should NOT abort the request)
+    mockQuery.mockRejectedValueOnce(new Error('boom'));
+    // username uniqueness check — not taken
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                        // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 11 }], rowCount: 1 }) // UPDATE subscriptions
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })     // INSERT voucher_meta
+      .mockResolvedValueOnce(undefined)                        // INSERT radcheck
+      .mockResolvedValueOnce(undefined);                       // COMMIT
+
+    // Batch enrichment (3 parallel queries)
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+
+    // Verify the generated username has DEFAULT_CODE_LENGTH (8) characters.
+    const insertCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('voucher_meta'),
+    );
+    expect(insertCall).toBeDefined();
+    // The inserted username is the second parameter in the batch INSERT.
+    const insertParams = insertCall![1] as unknown[];
+    // The flat params array: userId, router_id, username, group_profile, comment, ...
+    // Locate the username — it is the 3rd param (index 2).
+    const username = insertParams[2] as string;
+    expect(username).toHaveLength(DEFAULT_CODE_LENGTH);
+  });
+});
+
 describe('allocateVoucherUsernames regenerates taken codes', () => {
   it('a code returned by usernameExists does not appear in the final batch', async () => {
     // First call: report code[0] as taken; second call: all clear.

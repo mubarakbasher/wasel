@@ -33,7 +33,7 @@ function rowToSettings(row: {
   // Row has drifted (e.g. old templateId value not in new enum). Log and fall back
   // to defaults so the app never sees an invalid document.
   logger.warn('printSettings row failed schema validation, falling back to defaults', {
-    errors: result.error.issues,
+    errors: result.error.issues.map((i) => ({ path: i.path, code: i.code })),
   });
 
   // Try per-field recovery: use the raw value when valid, default otherwise.
@@ -116,7 +116,9 @@ export async function upsertPrintSettings(
 
 /**
  * Retrieve only the code length for voucher generation.
- * Returns DEFAULT_CODE_LENGTH when no row exists.
+ * Returns DEFAULT_CODE_LENGTH when no row exists AND on any query error,
+ * so a problem with the optional user_print_settings table can never block
+ * voucher creation (fail-open by design).
  * Kept lightweight — this is on the voucher-creation hot path.
  */
 export async function getCodeLength(userId: string): Promise<number> {
@@ -132,7 +134,7 @@ export async function getCodeLength(userId: string): Promise<number> {
 
     return result.rows[0].code_length;
   } catch (error) {
-    logger.error('Failed to get code length', { error, userId });
-    throw error;
+    logger.error('Failed to get code length, falling back to default', { error, userId });
+    return DEFAULT_CODE_LENGTH;
   }
 }

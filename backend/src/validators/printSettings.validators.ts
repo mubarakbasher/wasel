@@ -6,14 +6,30 @@ export const MIN_CODE_LENGTH = 6;
 export const MAX_CODE_LENGTH = 12;
 export const DEFAULT_CODE_LENGTH = 8;
 
+const SAFE_TEXT_RE = /^[^\p{C}‪-‮⁦-⁩]*$/u;
+
 export const printKnobsSchema = z
   .object({
-    headerText: z.string().trim().max(60).default(''),
-    footerText: z.string().max(120).default(''),
+    headerText: z
+      .string()
+      .trim()
+      .max(60)
+      .regex(SAFE_TEXT_RE, 'Invalid characters')
+      .default(''),
+    footerText: z
+      .string()
+      .trim()
+      .max(120)
+      .regex(SAFE_TEXT_RE, 'Invalid characters')
+      .default(''),
     hotspotAddress: z
       .string()
+      .trim()
       .max(100)
-      .regex(/^[A-Za-z0-9.\-_/:]*$/, 'Invalid hotspot address')
+      .regex(
+        /^$|^(?=.{1,100}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*(:\d{1,5})?(\/[A-Za-z0-9._~\-\/]*)?$/,
+        'Invalid hotspot address',
+      )
       .default(''),
     showPrice: z.boolean().default(false),
     showQr: z.boolean().default(false),

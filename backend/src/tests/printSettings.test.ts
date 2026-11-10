@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app';
-import { authHeader } from './helpers';
+import { authHeader, authHeaderFor, TEST_USER, TEST_USER_2 } from './helpers';
 import { DEFAULT_PRINT_SETTINGS, DEFAULT_CODE_LENGTH } from '../validators/printSettings.validators';
 import { getCodeLength } from '../services/printSettings.service';
 
@@ -276,5 +276,173 @@ describe('getCodeLength service — unit tests', () => {
     const result = await getCodeLength('test-user-id');
 
     expect(result).toBe(10);
+  });
+
+  it('returns DEFAULT_CODE_LENGTH (fail-open) when pool.query rejects', async () => {
+    mockQuery.mockRejectedValueOnce(new Error('DB connection lost'));
+
+    const result = await getCodeLength('test-user-id');
+
+    expect(result).toBe(DEFAULT_CODE_LENGTH);
+  });
+});
+
+// ─── Cross-user isolation ─────────────────────────────────────────────────────
+
+describe('GET /api/v1/settings/print — cross-user isolation', () => {
+  it('passes user-a id as the SQL parameter for GET', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await request(app)
+      .get('/api/v1/settings/print')
+      .set(authHeaderFor(TEST_USER));
+
+    expect(mockQuery).toHaveBeenCalledOnce();
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params[0]).toBe(TEST_USER.userId);
+  });
+
+  it('passes user-b id as the SQL parameter for GET', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await request(app)
+      .get('/api/v1/settings/print')
+      .set(authHeaderFor(TEST_USER_2));
+
+    expect(mockQuery).toHaveBeenCalledOnce();
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params[0]).toBe(TEST_USER_2.userId);
+  });
+
+  it('passes user-a id as the SQL parameter for PUT', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ code_length: 8, template_id: 'classic', default_columns: 4, knobs: {} }],
+    });
+
+    await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeaderFor(TEST_USER))
+      .send(DEFAULT_PRINT_SETTINGS);
+
+    expect(mockQuery).toHaveBeenCalledOnce();
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params[0]).toBe(TEST_USER.userId);
+  });
+
+  it('passes user-b id as the SQL parameter for PUT', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ code_length: 8, template_id: 'classic', default_columns: 4, knobs: {} }],
+    });
+
+    await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeaderFor(TEST_USER_2))
+      .send(DEFAULT_PRINT_SETTINGS);
+
+    expect(mockQuery).toHaveBeenCalledOnce();
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params[0]).toBe(TEST_USER_2.userId);
+  });
+});
+
+// ─── Knobs validation — bidi/control characters and newlines ──────────────────
+
+describe('PUT /api/v1/settings/print — bidi and control character rejections', () => {
+  it('rejects headerText containing a U+202E bidi override', async () => {
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({
+        ...DEFAULT_PRINT_SETTINGS,
+        knobs: { ...DEFAULT_PRINT_SETTINGS.knobs, headerText: 'Hello‮World' },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('rejects footerText containing a newline character', async () => {
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({
+        ...DEFAULT_PRINT_SETTINGS,
+        knobs: { ...DEFAULT_PRINT_SETTINGS.knobs, footerText: 'line1\nline2' },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+// ─── hotspotAddress validation ────────────────────────────────────────────────
+
+describe('PUT /api/v1/settings/print — hotspotAddress validation', () => {
+  async function putAddress(hotspotAddress: string) {
+    return request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({
+        ...DEFAULT_PRINT_SETTINGS,
+        knobs: { ...DEFAULT_PRINT_SETTINGS.knobs, hotspotAddress },
+      });
+  }
+
+  it('rejects ":::"', async () => {
+    const res = await putAddress(':::');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects "/../x"', async () => {
+    const res = await putAddress('/../x');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects "a..b"', async () => {
+    const res = await putAddress('a..b');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects "-bad.com"', async () => {
+    const res = await putAddress('-bad.com');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('accepts "wifi.myshop.net"', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ code_length: 8, template_id: 'classic', default_columns: 4, knobs: { hotspotAddress: 'wifi.myshop.net' } }],
+    });
+    const res = await putAddress('wifi.myshop.net');
+    expect(res.status).toBe(200);
+  });
+
+  it('accepts "hotspot.local:8080"', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ code_length: 8, template_id: 'classic', default_columns: 4, knobs: { hotspotAddress: 'hotspot.local:8080' } }],
+    });
+    const res = await putAddress('hotspot.local:8080');
+    expect(res.status).toBe(200);
+  });
+
+  it('accepts "wifi.shop.net/login"', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ code_length: 8, template_id: 'classic', default_columns: 4, knobs: { hotspotAddress: 'wifi.shop.net/login' } }],
+    });
+    const res = await putAddress('wifi.shop.net/login');
+    expect(res.status).toBe(200);
+  });
+
+  it('accepts empty string ""', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ code_length: 8, template_id: 'classic', default_columns: 4, knobs: { hotspotAddress: '' } }],
+    });
+    const res = await putAddress('');
+    expect(res.status).toBe(200);
   });
 });
