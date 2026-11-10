@@ -5,127 +5,56 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+// Re-export grid helpers so existing callers keep working unchanged.
+export 'print/grid_layout.dart'
+    show
+        VoucherGridLayout,
+        voucherGridLayoutFor,
+        voucherPdfPageCount,
+        voucherCardPadding,
+        voucherCodeLetterSpacing,
+        kMinPrintColumns,
+        kMaxPrintColumns;
+
+import 'print/grid_layout.dart';
+import 'print/card_template.dart';
+import 'print/template_registry.dart';
+import '../models/print_settings.dart';
+
 // ---------------------------------------------------------------------------
-// Grid layout constants — shared by [voucherGridLayoutFor] and the PDF builder.
+// VoucherPrintItem — public DTO
 // ---------------------------------------------------------------------------
-
-const double _kMarginH = 16;
-const double _kMarginV = 16;
-const double _kGutterH = 4;
-const double _kGutterV = 3;
-
-/// Minimum column count the print slider exposes to operators.
-const int kMinPrintColumns = 2;
-
-/// Maximum column count the print slider exposes to operators.
-const int kMaxPrintColumns = 9;
-
-// ---------------------------------------------------------------------------
-// Public grid-math API
-// ---------------------------------------------------------------------------
-
-/// Computed voucher-card dimensions and row count for an A4 page with
-/// [columns] columns, using the standard Wasel print margins (16 pt all sides)
-/// and gutters (horizontal 4 pt, vertical 3 pt).
-///
-/// All measurements are in PDF user-space points (72 pt = 1 inch).
-class VoucherGridLayout {
-  /// Card width in points.
-  final double cardW;
-
-  /// Card height in points, clamped to the range [56, 150] pt.
-  final double cardH;
-
-  /// Number of card rows that fit on a single A4 page.
-  final int rows;
-
-  /// Column count used to construct this layout.
-  final int columns;
-
-  const VoucherGridLayout({
-    required this.cardW,
-    required this.cardH,
-    required this.rows,
-    required this.columns,
-  });
-
-  /// Number of voucher cards that fit on one A4 page.
-  int get perPage => rows * columns;
-}
-
-/// Returns the [VoucherGridLayout] for an A4 page with [columns] columns and
-/// the standard Wasel print margins and gutters.
-///
-/// This is the single source of truth for card/row math — both the preview
-/// page-cap logic and the PDF builder call this function.
-VoucherGridLayout voucherGridLayoutFor(int columns) {
-  final pageFormat = PdfPageFormat.a4.copyWith(
-    marginLeft: _kMarginH,
-    marginRight: _kMarginH,
-    marginTop: _kMarginV,
-    marginBottom: _kMarginV,
-  );
-
-  final double usableW = pageFormat.availableWidth;
-  final double usableH = pageFormat.availableHeight;
-
-  final double cardW = (usableW - _kGutterH * (columns - 1)) / columns;
-  final double cardH = (cardW * 0.62).clamp(56.0, 150.0);
-  final int rows = ((usableH + _kGutterV) / (cardH + _kGutterV)).floor();
-
-  return VoucherGridLayout(
-    cardW: cardW,
-    cardH: cardH,
-    rows: rows,
-    columns: columns,
-  );
-}
-
-/// Returns the total number of A4 pages in a voucher PDF that contains
-/// [itemCount] items arranged in [columns] columns.
-///
-/// Returns 0 when [itemCount] is zero or negative.
-int voucherPdfPageCount(int itemCount, int columns) {
-  if (itemCount <= 0) return 0;
-  final perPage = voucherGridLayoutFor(columns).perPage;
-  return (itemCount / perPage).ceil();
-}
-
-/// Returns the horizontal/vertical card padding (in points) for [columns] columns.
-///
-/// Gives 6, 5.5, 5, 4.5, 4 pt at 2–6 columns (unchanged from prior behaviour)
-/// and continues to decrease to 2.5 pt at 9 columns.
-double voucherCardPadding(int columns) =>
-    (6 - (columns - 2) * 0.5).clamp(2.5, 6.0);
-
-/// Returns the letter spacing (in points) for the voucher code at [columns] columns.
-///
-/// Stays at 1 pt for 2–6 columns (matching prior behaviour) and decreases to
-/// 0.4 pt at 9 columns to keep 8-digit codes legible in narrower cards.
-double voucherCodeLetterSpacing(int columns) =>
-    (1 - (columns - 6) * 0.2).clamp(0.4, 1.0);
 
 /// Immutable data transfer object passed to [PrintService.generateVouchersPdf].
-///
-/// Keeping the service context-free means callers resolve all l10n strings
-/// before calling the service, and the service itself remains pure/testable.
 class VoucherPrintItem {
   final String code;
 
-  /// Localized limit string (e.g. '2 GB', '30 دقيقة', 'Basic').
-  /// `null` means the voucher has no meaningful limit — the cell and its
-  /// separator are omitted from the info row.
+  /// Localized limit string; `null` omits the cell and its separator.
   final String? limitText;
 
-  /// Localized validity string (e.g. '3 days', 'مفتوح').
+  /// Localized validity string.
   final String validityText;
+
+  /// Optional localized price string (e.g. "10 USD"). Shown when knob
+  /// `showPrice` is true. If null, the price line/pill is hidden regardless
+  /// of the knob.
+  final String? priceText;
+
+  /// Optional batch label derived from `createdAt` (e.g. "261101-1430").
+  final String? batchLabel;
 
   const VoucherPrintItem({
     required this.code,
     this.limitText,
     required this.validityText,
+    this.priceText,
+    this.batchLabel,
   });
 }
+
+// ---------------------------------------------------------------------------
+// VoucherPdfJob — plain-data job for compute()
+// ---------------------------------------------------------------------------
 
 /// Plain-data job passed to [compute] for isolate-offloaded PDF generation.
 class VoucherPdfJob {
@@ -135,9 +64,17 @@ class VoucherPdfJob {
   final Uint8List cairoRegular;
   final Uint8List cairoBold;
 
-  /// Optional PDF document title shown in viewer title bars and share sheets.
-  /// Defaults to `'Wasel Vouchers'` when `null`.
+  /// Optional PDF document title.
   final String? docTitle;
+
+  /// Wire name of the template to use ('classic' | 'detailed' | 'strips').
+  final String templateId;
+
+  /// Raw knob values; parsed into [PrintKnobs] inside the isolate.
+  final Map<String, dynamic> knobs;
+
+  /// Localized default footer / how-to string.
+  final String howToDefault;
 
   const VoucherPdfJob({
     required this.items,
@@ -146,62 +83,185 @@ class VoucherPdfJob {
     required this.cairoRegular,
     required this.cairoBold,
     this.docTitle,
+    this.templateId = 'classic',
+    this.knobs = const {},
+    this.howToDefault = '',
   });
 }
 
+// ---------------------------------------------------------------------------
+// Top-level entry point for compute()
+// ---------------------------------------------------------------------------
+
 /// Top-level entry point for [compute] — must be a top-level function.
 Future<Uint8List> buildVouchersPdfJob(VoucherPdfJob job) {
-  final builder = _VouchersPdfBuilder(
-    cairo: pw.Font.ttf(job.cairoRegular.buffer.asByteData(
-      job.cairoRegular.offsetInBytes,
-      job.cairoRegular.lengthInBytes,
-    )),
-    cairoBold: pw.Font.ttf(job.cairoBold.buffer.asByteData(
-      job.cairoBold.offsetInBytes,
-      job.cairoBold.lengthInBytes,
-    )),
+  final cairo = pw.Font.ttf(job.cairoRegular.buffer.asByteData(
+    job.cairoRegular.offsetInBytes,
+    job.cairoRegular.lengthInBytes,
+  ));
+  final cairoBold = pw.Font.ttf(job.cairoBold.buffer.asByteData(
+    job.cairoBold.offsetInBytes,
+    job.cairoBold.lengthInBytes,
+  ));
+
+  final knobs = PrintKnobs.fromJson(job.knobs);
+  final templateId = VoucherTemplateId.fromWire(job.templateId);
+  final template = templateFor(templateId);
+
+  final style = PrintStyle(
+    businessName: job.businessName,
+    knobs: knobs,
+    cairo: cairo,
+    cairoBold: cairoBold,
+    howToDefault: job.howToDefault,
   );
-  return builder.build(job.items, job.businessName, columns: job.columns, docTitle: job.docTitle);
+
+  final builder = _VouchersPdfBuilder(template: template, style: style);
+  return builder.build(
+    job.items,
+    columns: job.columns,
+    docTitle: job.docTitle,
+    knobs: knobs,
+  );
 }
 
-// Arabic Unicode block + Arabic Supplement + Arabic Extended-A + Arabic
-// Presentation Forms. If the string contains any of these, we must render it
-// RTL so the pdf package runs Arabic glyph shaping (joining initial/medial/
-// final forms). Without this, Arabic letters stay as isolated shapes.
-final _arabicRegex =
-    RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
+// ---------------------------------------------------------------------------
+// SampleCardJob — single-card thumbnail PDF for compute()
+// ---------------------------------------------------------------------------
+
+/// Plain-data job for rendering one voucher card as its own tiny PDF page.
+/// Used by [DefaultThumbnailRenderer] to produce crisp template thumbnails.
+class SampleCardJob {
+  final VoucherPrintItem item;
+  final String businessName;
+  final Uint8List cairoRegular;
+  final Uint8List cairoBold;
+  final String templateId;
+  final Map<String, dynamic> knobs;
+  final String howToDefault;
+
+  const SampleCardJob({
+    required this.item,
+    required this.businessName,
+    required this.cairoRegular,
+    required this.cairoBold,
+    this.templateId = 'classic',
+    this.knobs = const {},
+    this.howToDefault = '',
+  });
+}
+
+/// Top-level entry point for [compute] — builds a single-page PDF whose page
+/// dimensions equal the card itself plus a 4-point margin on all sides.
+Future<Uint8List> buildSampleCardJob(SampleCardJob job) async {
+  final cairo = pw.Font.ttf(job.cairoRegular.buffer.asByteData(
+    job.cairoRegular.offsetInBytes,
+    job.cairoRegular.lengthInBytes,
+  ));
+  final cairoBold = pw.Font.ttf(job.cairoBold.buffer.asByteData(
+    job.cairoBold.offsetInBytes,
+    job.cairoBold.lengthInBytes,
+  ));
+
+  final knobs = PrintKnobs.fromJson(job.knobs);
+  final templateId = VoucherTemplateId.fromWire(job.templateId);
+  final template = templateFor(templateId);
+
+  // Use 2 columns for Classic/Detailed; Strips uses its own layoutFor.
+  const int thumbColumns = 2;
+  final layout = template.layoutFor(thumbColumns, knobs);
+  final double cardW = layout.cardW;
+  final double cardH = layout.cardH;
+
+  const double margin = 4;
+  final pageFormat = PdfPageFormat(
+    cardW + margin * 2,
+    cardH + margin * 2,
+    marginAll: margin,
+  );
+
+  final style = PrintStyle(
+    businessName: job.businessName,
+    knobs: knobs,
+    cairo: cairo,
+    cairoBold: cairoBold,
+    howToDefault: job.howToDefault,
+  );
+
+  final ctx = CardContext(
+    item: VoucherCardItem(
+      code: job.item.code,
+      limitText: job.item.limitText,
+      validityText: job.item.validityText,
+      priceText: job.item.priceText,
+      batchLabel: job.item.batchLabel,
+    ),
+    style: style,
+    w: cardW,
+    h: cardH,
+    columns: layout.columns,
+  );
+
+  final doc = pw.Document(title: 'Wasel Card Sample', author: 'Wasel');
+  doc.addPage(
+    pw.Page(
+      pageFormat: pageFormat,
+      build: (_) => template.buildCard(ctx),
+    ),
+  );
+
+  return doc.save();
+}
+
+// ---------------------------------------------------------------------------
+// Page-count helper (template-aware)
+// ---------------------------------------------------------------------------
+
+/// Returns the total number of A4 pages for [itemCount] items using the given
+/// [settings]. For Classic/Detailed uses the standard grid; for Strips uses
+/// stripsPerPage.
+int voucherPdfPageCountFor(
+  int itemCount,
+  int columns,
+  PrintSettings settings,
+) {
+  if (itemCount <= 0) return 0;
+  final template = templateFor(settings.templateId);
+  final layout = template.layoutFor(columns, settings.knobs);
+  return (itemCount / layout.perPage).ceil();
+}
+
+// ---------------------------------------------------------------------------
+// Internal PDF builder
+// ---------------------------------------------------------------------------
 
 class _VouchersPdfBuilder {
-  final pw.Font cairo;
-  final pw.Font cairoBold;
+  final VoucherCardTemplate template;
+  final PrintStyle style;
 
-  _VouchersPdfBuilder({required this.cairo, required this.cairoBold});
-
-  bool _hasArabic(String s) => _arabicRegex.hasMatch(s);
-
-  pw.TextDirection _direction(String s) =>
-      _hasArabic(s) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
+  _VouchersPdfBuilder({required this.template, required this.style});
 
   Future<Uint8List> build(
-    List<VoucherPrintItem> items,
-    String businessName, {
+    List<VoucherPrintItem> items, {
     int columns = 4,
     String? docTitle,
+    required PrintKnobs knobs,
   }) async {
     final doc = pw.Document(title: docTitle ?? 'Wasel Vouchers', author: 'Wasel');
 
     final pageFormat = PdfPageFormat.a4.copyWith(
-      marginLeft: _kMarginH,
-      marginRight: _kMarginH,
-      marginTop: _kMarginV,
-      marginBottom: _kMarginV,
+      marginLeft: kPrintMarginH,
+      marginRight: kPrintMarginH,
+      marginTop: kPrintMarginV,
+      marginBottom: kPrintMarginV,
     );
 
-    final layout = voucherGridLayoutFor(columns);
+    final layout = template.layoutFor(columns, knobs);
     final double cardW = layout.cardW;
     final double cardH = layout.cardH;
     final int rows = layout.rows;
     final int perPage = layout.perPage;
+    final int effectiveColumns = layout.columns;
 
     for (int p = 0; p * perPage < items.length; p++) {
       final start = p * perPage;
@@ -213,13 +273,12 @@ class _VouchersPdfBuilder {
           pageFormat: pageFormat,
           build: (_) => _buildGrid(
             pageItems,
-            businessName,
-            columns: columns,
+            columns: effectiveColumns,
             rows: rows,
             cardW: cardW,
             cardH: cardH,
-            gutterH: _kGutterH,
-            gutterV: _kGutterV,
+            gutterH: kPrintGutterH,
+            gutterV: kPrintGutterV,
           ),
         ),
       );
@@ -229,8 +288,7 @@ class _VouchersPdfBuilder {
   }
 
   pw.Widget _buildGrid(
-    List<VoucherPrintItem> items,
-    String businessName, {
+    List<VoucherPrintItem> items, {
     required int columns,
     required int rows,
     required double cardW,
@@ -245,10 +303,24 @@ class _VouchersPdfBuilder {
       for (int c = 0; c < columns; c++) {
         final idx = r * columns + c;
         if (idx < items.length) {
+          final item = items[idx];
+          final ctx = CardContext(
+            item: VoucherCardItem(
+              code: item.code,
+              limitText: item.limitText,
+              validityText: item.validityText,
+              priceText: item.priceText,
+              batchLabel: item.batchLabel,
+            ),
+            style: style,
+            w: cardW,
+            h: cardH,
+            columns: columns,
+          );
           cards.add(pw.SizedBox(
             width: cardW,
             height: cardH,
-            child: _buildCard(items[idx], businessName, cardW, cardH, columns),
+            child: template.buildCard(ctx),
           ));
         } else {
           cards.add(pw.SizedBox(width: cardW, height: cardH));
@@ -261,123 +333,11 @@ class _VouchersPdfBuilder {
 
     return pw.Column(children: rowWidgets);
   }
-
-  pw.Widget _buildCard(
-    VoucherPrintItem item,
-    String businessName,
-    double w,
-    double h,
-    int columns,
-  ) {
-    // Responsive sizing — legible at every column count (2–9).
-    // At 6 cols: 7pt header / 10pt code / 6.6pt info (~50pt inner height).
-    final double headerFs = (11 - (columns - 2) * 1.0).clamp(7.0, 11.0);
-    final double codeFs = (16 - (columns - 2) * 1.5).clamp(10.0, 16.0);
-    final double infoFs = (9 - (columns - 2) * 0.6).clamp(6.6, 9.0);
-    final double pad = voucherCardPadding(columns);
-    final double codeLetterSpacing = voucherCodeLetterSpacing(columns);
-
-    return pw.Container(
-      width: w,
-      height: h,
-      padding: pw.EdgeInsets.symmetric(horizontal: pad, vertical: pad * 0.75),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.black, width: 0.7),
-        borderRadius: pw.BorderRadius.circular(3),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          // Header: bold business name, shrinks to fit — never clips.
-          // The height must be bounded: the stretched column fixes this box's
-          // width, and pdf's FittedBox sizes itself preserving the child's
-          // aspect ratio — an unbounded short name would balloon the header
-          // height and starve the body below it.
-          pw.SizedBox(
-            height: headerFs * 2.4,
-            child: pw.FittedBox(
-              fit: pw.BoxFit.scaleDown,
-              child: pw.Directionality(
-                textDirection: _direction(businessName),
-                child: pw.Text(
-                  businessName,
-                  style: pw.TextStyle(
-                    fontSize: headerFs,
-                    font: cairoBold,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          pw.SizedBox(height: pad * 0.4),
-          pw.Container(height: 0.8, color: PdfColors.black), // rule under header
-          pw.Expanded(
-            child: pw.Column(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
-              children: [
-                // Hero code — bold monospace, shrinks to fit one line
-                pw.FittedBox(
-                  fit: pw.BoxFit.scaleDown,
-                  child: pw.Text(
-                    item.code,
-                    style: pw.TextStyle(
-                      fontSize: codeFs,
-                      font: pw.Font.courierBold(),
-                      fontWeight: pw.FontWeight.bold,
-                      letterSpacing: codeLetterSpacing,
-                      fontFallback: [cairo],
-                    ),
-                  ),
-                ),
-                // Info line: [limit | ] validity — the whole row scales as one unit
-                pw.FittedBox(
-                  fit: pw.BoxFit.scaleDown,
-                  child: pw.Row(
-                    mainAxisSize: pw.MainAxisSize.min,
-                    children: [
-                      if (item.limitText != null) ...[
-                        pw.Directionality(
-                          textDirection: _direction(item.limitText!),
-                          child: pw.Text(
-                            item.limitText!,
-                            style: pw.TextStyle(
-                              fontSize: infoFs,
-                              font: cairoBold,
-                              fontWeight: pw.FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        pw.Container(
-                          width: 0.6,
-                          height: infoFs * 1.1,
-                          color: PdfColors.black,
-                          margin: pw.EdgeInsets.symmetric(
-                            horizontal: infoFs * 0.6,
-                          ),
-                        ),
-                      ],
-                      pw.Directionality(
-                        textDirection: _direction(item.validityText),
-                        child: pw.Text(
-                          item.validityText,
-                          style: pw.TextStyle(
-                            fontSize: infoFs,
-                            font: cairo,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
+
+// ---------------------------------------------------------------------------
+// PrintService
+// ---------------------------------------------------------------------------
 
 class PrintService {
   /// Optional [loadAsset] overrides the default [rootBundle.load], allowing
@@ -390,14 +350,11 @@ class PrintService {
   Uint8List? _cairoBytes;
   Uint8List? _cairoBoldBytes;
 
-  // Single in-flight Future so concurrent callers share one load and the
-  // race-condition "check → await → assign → check" is impossible.
+  // Single in-flight Future so concurrent callers share one load.
   Future<void>? _fontLoad;
 
   Future<void> _ensureFontBytes() {
     return _fontLoad ??= _loadFontBytes().catchError((Object e, StackTrace s) {
-      // Transient asset failure stays retryable: clear the memo so the next
-      // caller attempts the load again rather than replaying the cached error.
       _fontLoad = null;
       Error.throwWithStackTrace(e, s);
     });
@@ -412,19 +369,24 @@ class PrintService {
         bold.buffer.asUint8List(bold.offsetInBytes, bold.lengthInBytes);
   }
 
-  /// Generate an A4 PDF with voucher cards arranged in a configurable grid.
+  /// Generate an A4 PDF with voucher cards.
   ///
-  /// [docTitle] sets the PDF document title shown in viewer title bars and
-  /// share-sheet previews. When `null` (the default), falls back to the static
-  /// `'Wasel Vouchers'` string. Pass `context.tr('vouchers.pdfDocTitle')` from
-  /// the calling screen so the title is localised.
+  /// [settings] drives the template, knobs, and default columns. When `null`
+  /// (the legacy default) the Classic template with default knobs is used —
+  /// producing byte-identical output to the pre-template implementation when
+  /// [priceText] and [batchLabel] are absent from every item.
   Future<Uint8List> generateVouchersPdf(
     List<VoucherPrintItem> items,
     String businessName, {
     int columns = 4,
     String? docTitle,
+    PrintSettings? settings,
+    String? howToDefault,
   }) async {
     await _ensureFontBytes();
+
+    final s = settings ?? const PrintSettings();
+
     return compute(
       buildVouchersPdfJob,
       VoucherPdfJob(
@@ -434,8 +396,38 @@ class PrintService {
         cairoRegular: _cairoBytes!,
         cairoBold: _cairoBoldBytes!,
         docTitle: docTitle,
+        templateId: s.templateId.wireName,
+        knobs: s.knobs.toJson(),
+        howToDefault: howToDefault ?? '',
       ),
       debugLabel: 'voucherPdf',
+    );
+  }
+
+  /// Generates a single-page PDF sized to exactly one voucher card.
+  ///
+  /// Intended for thumbnail rendering — the page dimensions match the card
+  /// itself (plus a 4pt margin) so there is no blank A4 whitespace.
+  Future<Uint8List> generateSampleCardPdf(
+    VoucherPrintItem item,
+    String businessName, {
+    required PrintSettings settings,
+    String? howToDefault,
+  }) async {
+    await _ensureFontBytes();
+
+    return compute(
+      buildSampleCardJob,
+      SampleCardJob(
+        item: item,
+        businessName: businessName,
+        cairoRegular: _cairoBytes!,
+        cairoBold: _cairoBoldBytes!,
+        templateId: settings.templateId.wireName,
+        knobs: settings.knobs.toJson(),
+        howToDefault: howToDefault ?? '',
+      ),
+      debugLabel: 'voucherCardSample',
     );
   }
 }

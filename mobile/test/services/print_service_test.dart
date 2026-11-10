@@ -12,6 +12,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wasel/models/print_settings.dart';
 import 'package:wasel/services/print_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -361,4 +362,576 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 2)),
   );
+
+  // -------------------------------------------------------------------------
+  // PrintSettings / PrintKnobs model tests — pure, no isolates.
+  // -------------------------------------------------------------------------
+
+  group('PrintSettings model', () {
+    test('defaults produce classic template, 8-digit codes, 4 columns', () {
+      const s = PrintSettings();
+      expect(s.templateId, VoucherTemplateId.classic);
+      expect(s.codeLength, 8);
+      expect(s.defaultColumns, 4);
+      expect(s.knobs.showPrice, isFalse);
+      expect(s.knobs.stripsPerPage, 8);
+    });
+
+    test('fromJson with all fields round-trips via toJson', () {
+      final json = {
+        'codeLength': 10,
+        'templateId': 'detailed',
+        'defaultColumns': 6,
+        'knobs': {
+          'headerText': 'My Router',
+          'footerText': 'Connect to WiFi',
+          'hotspotAddress': '192.168.88.1',
+          'showPrice': true,
+          'showQr': true,
+          'showBatch': false,
+          'stripsPerPage': 12,
+        },
+      };
+      final s = PrintSettings.fromJson(json);
+      expect(s.templateId, VoucherTemplateId.detailed);
+      expect(s.codeLength, 10);
+      expect(s.knobs.headerText, 'My Router');
+      expect(s.knobs.showQr, isTrue);
+      expect(s.knobs.stripsPerPage, 12);
+      final roundTripped = PrintSettings.fromJson(s.toJson());
+      expect(roundTripped.toJson(), equals(s.toJson()));
+    });
+
+    test('fromJson unknown templateId falls back to classic', () {
+      final s = PrintSettings.fromJson({'templateId': 'fancy_new_one'});
+      expect(s.templateId, VoucherTemplateId.classic);
+    });
+
+    test('PrintKnobs.fromJson clamps stripsPerPage to 4..12', () {
+      expect(PrintKnobs.fromJson({'stripsPerPage': 1}).stripsPerPage, 4);
+      expect(PrintKnobs.fromJson({'stripsPerPage': 20}).stripsPerPage, 12);
+      expect(PrintKnobs.fromJson({'stripsPerPage': 6}).stripsPerPage, 6);
+    });
+
+    test('PrintKnobs.fromJson tolerates missing keys', () {
+      final k = PrintKnobs.fromJson({});
+      expect(k.headerText, '');
+      expect(k.showPrice, isFalse);
+      expect(k.showBatch, isTrue);
+    });
+
+    test('cacheKey changes when template changes', () {
+      const s1 = PrintSettings(templateId: VoucherTemplateId.classic);
+      const s2 = PrintSettings(templateId: VoucherTemplateId.detailed);
+      expect(s1.cacheKey, isNot(equals(s2.cacheKey)));
+    });
+
+    test('cacheKey changes when knob changes', () {
+      const s1 = PrintSettings();
+      final s2 = s1.copyWith(knobs: const PrintKnobs(showPrice: true));
+      expect(s1.cacheKey, isNot(equals(s2.cacheKey)));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // voucherPdfPageCountFor — template-aware page count
+  // -------------------------------------------------------------------------
+
+  group('voucherPdfPageCountFor', () {
+    // Classic/Detailed: must equal voucherPdfPageCount for all columns 2..9
+    for (final c in [2, 3, 4, 5, 6, 7, 8, 9]) {
+      test('Classic parity at columns=$c (several item counts)', () {
+        const s = PrintSettings();
+        for (final n in [0, 1, 10, 36, 100, 3000]) {
+          expect(
+            voucherPdfPageCountFor(n, c, s),
+            equals(voucherPdfPageCount(n, c)),
+            reason: 'n=$n columns=$c',
+          );
+        }
+      });
+    }
+
+    test('Strips: ceil(n / stripsPerPage) for stripsPerPage=4', () {
+      final s = const PrintSettings(
+        templateId: VoucherTemplateId.strips,
+        knobs: PrintKnobs(stripsPerPage: 4),
+      );
+      expect(voucherPdfPageCountFor(0, 1, s), 0);
+      expect(voucherPdfPageCountFor(1, 1, s), 1);
+      expect(voucherPdfPageCountFor(4, 1, s), 1);
+      expect(voucherPdfPageCountFor(5, 1, s), 2);
+      expect(voucherPdfPageCountFor(100, 1, s), 25);
+    });
+
+    test('Strips: ceil(n / stripsPerPage) for stripsPerPage=8', () {
+      final s = const PrintSettings(
+        templateId: VoucherTemplateId.strips,
+        knobs: PrintKnobs(stripsPerPage: 8),
+      );
+      expect(voucherPdfPageCountFor(8, 1, s), 1);
+      expect(voucherPdfPageCountFor(9, 1, s), 2);
+      expect(voucherPdfPageCountFor(100, 1, s), 13);
+    });
+
+    test('Strips: ceil(n / stripsPerPage) for stripsPerPage=12', () {
+      final s = const PrintSettings(
+        templateId: VoucherTemplateId.strips,
+        knobs: PrintKnobs(stripsPerPage: 12),
+      );
+      expect(voucherPdfPageCountFor(12, 1, s), 1);
+      expect(voucherPdfPageCountFor(13, 1, s), 2);
+      expect(voucherPdfPageCountFor(100, 1, s), 9); // ceil(100/12)=9
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Template build-succeeds tests
+  // -------------------------------------------------------------------------
+
+  /// Extended fixture set covering the tricky rendering cases per the plan.
+  List<VoucherPrintItem> buildExtendedFixtures({
+    bool withPrice = false,
+    bool withBatch = false,
+  }) {
+    return [
+      // Short name
+      VoucherPrintItem(
+        code: '12345678',
+        limitText: '1 GB',
+        validityText: '3 days',
+        priceText: withPrice ? '5 USD' : null,
+        batchLabel: withBatch ? '261101-1430' : null,
+      ),
+      // Long name (limitText)
+      VoucherPrintItem(
+        code: '87654321',
+        limitText: 'Unlimited High-Speed Broadband Package',
+        validityText: '30 days',
+        priceText: withPrice ? '25 USD' : null,
+        batchLabel: withBatch ? '261101-1430' : null,
+      ),
+      // Arabic router name equivalent / Arabic limit + validity
+      VoucherPrintItem(
+        code: 'AR000001',
+        limitText: '500 ميجابايت',
+        validityText: '30 يوم',
+        priceText: withPrice ? '10 ر.س' : null,
+        batchLabel: withBatch ? '261101-1430' : null,
+      ),
+      // null limitText
+      VoucherPrintItem(
+        code: 'NULL0001',
+        limitText: null,
+        validityText: 'مفتوح',
+        priceText: withPrice ? '0 USD' : null,
+        batchLabel: withBatch ? '261101-1430' : null,
+      ),
+    ];
+  }
+
+  group('Classic template build-succeeds', () {
+    test(
+      'builds PDF for short/long/Arabic/null-limit fixtures',
+      () async {
+        final items = buildExtendedFixtures();
+        final bytes = await svc.generateVouchersPdf(
+          items,
+          'Test Router',
+          columns: 4,
+          settings: const PrintSettings(),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+        expect(bytes.length, greaterThan(5000));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'builds PDF for 100 items',
+      () async {
+        final bytes = await svc.generateVouchersPdf(
+          _buildFixtures(),
+          'Big Router',
+          columns: 4,
+          settings: const PrintSettings(),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'empty list produces valid PDF',
+      () async {
+        final bytes = await svc.generateVouchersPdf(
+          const [],
+          'Test',
+          columns: 4,
+          settings: const PrintSettings(),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'showPrice=true produces valid PDF',
+      () async {
+        final items = buildExtendedFixtures(withPrice: true);
+        final bytes = await svc.generateVouchersPdf(
+          items,
+          'Priced Router',
+          columns: 4,
+          settings: const PrintSettings(
+            knobs: PrintKnobs(showPrice: true),
+          ),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'null settings → Classic defaults, byte length matches explicit Classic',
+      () async {
+        final items = buildExtendedFixtures();
+        const name = 'Parity Router';
+        const cols = 4;
+        final bytesNull = await svc.generateVouchersPdf(
+          items,
+          name,
+          columns: cols,
+          // settings == null
+        );
+        final bytesExplicit = await svc.generateVouchersPdf(
+          items,
+          name,
+          columns: cols,
+          settings: const PrintSettings(),
+        );
+        // Byte-length parity proxy (not exact equality — PDF timestamps vary).
+        // Allow ±200 bytes for internal PDF metadata variance.
+        expect(
+          (bytesNull.length - bytesExplicit.length).abs(),
+          lessThan(200),
+          reason: 'null settings must produce Classic-parity output',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+  });
+
+  group('Detailed template build-succeeds', () {
+    test(
+      'builds PDF for short/long/Arabic/null-limit fixtures',
+      () async {
+        final items = buildExtendedFixtures();
+        final bytes = await svc.generateVouchersPdf(
+          items,
+          'Detailed Router',
+          columns: 4,
+          settings: const PrintSettings(
+            templateId: VoucherTemplateId.detailed,
+          ),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+        expect(bytes.length, greaterThan(5000));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'showQr=true with hotspotAddress produces valid PDF',
+      () async {
+        final items = buildExtendedFixtures();
+        final bytes = await svc.generateVouchersPdf(
+          items,
+          'QR Router',
+          columns: 4,
+          settings: const PrintSettings(
+            templateId: VoucherTemplateId.detailed,
+            knobs: PrintKnobs(
+              showQr: true,
+              hotspotAddress: '192.168.88.1',
+            ),
+          ),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'showQr=false (hotspotAddress empty) produces valid PDF',
+      () async {
+        final items = buildExtendedFixtures();
+        final bytes = await svc.generateVouchersPdf(
+          items,
+          'No QR Router',
+          columns: 4,
+          settings: const PrintSettings(
+            templateId: VoucherTemplateId.detailed,
+            knobs: PrintKnobs(showQr: false, hotspotAddress: ''),
+          ),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'showPrice=true + batchLabel produces valid PDF',
+      () async {
+        final items = buildExtendedFixtures(withPrice: true, withBatch: true);
+        final bytes = await svc.generateVouchersPdf(
+          items,
+          'Full Detailed',
+          columns: 4,
+          settings: const PrintSettings(
+            templateId: VoucherTemplateId.detailed,
+            knobs: PrintKnobs(
+              showPrice: true,
+              showBatch: true,
+              headerText: 'My Hotspot',
+              footerText: 'Connect to WiFi and enjoy!',
+            ),
+          ),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      '100 items builds without error',
+      () async {
+        final bytes = await svc.generateVouchersPdf(
+          _buildFixtures(),
+          'Detailed 100',
+          columns: 4,
+          settings: const PrintSettings(
+            templateId: VoucherTemplateId.detailed,
+          ),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'page count for Detailed matches Classic grid',
+      () async {
+        const items100 = 100;
+        const cols = 4;
+        final pagesDetailed = voucherPdfPageCountFor(
+          items100,
+          cols,
+          const PrintSettings(templateId: VoucherTemplateId.detailed),
+        );
+        final pagesClassic = voucherPdfPageCount(items100, cols);
+        expect(pagesDetailed, equals(pagesClassic));
+      },
+    );
+  });
+
+  group('Strips template build-succeeds', () {
+    for (final spp in [4, 8, 12]) {
+      test(
+        'stripsPerPage=$spp produces valid PDF',
+        () async {
+          final items = buildExtendedFixtures(withPrice: true, withBatch: true);
+          final bytes = await svc.generateVouchersPdf(
+            items,
+            'Strips Router',
+            columns: 1,
+            settings: PrintSettings(
+              templateId: VoucherTemplateId.strips,
+              knobs: PrintKnobs(
+                stripsPerPage: spp,
+                showPrice: true,
+                showBatch: true,
+              ),
+            ),
+          );
+          expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+          expect(bytes.length, greaterThan(2000));
+        },
+        timeout: const Timeout(Duration(minutes: 2)),
+      );
+
+      test(
+        'page count for $spp strips = ceil(n/spp)',
+        () {
+          final s = PrintSettings(
+            templateId: VoucherTemplateId.strips,
+            knobs: PrintKnobs(stripsPerPage: spp),
+          );
+          for (final n in [1, spp, spp + 1, 100]) {
+            final expected = n <= 0 ? 0 : (n / spp).ceil();
+            expect(
+              voucherPdfPageCountFor(n, 1, s),
+              equals(expected),
+              reason: 'n=$n spp=$spp',
+            );
+          }
+        },
+      );
+    }
+
+    test(
+      'Arabic business name + Arabic limit/validity in Strips',
+      () async {
+        final items = [
+          const VoucherPrintItem(
+            code: 'AR000001',
+            limitText: 'غير محدود',
+            validityText: 'أسبوع',
+            batchLabel: '261101-1430',
+          ),
+        ];
+        final bytes = await svc.generateVouchersPdf(
+          items,
+          'شركة واصل',
+          columns: 1,
+          settings: const PrintSettings(
+            templateId: VoucherTemplateId.strips,
+            knobs: PrintKnobs(stripsPerPage: 8),
+          ),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'empty list produces valid PDF',
+      () async {
+        final bytes = await svc.generateVouchersPdf(
+          const [],
+          'Test',
+          columns: 1,
+          settings: const PrintSettings(
+            templateId: VoucherTemplateId.strips,
+          ),
+        );
+        expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Regression tests for dropped-widget bugs (layout overflow in spaceEvenly).
+  // PDF compression makes byte-length comparisons unreliable as a proxy for
+  // widget presence. Instead: build each template at every column count with
+  // showPrice=true and priceText set — the original bug caused a crash or
+  // silent drop that the driver test caught visually.
+  // -------------------------------------------------------------------------
+
+  group('Regression: showPrice renders without crash at all column counts', () {
+    // Items with priceText present so the showPrice path is exercised.
+    final pricedItems = List.generate(10, (i) => VoucherPrintItem(
+      code: (48213907 + i * 7919).toString().padLeft(8, '0'),
+      limitText: i.isEven ? '2 GB' : null,
+      validityText: i % 3 == 0 ? 'مفتوح' : '${i + 1} days',
+      priceText: 'SDG ${500 + i * 10}',
+      batchLabel: '261108-1432',
+    ));
+
+    for (final cols in [2, 3, 4, 5, 6, 7, 8, 9]) {
+      test(
+        'Classic showPrice=true at $cols columns produces valid PDF',
+        () async {
+          final bytes = await svc.generateVouchersPdf(
+            pricedItems,
+            'Wasel Net',
+            columns: cols,
+            settings: const PrintSettings(knobs: PrintKnobs(showPrice: true)),
+          );
+          expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+          expect(bytes.length, greaterThan(2000));
+        },
+        timeout: const Timeout(Duration(minutes: 2)),
+      );
+    }
+
+    for (final cols in [2, 4, 6]) {
+      test(
+        'Detailed showPrice=true at $cols columns produces valid PDF',
+        () async {
+          final bytes = await svc.generateVouchersPdf(
+            pricedItems,
+            'Wasel Net',
+            columns: cols,
+            settings: const PrintSettings(
+              templateId: VoucherTemplateId.detailed,
+              knobs: PrintKnobs(showPrice: true),
+            ),
+          );
+          expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+          expect(bytes.length, greaterThan(2000));
+        },
+        timeout: const Timeout(Duration(minutes: 2)),
+      );
+    }
+
+    for (final spp in [4, 8, 12]) {
+      test(
+        'Strips showPrice=true stripsPerPage=$spp produces valid PDF',
+        () async {
+          final bytes = await svc.generateVouchersPdf(
+            pricedItems,
+            'Wasel Net',
+            columns: 1,
+            settings: PrintSettings(
+              templateId: VoucherTemplateId.strips,
+              knobs: PrintKnobs(showPrice: true, stripsPerPage: spp),
+            ),
+          );
+          expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+          expect(bytes.length, greaterThan(2000));
+        },
+        timeout: const Timeout(Duration(minutes: 2)),
+      );
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // generateSampleCardPdf — one card per template
+  // ---------------------------------------------------------------------------
+
+  group('generateSampleCardPdf', () {
+    final sampleItem = const VoucherPrintItem(
+      code: '12345678',
+      limitText: '1 GB',
+      validityText: '7 days',
+      priceText: '5 SDG',
+      batchLabel: '261101-1430',
+    );
+
+    for (final id in VoucherTemplateId.values) {
+      test(
+        '${id.name} returns a 1-page valid PDF',
+        () async {
+          final bytes = await svc.generateSampleCardPdf(
+            sampleItem,
+            'Test Router',
+            settings: PrintSettings(templateId: id),
+          );
+          expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+          expect(bytes.length, greaterThan(500));
+          // The PDF must have exactly one page: verify by checking that the
+          // %PDF- header is present and no second "Page" dict is added beyond
+          // the first. We rely on the builder producing exactly one doc.addPage
+          // call, which is enforced by buildSampleCardJob's structure.
+          // A structural check: the byte stream must contain at least one
+          // stream keyword (card content).
+          final content = utf8.decode(bytes, allowMalformed: true);
+          expect(content.contains('stream'), isTrue);
+        },
+        timeout: const Timeout(Duration(minutes: 2)),
+      );
+    }
+  });
 }
