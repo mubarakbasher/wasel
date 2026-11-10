@@ -82,20 +82,34 @@ class SecureStorageService {
 
   Future<void> deleteFcmToken() => _storage.delete(key: _fcmTokenKey);
 
+  // --- Print Settings Cache (per-account JSON blob) ---
+
+  static const _printSettingsKey = 'wasel_print_settings';
+
+  Future<String?> getPrintSettingsJson() =>
+      _storage.read(key: _printSettingsKey);
+
+  Future<void> setPrintSettingsJson(String json) =>
+      _storage.write(key: _printSettingsKey, value: json);
+
+  Future<void> deletePrintSettingsJson() =>
+      _storage.delete(key: _printSettingsKey);
+
   // --- Clear Everything ---
 
   Future<void> clearAll() => _storage.deleteAll();
 
-  /// Clears only session/auth-scoped keys (tokens, cached user, FCM token)
-  /// while preserving device-scoped preferences such as the chosen locale.
-  /// Use this on logout / session-expiry so an AR-first user's language choice
-  /// survives sign-out.
+  /// Clears only session/auth-scoped keys (tokens, cached user, FCM token,
+  /// print settings) while preserving device-scoped preferences such as the
+  /// chosen locale.  Use this on logout / session-expiry so an AR-first user's
+  /// language choice survives sign-out.
   Future<void> clearSession() async {
     await Future.wait([
       _storage.delete(key: _accessTokenKey),
       _storage.delete(key: _refreshTokenKey),
       _storage.delete(key: _userDataKey),
       _storage.delete(key: _fcmTokenKey),
+      _storage.delete(key: _printSettingsKey),
     ]);
   }
 

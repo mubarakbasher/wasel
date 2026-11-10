@@ -187,6 +187,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 onTap: () => context.push('/notification-preferences'),
               ),
               _SettingsTile(
+                icon: Icons.print_outlined,
+                title: context.tr('settings.voucherPrinting'),
+                subtitle: context.tr('settings.voucherPrintingSubtitle'),
+                onTap: () => context.push('/settings/voucher-printing'),
+              ),
+              _SettingsTile(
                 icon: Icons.support_agent,
                 title: context.tr('settings.contact'),
                 subtitle: context.tr('settings.contactSubtitle'),

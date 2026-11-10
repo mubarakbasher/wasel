@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../i18n/app_localizations.dart';
 import '../../i18n/voucher_format.dart';
 import '../../models/voucher.dart';
+import '../../providers/print_settings_provider.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/vouchers_provider.dart';
 import '../../theme/app_colors.dart';
@@ -34,6 +35,10 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
   int _currentStep = 0;
   bool _isSubmitting = false;
+
+  /// Guards the one-time print-settings load so it doesn't re-fire on every
+  /// rebuild of step 3 (e.g. each keystroke in count / price fields).
+  bool _printSettingsLoadRequested = false;
 
   // Step 1: Limit
   String _limitType = 'time'; // 'time' or 'data'
@@ -692,6 +697,15 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
   // ---- Step 3: Count & Price ----
 
   Widget _buildStep3CountPrice() {
+    // Load print settings from cache if not already loaded (for the code-digits
+    // summary row). No spinner — the row is informational; we silently omit it
+    // when settings are still empty.
+    final printState = ref.watch(printSettingsProvider);
+    if (printState.isEmpty && !_printSettingsLoadRequested) {
+      _printSettingsLoadRequested = true;
+      Future.microtask(
+          () => ref.read(printSettingsProvider.notifier).load());
+    }
     final limitText = _limitValueController.text.isNotEmpty
         ? '${_limitValueController.text} ${localizedUnitLabel(context, _limitUnit)}'
         : '';
@@ -775,6 +789,14 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                 const SizedBox(height: AppSpacing.sm),
                 _buildSummaryRow(context.tr('vouchers.count'), '$count'),
                 const SizedBox(height: AppSpacing.sm),
+                if (printState.settings != null)
+                  _buildSummaryRow(
+                    context.tr('vouchers.codeLength'),
+                    context.tr('vouchers.codeDigits',
+                        [printState.settings!.codeLength.toString()]),
+                  ),
+                if (printState.settings != null)
+                  const SizedBox(height: AppSpacing.sm),
                 _buildSummaryRow(
                   context.tr('vouchers.price'),
                   context.tr('vouchers.each', ['${price.toStringAsFixed(2)} ${context.tr('common.currencySymbol')}']),

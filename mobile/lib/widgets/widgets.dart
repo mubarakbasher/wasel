@@ -1,4 +1,5 @@
 export 'app_card.dart';
+export 'column_slider_bar.dart';
 export 'app_snackbar.dart';
 export 'confirm_dialog.dart';
 export 'empty_state.dart';

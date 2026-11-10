@@ -804,6 +804,42 @@ class AppLocalizations {
     'vouchers.pdfDocTitle': 'Wasel Vouchers',
     'vouchers.previewFirstPages':
         'Preview shows the first {0} of {1} pages — printing includes all pages',
+    'vouchers.codeLength': 'Code Length',
+    'vouchers.codeDigits': 'Codes will be {0} digits',
+    'vouchers.stripsPerPage': '{0} per page',
+
+    // ── Print settings ──────────────────────────────────────────────────────
+    'print.howToDefault': 'Connect to the Wi-Fi, open your browser and enter the code',
+    'print.batch': 'Batch',
+
+    // ── Settings – Voucher Printing ─────────────────────────────────────────
+    'settings.voucherPrinting': 'Voucher Printing',
+    'settings.voucherPrintingSubtitle': 'Templates, code length, layout',
+    'settings.codeLength': 'Code Length',
+    'settings.codeLengthHint': 'Applies to new batches only. Existing vouchers keep their length.',
+    'settings.codeLengthShortWarning': 'Short codes have fewer possible combinations and are easier to guess.',
+    'settings.cardTemplate': 'Card Template',
+    'settings.templateOptions': 'Template Options',
+    'settings.defaultColumns': 'Default Columns',
+
+    // ── Template names & descriptions ───────────────────────────────────────
+    'template.classic': 'Classic',
+    'template.classicDescription': 'Clean card: code, limit, validity.',
+    'template.detailed': 'Detailed',
+    'template.detailedDescription': 'Header band, batch info, QR code option.',
+    'template.strips': 'Strips',
+    'template.stripsDescription': 'Full-width rows, stacked on a single page.',
+
+    // ── Knob labels ──────────────────────────────────────────────────────────
+    'knob.headerText': 'Header Text',
+    'knob.headerTextHint': 'Leave empty to use router name',
+    'knob.footerText': 'Footer Text',
+    'knob.hotspotAddress': 'Hotspot Address',
+    'knob.hotspotAddressHint': 'e.g. wifi.myshop.net',
+    'knob.showPrice': 'Show Price',
+    'knob.showQr': 'Show QR Code',
+    'knob.showBatch': 'Show Batch Label',
+    'knob.stripsPerPage': 'Strips per Page',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'No active sessions',
@@ -1734,6 +1770,42 @@ class AppLocalizations {
     'vouchers.pdfDocTitle': 'كروت واصل',
     'vouchers.previewFirstPages':
         'المعاينة تعرض أول {0} من {1} صفحة — الطباعة تشمل جميع الصفحات',
+    'vouchers.codeLength': 'طول الرمز',
+    'vouchers.codeDigits': 'ستكون الأرقام من {0} خانات',
+    'vouchers.stripsPerPage': '{0} في الصفحة',
+
+    // ── Print settings ──────────────────────────────────────────────────────
+    'print.howToDefault': 'اتصل بالشبكة ثم افتح المتصفح وأدخل الرمز',
+    'print.batch': 'دفعة',
+
+    // ── Settings – Voucher Printing ─────────────────────────────────────────
+    'settings.voucherPrinting': 'طباعة الكروت',
+    'settings.voucherPrintingSubtitle': 'القوالب، طول الرمز، التخطيط',
+    'settings.codeLength': 'طول الرمز',
+    'settings.codeLengthHint': 'ينطبق على الدفعات الجديدة فقط. الكروت الموجودة تحتفظ بطولها.',
+    'settings.codeLengthShortWarning': 'الأرقام القصيرة تحتوي على عدد أقل من التركيبات الممكنة ويسهل تخمينها.',
+    'settings.cardTemplate': 'قالب الكرت',
+    'settings.templateOptions': 'خيارات القالب',
+    'settings.defaultColumns': 'عدد الأعمدة الافتراضي',
+
+    // ── Template names & descriptions ───────────────────────────────────────
+    'template.classic': 'كلاسيكي',
+    'template.classicDescription': 'كرت بسيط: رمز، حد، صلاحية.',
+    'template.detailed': 'مفصّل',
+    'template.detailedDescription': 'شريط رأس، معلومات الدفعة، خيار رمز QR.',
+    'template.strips': 'شرائح',
+    'template.stripsDescription': 'صفوف كاملة العرض مكدسة في صفحة واحدة.',
+
+    // ── Knob labels ──────────────────────────────────────────────────────────
+    'knob.headerText': 'نص الرأس',
+    'knob.headerTextHint': 'اتركه فارغاً لاستخدام اسم الراوتر',
+    'knob.footerText': 'نص التذييل',
+    'knob.hotspotAddress': 'عنوان نقطة الاتصال',
+    'knob.hotspotAddressHint': 'مثل: wifi.myshop.net',
+    'knob.showPrice': 'إظهار السعر',
+    'knob.showQr': 'إظهار رمز QR',
+    'knob.showBatch': 'إظهار تسمية الدفعة',
+    'knob.stripsPerPage': 'شرائح في الصفحة',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'لا توجد جلسات نشطة',

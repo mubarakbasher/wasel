@@ -31,6 +31,7 @@ import '../screens/reports/reports_screen.dart';
 import '../screens/reports/report_export_screen.dart';
 import '../screens/notification_preferences_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
+import '../screens/settings/voucher_printing_screen.dart';
 import '../screens/vouchers/voucher_print_screen.dart';
 import '../screens/vouchers/voucher_batch_history_screen.dart';
 import '../i18n/app_localizations.dart';
@@ -330,6 +331,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/notification-preferences',
         parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const NotificationPreferencesScreen(),
+      ),
+      // Voucher printing settings
+      GoRoute(
+        path: '/settings/voucher-printing',
+        parentNavigatorKey: appNavigatorKey,
+        builder: (context, state) => const VoucherPrintingScreen(),
       ),
       // Report routes
       GoRoute(
