@@ -7,6 +7,12 @@ import * as validators from '../validators/admin.validators';
 import * as adminController from '../controllers/admin.controller';
 import * as settingsController from '../controllers/settings.controller';
 import * as supportController from '../controllers/support.controller';
+import * as analyticsController from '../controllers/analytics.controller';
+import {
+  analyticsPeriodQuerySchema,
+  analyticsExportQuerySchema,
+  analyticsOperatorParamSchema,
+} from '../validators/analytics.validators';
 import {
   updateBankSettingsSchema,
   createAdminSchema,
@@ -57,6 +63,16 @@ router.get('/payments', validate({ query: validators.listPaymentsQuerySchema }),
 // /payments/export before the :id param route (defensive — GET vs PUT).
 router.get('/payments/export', validate({ query: validators.exportPaymentsQuerySchema }), adminController.exportPayments);
 router.put('/payments/:id', validate({ params: validators.paymentIdParamSchema, body: validators.reviewPaymentBodySchema }), adminController.reviewPayment);
+
+// Analytics — export routes MUST precede /operators/:id to avoid uuid validation on "export"
+router.get('/analytics/money', validate({ query: analyticsPeriodQuerySchema }), analyticsController.getMoney);
+router.get('/analytics/money/renewals-due/export', validate({ query: analyticsExportQuerySchema }), analyticsController.exportRenewalsDue);
+router.get('/analytics/money/lost/export', validate({ query: analyticsExportQuerySchema }), analyticsController.exportLost);
+router.get('/analytics/operators/export', validate({ query: analyticsExportQuerySchema }), analyticsController.exportOperators);
+router.get('/analytics/operators/:id', validate({ params: analyticsOperatorParamSchema, query: analyticsPeriodQuerySchema }), analyticsController.getOperator);
+router.get('/analytics/operators', validate({ query: analyticsPeriodQuerySchema }), analyticsController.getOperators);
+router.get('/analytics/network/routers/export', validate({ query: analyticsExportQuerySchema }), analyticsController.exportRouters);
+router.get('/analytics/network', validate({ query: analyticsPeriodQuerySchema }), analyticsController.getNetwork);
 
 // Stats & Read-only
 router.get('/stats', adminController.getStats);

@@ -15,7 +15,9 @@
     "reprovision:broken": "ts-node src/scripts/reprovisionBroken.ts",
     "reprovision:broken:prod": "node dist/scripts/reprovisionBroken.js",
     "repair:reused-codes": "ts-node src/scripts/repairReusedVoucherCodes.ts",
-    "repair:reused-codes:prod": "node dist/scripts/repairReusedVoucherCodes.js"
+    "repair:reused-codes:prod": "node dist/scripts/repairReusedVoucherCodes.js",
+    "backfill:analytics": "ts-node src/scripts/analyticsBackfill.ts",
+    "backfill:analytics:prod": "node dist/scripts/analyticsBackfill.js"
   },
   "keywords": [],
   "author": "",

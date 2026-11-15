@@ -193,6 +193,9 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
       .mockResolvedValueOnce({ rows: [{ vouchers_used: 11 }], rowCount: 1 }) // UPDATE subscriptions (guarded)
       .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })     // INSERT voucher_meta (batch)
       .mockResolvedValueOnce(undefined)                        // INSERT radcheck (batch)
+      .mockResolvedValueOnce(undefined)                        // SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined)                        // INSERT analytics_card_batches
+      .mockResolvedValueOnce(undefined)                        // RELEASE SAVEPOINT analytics_cards
       .mockResolvedValueOnce(undefined);                       // COMMIT
 
     // Batch enrichment (3 parallel queries)
@@ -236,6 +239,9 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
       .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })       // INSERT voucher_meta (batch)
       .mockResolvedValueOnce(undefined)                          // INSERT radcheck (batch)
       .mockResolvedValueOnce(undefined)                          // INSERT radreply Session-Timeout (batch)
+      .mockResolvedValueOnce(undefined)                          // SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined)                          // INSERT analytics_card_batches
+      .mockResolvedValueOnce(undefined)                          // RELEASE SAVEPOINT analytics_cards
       .mockResolvedValueOnce(undefined);                         // COMMIT
 
     mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
@@ -270,6 +276,9 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
       .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
       .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined) // SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined) // INSERT analytics_card_batches
+      .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT analytics_cards
       .mockResolvedValueOnce(undefined); // COMMIT
 
     mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
@@ -305,6 +314,9 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
       .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
       .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined) // SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined) // INSERT analytics_card_batches
+      .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT analytics_cards
       .mockResolvedValueOnce(undefined); // COMMIT
 
     mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
@@ -325,6 +337,92 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     expect(passwordIdx).toBeGreaterThan(-1);
     const generatedUsername = rcArgs[passwordIdx - 1] as string;
     expect(generatedUsername).toMatch(/^\d{12}$/);
+  });
+
+  it('records one card batch between the voucher_meta insert and COMMIT', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const body = { limitType: 'time', limitValue: 30, limitUnit: 'minutes', count: 50, price: 500 };
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 50 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
+      .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined) // SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined) // INSERT analytics_card_batches
+      .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send(body);
+
+    expect(res.status).toBe(201);
+
+    const savepointCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('SAVEPOINT analytics_cards'),
+    );
+    expect(savepointCall).toBeDefined();
+
+    const batchInsertCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('analytics_card_batches'),
+    );
+    expect(batchInsertCall).toBeDefined();
+    const batchParams = batchInsertCall![1] as unknown[];
+    expect(batchParams[2]).toBe(50);    // cardCount
+    expect(batchParams[3]).toBe(500);   // price
+    expect(batchParams[4]).toBe('time'); // limitType
+
+    const commitIdx = mockClientQuery.mock.calls.findIndex(
+      (c) => typeof c[0] === 'string' && c[0] === 'COMMIT',
+    );
+    const batchIdx = mockClientQuery.mock.calls.findIndex(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('analytics_card_batches'),
+    );
+    const vmIdx = mockClientQuery.mock.calls.findIndex(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('voucher_meta'),
+    );
+    expect(batchIdx).toBeGreaterThan(vmIdx);
+    expect(commitIdx).toBeGreaterThan(batchIdx);
+  });
+
+  it('a card-batch failure still commits the vouchers', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
+      .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined) // SAVEPOINT analytics_cards
+      .mockRejectedValueOnce(new Error('analytics DB error')) // INSERT analytics_card_batches → fails
+      .mockResolvedValueOnce(undefined) // ROLLBACK TO SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 });
+
+    expect(res.status).toBe(201);
+    const commitCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0] === 'COMMIT',
+    );
+    expect(commitCall).toBeDefined();
   });
 });
 

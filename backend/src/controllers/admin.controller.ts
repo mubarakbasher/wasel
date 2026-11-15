@@ -52,7 +52,7 @@ function clientIp(req: AuthenticatedRequest): string {
  * res.send so Express does not fall back to text/html, and the filename encodes
  * the resource + UTC date (wasel-<resource>-YYYY-MM-DD.csv).
  */
-function sendCsv(res: Response, resource: string, csv: string): void {
+export function sendCsv(res: Response, resource: string, csv: string): void {
   const date = new Date().toISOString().slice(0, 10);
   res.status(200);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -131,6 +131,7 @@ export async function exportPayments(req: AuthenticatedRequest, res: Response, n
       { header: 'Status', value: (p) => p.status },
       { header: 'Rejection Reason', value: (p) => p.rejection_reason },
       { header: 'Created At', value: (p) => p.created_at },
+      { header: 'Approved At', value: (p) => p.status === 'approved' ? p.reviewed_at : null },
     ]);
     await auditService.logAction({
       adminId: req.user!.id,

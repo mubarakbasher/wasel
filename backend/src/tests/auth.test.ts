@@ -240,9 +240,67 @@ describe('POST /api/v1/auth/login', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
+
+  it('login touches activity for an operator and not for an admin', async () => {
+    const { touchOperatorActivity } = await import('../services/operatorActivity.service');
+    const touchSpy = vi.mocked(touchOperatorActivity);
+    touchSpy.mockClear();
+
+    const authService = await import('../services/auth.service');
+    // Cost-4 hash for 'Password1' (fast in tests)
+    const fastHash = '$2b$04$2AIIn8LyFl1Ex82sd7qQAuPDFvaKBorKnVZK6r2TS1Kn/qPEuGhK6';
+
+    // Operator login — mock the pool query
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        id: 'op-id', name: 'Op', email: 'test@example.com', role: 'user',
+        password_hash: fastHash, is_verified: true, is_active: true,
+        failed_login_attempts: 0, locked_until: null,
+      }],
+    });
+
+    await authService.login('test@example.com', 'Password1');
+    expect(touchSpy).toHaveBeenCalledWith('op-id');
+
+    touchSpy.mockClear();
+
+    // Admin login
+    mockQuery.mockResolvedValueOnce({
+      rows: [{
+        id: 'admin-id', name: 'Admin', email: 'test@example.com', role: 'admin',
+        password_hash: fastHash, is_verified: true, is_active: true,
+        failed_login_attempts: 0, locked_until: null,
+      }],
+    });
+
+    await authService.login('test@example.com', 'Password1');
+    expect(touchSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/v1/auth/refresh', () => {
+  it('refresh touches activity for an operator', async () => {
+    const { touchOperatorActivity } = await import('../services/operatorActivity.service');
+    const touchSpy = vi.mocked(touchOperatorActivity);
+    touchSpy.mockClear();
+
+    // Create a valid refresh token for a 'user' role
+    const { issueTokenPair, verifyRefreshToken } = await import('../services/token.service');
+    const tokens = await issueTokenPair('refresh-user-id', 'op@example.com', 'OpName', 'user');
+
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 'refresh-user-id', name: 'OpName', email: 'op@example.com', role: 'user' }],
+    });
+
+    const res = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: tokens.refreshToken });
+
+    expect(res.status).toBe(200);
+    expect(touchSpy).toHaveBeenCalledWith('refresh-user-id');
+    void verifyRefreshToken; // suppress unused
+  });
+
   it('should return 400 for missing refresh token', async () => {
     const res = await request(app).post('/api/v1/auth/refresh').send({});
 

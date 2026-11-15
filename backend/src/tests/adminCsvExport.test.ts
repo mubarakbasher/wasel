@@ -269,11 +269,37 @@ describe('GET /api/v1/admin/payments/export', () => {
     );
     const header = res.text.slice(BOM.length).split('\r\n')[0];
     expect(header).toBe(
-      'ID,User Name,User Email,Plan,Amount,Currency,Reference Code,Status,Rejection Reason,Created At',
+      'ID,User Name,User Email,Plan,Amount,Currency,Reference Code,Status,Rejection Reason,Created At,Approved At',
     );
     expect(res.text).toContain('Professional'); // plan_name
     expect(res.text).toContain('REF-123');
     expect(res.text).toContain('5000');
+  });
+
+  it('the payments export has an Approved At column', async () => {
+    const approvedPayment = { ...PAYMENT_ROW, status: 'approved', reviewed_at: '2026-06-16T12:00:00.000Z' };
+    queueList([approvedPayment], 1);
+
+    const res = await request(app).get('/api/v1/admin/payments/export').set(adminAuth());
+
+    expect(res.status).toBe(200);
+    const header = res.text.slice(BOM.length).split('\r\n')[0];
+    expect(header).toContain('Approved At');
+    // For approved payments, Approved At should contain reviewed_at
+    expect(res.text).toContain('2026-06-16');
+  });
+
+  it('the Approved At column is empty for rejected payments', async () => {
+    const rejectedPayment = { ...PAYMENT_ROW, status: 'rejected', reviewed_at: '2026-06-16T12:00:00.000Z' };
+    queueList([rejectedPayment], 1);
+
+    const res = await request(app).get('/api/v1/admin/payments/export').set(adminAuth());
+    const lines = res.text.slice(BOM.length).split('\r\n');
+    // Data line: Approved At column is column index 9 (0-indexed after BOM)
+    const dataLine = lines[1];
+    const cells = dataLine.split(',');
+    // Approved At is at index 10 (after Created At)
+    expect(cells[10]).toBe('');
   });
 
   it('forwards the status filter and writes a payments.export_csv audit row', async () => {

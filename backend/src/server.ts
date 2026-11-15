@@ -17,11 +17,15 @@ import { startUsageLimitEnforcementJob } from './jobs/usageLimitEnforcement';
 import { startStaleSessionReaperJob } from './jobs/staleSessionReaper';
 import { startMacCookieConvergenceJob } from './jobs/macCookieConvergence';
 import { startNtpConvergenceJob } from './jobs/ntpConvergence';
+import { startAnalyticsMoneySyncJob } from './jobs/analyticsMoneySync';
+import { startAnalyticsIngestJob } from './jobs/analyticsIngest';
+import { startAnalyticsRollupJob } from './jobs/analyticsRollup';
 import { startMonitoring } from './services/wireguardMonitor';
 import { startFreeradiusMonitor } from './services/freeradiusMonitor';
 import { syncPeersFromDatabase } from './services/wireguardPeer';
 import { verifyServerEndpointResolves } from './services/wireguardConfig';
 import { runMigrations } from './migrations/runner';
+import { seedRadacctCursor } from './services/analyticsDb';
 
 // ── Crash handlers ────────────────────────────────────────────────────────────
 // Log and exit so Docker's restart: unless-stopped cycles the container cleanly.
@@ -96,6 +100,15 @@ async function startServer(): Promise<void> {
     // Run pending database migrations
     await runMigrations();
 
+    // Seed radacct cursor for analytics (best-effort, non-fatal)
+    try {
+      await seedRadacctCursor();
+    } catch (err) {
+      logger.warn('seedRadacctCursor failed on startup (non-fatal)', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     // Test Redis connection
     await redis.ping();
     logger.info('Redis ping successful');
@@ -127,6 +140,9 @@ async function startServer(): Promise<void> {
     startStaleSessionReaperJob();
     startMacCookieConvergenceJob();
     startNtpConvergenceJob();
+    startAnalyticsMoneySyncJob();
+    startAnalyticsIngestJob();
+    startAnalyticsRollupJob();
     startMonitoring();
     startFreeradiusMonitor();
 

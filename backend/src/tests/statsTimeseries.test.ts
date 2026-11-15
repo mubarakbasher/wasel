@@ -181,11 +181,55 @@ describe('GET /api/v1/admin/stats/timeseries', () => {
     const sql = mockQuery.mock.calls[0][0] as string;
     expect(sql).toContain('generate_series');
     expect(sql).toContain('::date');
-    // Revenue bucketed by COALESCE(reviewed_at, created_at)::date
-    expect(sql).toContain('reviewed_at');
     expect(sql).toContain('voucher_meta');
-    // Parameterized with days
+    // Parameterized with days and timezone
     const params = mockQuery.mock.calls[0][1] as unknown[];
-    expect(params).toEqual([7]);
+    expect(params[0]).toBe(7);
+    expect(typeof params[1]).toBe('string'); // ANALYTICS_TZ
+  });
+
+  it('reads revenue from income_ledger in the configured timezone', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [makeMockRow('2024-06-24')] });
+
+    await request(app)
+      .get('/api/v1/admin/stats/timeseries?days=30')
+      .set(adminAuth());
+
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain('income_ledger');
+    expect(sql).toContain('AT TIME ZONE $2');
+
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params).toEqual([30, 'Africa/Khartoum']);
+  });
+
+  it('getStats counts a past-due active subscription as expired and sums the ledger', async () => {
+    // getStats makes 6 parallel pool.query calls; we need to queue them all
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ count: '10' }] }) // users
+      .mockResolvedValueOnce({ rows: [{ status_key: 'active', count: '8' }, { status_key: 'expired', count: '2' }] }) // subscriptions with CASE
+      .mockResolvedValueOnce({ rows: [{ count: '3' }] }) // pending payments
+      .mockResolvedValueOnce({ rows: [{ total: '99000.00' }] }) // income_ledger total
+      .mockResolvedValueOnce({ rows: [{ status: 'online', count: '5' }] }) // routers
+      .mockResolvedValueOnce({ rows: [{ count: '1000' }] }); // vouchers
+
+    const res = await request(app)
+      .get('/api/v1/admin/stats')
+      .set(adminAuth());
+
+    expect(res.status).toBe(200);
+
+    // Check that the subscriptions query uses the CASE expression
+    const subsCall = mockQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes("end_date <= NOW() THEN 'expired'"),
+    ) as [string, unknown[]] | undefined;
+    expect(subsCall).toBeDefined();
+
+    // Check that revenue comes from income_ledger, not payments
+    const revenueCall = mockQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('FROM income_ledger'),
+    ) as [string, unknown[]] | undefined;
+    expect(revenueCall).toBeDefined();
+    expect((revenueCall![0] as string)).not.toContain('FROM payments');
   });
 });

@@ -14,6 +14,15 @@ const { mockListPeers, mockResetPeer, mockCaptureMessage, mockLoggerError, mockL
 // Mock WireGuard peer I/O — the only non-pg side effects in the system under test.
 vi.mock('../wireguardPeer', () => ({ listPeers: mockListPeers, resetPeer: mockResetPeer }));
 
+// Mock the analytics router-uptime recorder: it is covered by its own suite
+// and would otherwise consume queued pool results meant for status writes.
+vi.mock('../routerUptimeRecorder', () => ({
+  recordRouterTick: vi.fn().mockResolvedValue(undefined),
+  UPTIME_CONFIRM_MS: 180_000,
+  HEARTBEAT_GAP_MS: 180_000,
+  HANDSHAKE_BACKDATE_MAX_MS: 300_000,
+}));
+
 // Mock Sentry with sentryEnabled=true so captureMessage calls actually go through
 // the guarded branch. In production this would hit the real Sentry client.
 vi.mock('../../config/sentry', () => ({

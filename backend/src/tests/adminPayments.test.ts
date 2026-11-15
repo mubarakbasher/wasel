@@ -235,4 +235,197 @@ describe('PUT /api/v1/admin/payments/:id', () => {
 
     expect(res.status).toBe(404);
   });
+
+  it('approval activates the request created with the payment, not an older rejected plan change', async () => {
+    const userId = MOCK_PAYMENT_ROW.user_id;
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ ...MOCK_PAYMENT_ROW, status: 'approved' }] }) // UPDATE payments
+      .mockResolvedValueOnce({ rows: [{ id: 'sub-C', status: 'pending', previous_subscription_id: null }] }) // pairing SELECT
+      .mockResolvedValueOnce({}) // activate UPDATE subscriptions WHERE id = 'sub-C'
+      .mockResolvedValueOnce({}) // SAVEPOINT analytics_income
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }) // INSERT income_ledger
+      .mockResolvedValueOnce({}) // RELEASE SAVEPOINT
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await request(app)
+      .put(`/api/v1/admin/payments/${VALID_PAYMENT_ID}`)
+      .set(adminAuth())
+      .send({ decision: 'approved' });
+
+    expect(res.status).toBe(200);
+
+    // Should activate sub-C
+    const activateCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('UPDATE subscriptions') &&
+             (c[0] as string).includes('start_date = NOW()'),
+    ) as [string, unknown[]] | undefined;
+    expect(activateCall).toBeDefined();
+    expect(activateCall![1]).toContain('sub-C');
+
+    // Should NOT use the old ORDER BY created_at DESC pending_change query
+    const oldPendingChangeCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' &&
+             (c[0] as string).includes("status = 'pending_change'") &&
+             (c[0] as string).includes('ORDER BY created_at DESC'),
+    );
+    expect(oldPendingChangeCall).toBeUndefined();
+
+    void userId;
+  });
+
+  it('the pairing query joins payment and subscription on created_at inside SQL', async () => {
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ ...MOCK_PAYMENT_ROW, status: 'approved' }] }) // UPDATE payments
+      .mockResolvedValueOnce({ rows: [{ id: 'sub-C', status: 'pending', previous_subscription_id: null }] }) // pairing SELECT
+      .mockResolvedValueOnce({}) // activate
+      .mockResolvedValueOnce({}) // SAVEPOINT
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }) // INSERT
+      .mockResolvedValueOnce({}) // RELEASE
+      .mockResolvedValueOnce({}); // COMMIT
+
+    await request(app)
+      .put(`/api/v1/admin/payments/${VALID_PAYMENT_ID}`)
+      .set(adminAuth())
+      .send({ decision: 'approved' });
+
+    const pairingCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('p.created_at = s.created_at'),
+    ) as [string, unknown[]] | undefined;
+    expect(pairingCall).toBeDefined();
+    expect(pairingCall![1]).toEqual([VALID_PAYMENT_ID]);
+  });
+
+  it('a plan change cancels the previous and every other active subscription', async () => {
+    const userId = MOCK_PAYMENT_ROW.user_id;
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ ...MOCK_PAYMENT_ROW, status: 'approved' }] }) // UPDATE payments
+      .mockResolvedValueOnce({ rows: [{ id: 'sub-B', status: 'pending_change', previous_subscription_id: 'sub-A' }] }) // pairing SELECT
+      .mockResolvedValueOnce({}) // activate sub-B
+      .mockResolvedValueOnce({}) // cancel: WHERE (id='sub-A' OR (user_id AND status=active)) AND id<>'sub-B'
+      .mockResolvedValueOnce({}) // SAVEPOINT
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }) // INSERT
+      .mockResolvedValueOnce({}) // RELEASE
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await request(app)
+      .put(`/api/v1/admin/payments/${VALID_PAYMENT_ID}`)
+      .set(adminAuth())
+      .send({ decision: 'approved' });
+
+    expect(res.status).toBe(200);
+
+    const cancelCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' &&
+             (c[0] as string).includes("status = 'cancelled'") &&
+             (c[0] as string).includes("status = 'active'"),
+    ) as [string, unknown[]] | undefined;
+    expect(cancelCall).toBeDefined();
+    // params: [previous_subscription_id, user_id, activatedId]
+    expect(cancelCall![1]).toEqual(['sub-A', userId, 'sub-B']);
+  });
+
+  it('falls back to the legacy selection when no request is paired', async () => {
+    const userId = MOCK_PAYMENT_ROW.user_id;
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ ...MOCK_PAYMENT_ROW, status: 'approved' }] }) // UPDATE payments
+      .mockResolvedValueOnce({ rows: [] }) // pairing SELECT → no match
+      .mockResolvedValueOnce({ rows: [] }) // legacy: pending_change SELECT
+      .mockResolvedValueOnce({ rows: [{ id: 'sub-old' }] }) // legacy: pending SELECT
+      .mockResolvedValueOnce({}) // activate
+      .mockResolvedValueOnce({}) // SAVEPOINT
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }) // INSERT
+      .mockResolvedValueOnce({}) // RELEASE
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await request(app)
+      .put(`/api/v1/admin/payments/${VALID_PAYMENT_ID}`)
+      .set(adminAuth())
+      .send({ decision: 'approved' });
+
+    expect(res.status).toBe(200);
+
+    // Legacy pending_change query should have been issued
+    const legacyPendingChangeCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' &&
+             (c[0] as string).includes("status = 'pending_change'") &&
+             (c[1] as unknown[])?.includes(userId),
+    );
+    expect(legacyPendingChangeCall).toBeDefined();
+  });
+
+  it('writes the ledger row between activation and COMMIT', async () => {
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ ...MOCK_PAYMENT_ROW, status: 'approved' }] }) // UPDATE payments
+      .mockResolvedValueOnce({ rows: [{ id: 'sub-C', status: 'pending', previous_subscription_id: null }] }) // pairing
+      .mockResolvedValueOnce({}) // activate
+      .mockResolvedValueOnce({}) // SAVEPOINT analytics_income
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }) // INSERT income_ledger
+      .mockResolvedValueOnce({}) // RELEASE SAVEPOINT analytics_income
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await request(app)
+      .put(`/api/v1/admin/payments/${VALID_PAYMENT_ID}`)
+      .set(adminAuth())
+      .send({ decision: 'approved' });
+
+    expect(res.status).toBe(200);
+
+    const calls = mockClientQuery.mock.calls.map((c) => c[0] as string);
+    const spIdx = calls.findIndex((s) => s === 'SAVEPOINT analytics_income');
+    const insertIdx = calls.findIndex((s) => s.includes('income_ledger'));
+    const releaseIdx = calls.findIndex((s) => s === 'RELEASE SAVEPOINT analytics_income');
+    const commitIdx = calls.findIndex((s) => s === 'COMMIT');
+
+    expect(spIdx).toBeGreaterThan(-1);
+    expect(insertIdx).toBeGreaterThan(spIdx);
+    expect(releaseIdx).toBeGreaterThan(insertIdx);
+    expect(commitIdx).toBeGreaterThan(releaseIdx);
+  });
+
+  it('a ledger failure still commits the approval', async () => {
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ ...MOCK_PAYMENT_ROW, status: 'approved' }] }) // UPDATE payments
+      .mockResolvedValueOnce({ rows: [{ id: 'sub-C', status: 'pending', previous_subscription_id: null }] }) // pairing
+      .mockResolvedValueOnce({}) // activate
+      .mockResolvedValueOnce({}) // SAVEPOINT analytics_income
+      .mockRejectedValueOnce(new Error('ledger error')) // INSERT income_ledger fails
+      .mockResolvedValueOnce({}) // ROLLBACK TO SAVEPOINT analytics_income
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await request(app)
+      .put(`/api/v1/admin/payments/${VALID_PAYMENT_ID}`)
+      .set(adminAuth())
+      .send({ decision: 'approved' });
+
+    expect(res.status).toBe(200);
+
+    const calls = mockClientQuery.mock.calls.map((c) => c[0] as string);
+    expect(calls).toContain('ROLLBACK TO SAVEPOINT analytics_income');
+    expect(calls[calls.length - 1]).toBe('COMMIT');
+  });
+
+  it('a rejection writes no ledger row', async () => {
+    mockClientQuery
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ ...MOCK_PAYMENT_ROW, status: 'rejected' }] }) // UPDATE payments
+      .mockResolvedValueOnce({}); // COMMIT
+
+    const res = await request(app)
+      .put(`/api/v1/admin/payments/${VALID_PAYMENT_ID}`)
+      .set(adminAuth())
+      .send({ decision: 'rejected', rejection_reason: 'invalid' });
+
+    expect(res.status).toBe(200);
+
+    const incomeCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('income_ledger'),
+    );
+    expect(incomeCall).toBeUndefined();
+  });
 });

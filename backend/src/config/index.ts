@@ -156,6 +156,15 @@ const envSchema = z.object({
   // parse rules. Unset / empty → feature OFF. "all" → everyone. Otherwise a
   // comma-separated list of router UUIDs (canary).
   RADIUS_TIMEOUT_ROLLOUT: z.string().default(''),
+
+  // Analytics
+  ANALYTICS_JOBS_ENABLED: z.enum(['true', 'false']).default('true'),
+  ANALYTICS_TZ: z.string().default('Africa/Khartoum'),
+  ANALYTICS_USAGE_START_DATE: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .default('2026-10-20'),
+  ANALYTICS_QUIET_MIN_BASE: z.coerce.number().int().min(1).default(20),
 });
 
 // Guard against wildcard CORS before we even parse — a misconfigured '*' with

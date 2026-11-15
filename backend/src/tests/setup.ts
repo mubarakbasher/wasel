@@ -182,6 +182,12 @@ vi.mock('pg', () => {
 // (durable OTP locks must outlive a single request), so suites use distinct
 // subjects — or `redis.del(key)` in beforeEach when they must share one.
 
+// Mock operatorActivity.service globally so its query never consumes queued pool results.
+// Tests that need the real implementation use vi.importActual.
+vi.mock('../services/operatorActivity.service', () => ({
+  touchOperatorActivity: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock nodemailer
 vi.mock('nodemailer', () => {
   const sendMail = vi.fn().mockResolvedValue({ messageId: 'test-msg-id' });

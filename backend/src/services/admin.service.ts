@@ -4,6 +4,7 @@ import { redis } from '../config/redis';
 import { config } from '../config';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
+import { recordIncome } from './analyticsRecording.service';
 import { notifyPaymentConfirmed, isFcmAvailable, getFcmInitError } from './notification.service';
 import { getActiveSubscription, SubscriptionInfo } from './subscription.service';
 import {
@@ -762,58 +763,106 @@ export async function reviewPayment(
     // 2. If approved, activate the matching pending subscription.
     // SELECT FOR UPDATE locks the row so concurrent approval calls on the same
     // payment cannot race and double-activate.
+    let activatedSubscriptionId: string | null = null;
+
     if (decision === 'approved') {
-      // Check for pending_change (upgrade/downgrade) first — lock it immediately.
-      const pendingChange = await client.query(
-        `SELECT id, previous_subscription_id FROM subscriptions
-         WHERE user_id = $1 AND status = 'pending_change'
-         ORDER BY created_at DESC LIMIT 1
-         FOR UPDATE`,
-        [payment.user_id],
+      // --- New pairing: find the subscription created with this exact payment
+      //     by matching created_at in SQL (never via JS Date, which drops microseconds).
+      const pairedResult = await client.query(
+        `SELECT s.id, s.status, s.previous_subscription_id
+         FROM subscriptions s
+         JOIN payments p ON p.user_id = s.user_id AND p.created_at = s.created_at
+         WHERE p.id = $1 AND s.status IN ('pending', 'pending_change')
+         FOR UPDATE OF s`,
+        [paymentId],
       );
 
-      if (pendingChange.rows.length > 0) {
-        const change = pendingChange.rows[0];
+      if (pairedResult.rows.length > 0) {
+        // Paired row found — activate exactly that subscription.
+        const paired = pairedResult.rows[0] as {
+          id: string;
+          status: string;
+          previous_subscription_id: string | null;
+        };
+        activatedSubscriptionId = paired.id;
 
-        // Cancel the old active subscription
-        if (change.previous_subscription_id) {
-          await client.query(
-            `UPDATE subscriptions SET status = 'cancelled', updated_at = NOW()
-             WHERE id = $1`,
-            [change.previous_subscription_id],
-          );
-        }
-
-        // Activate the new subscription
         await client.query(
           `UPDATE subscriptions
            SET status = 'active', start_date = NOW(),
                end_date = NOW() + (duration_months * INTERVAL '30 days'),
                updated_at = NOW()
            WHERE id = $1`,
-          [change.id],
+          [paired.id],
         );
+
+        if (paired.status === 'pending_change') {
+          // Cancel the previous subscription and any other active one for this operator.
+          await client.query(
+            `UPDATE subscriptions SET status = 'cancelled', updated_at = NOW()
+             WHERE (id = $1 OR (user_id = $2 AND status = 'active'))
+               AND id <> $3`,
+            [paired.previous_subscription_id, payment.user_id, paired.id],
+          );
+        }
       } else {
-        // Regular new subscription activation — lock the pending row first.
-        const pendingSub = await client.query(
-          `SELECT id FROM subscriptions
-           WHERE user_id = $1 AND status = 'pending'
+        // Legacy fallback — no paired row (old data or mis-match); use original logic.
+        const pendingChange = await client.query(
+          `SELECT id, previous_subscription_id FROM subscriptions
+           WHERE user_id = $1 AND status = 'pending_change'
            ORDER BY created_at DESC LIMIT 1
            FOR UPDATE`,
           [payment.user_id],
         );
 
-        if (pendingSub.rows.length > 0) {
+        if (pendingChange.rows.length > 0) {
+          const change = pendingChange.rows[0] as {
+            id: string;
+            previous_subscription_id: string | null;
+          };
+          activatedSubscriptionId = change.id;
+
+          if (change.previous_subscription_id) {
+            await client.query(
+              `UPDATE subscriptions SET status = 'cancelled', updated_at = NOW()
+               WHERE id = $1`,
+              [change.previous_subscription_id],
+            );
+          }
+
           await client.query(
             `UPDATE subscriptions
              SET status = 'active', start_date = NOW(),
                  end_date = NOW() + (duration_months * INTERVAL '30 days'),
                  updated_at = NOW()
              WHERE id = $1`,
-            [pendingSub.rows[0].id],
+            [change.id],
           );
+        } else {
+          const pendingSub = await client.query(
+            `SELECT id FROM subscriptions
+             WHERE user_id = $1 AND status = 'pending'
+             ORDER BY created_at DESC LIMIT 1
+             FOR UPDATE`,
+            [payment.user_id],
+          );
+
+          if (pendingSub.rows.length > 0) {
+            activatedSubscriptionId = pendingSub.rows[0].id as string;
+            await client.query(
+              `UPDATE subscriptions
+               SET status = 'active', start_date = NOW(),
+                   end_date = NOW() + (duration_months * INTERVAL '30 days'),
+                   updated_at = NOW()
+               WHERE id = $1`,
+              [pendingSub.rows[0].id],
+            );
+          }
         }
       }
+
+      // Record income — recordIncome manages its own SAVEPOINT so a ledger
+      // failure never rolls back the activation.
+      await recordIncome(client, paymentId, activatedSubscriptionId);
     }
 
     await client.query('COMMIT');
@@ -884,18 +933,21 @@ export async function getStats(): Promise<AdminStats> {
     vouchersResult,
   ] = await Promise.all([
     pool.query(`SELECT COUNT(*) AS count FROM users WHERE role = 'user'`),
-    pool.query(`SELECT status, COUNT(*) AS count FROM subscriptions GROUP BY status`),
+    pool.query(
+      `SELECT CASE WHEN status = 'active' AND end_date <= NOW() THEN 'expired' ELSE status END AS status_key,
+              COUNT(*) AS count FROM subscriptions GROUP BY 1`,
+    ),
     pool.query(
       `SELECT COUNT(*) AS count FROM payments WHERE status = 'pending' AND receipt_url IS NOT NULL`,
     ),
-    pool.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE status = 'approved'`),
+    pool.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM income_ledger`),
     pool.query(`SELECT status, COUNT(*) AS count FROM routers GROUP BY status`),
     pool.query(`SELECT COUNT(*) AS count FROM voucher_meta`),
   ]);
 
   const subscriptionsByStatus: Record<string, number> = {};
   for (const row of subscriptionsResult.rows) {
-    subscriptionsByStatus[row.status] = parseInt(row.count, 10);
+    subscriptionsByStatus[row.status_key] = parseInt(row.count, 10);
   }
 
   const routersByStatus: Record<string, number> = {};
@@ -1347,33 +1399,33 @@ export async function getStatsTimeseries(
        md.active_subscriptions              AS "activeSubscriptions",
        md.routers_online                    AS "routersOnline"
      FROM generate_series(
-       (CURRENT_DATE - ($1::int - 1)),
-       CURRENT_DATE,
+       (NOW() AT TIME ZONE $2)::date - ($1::int - 1),
+       (NOW() AT TIME ZONE $2)::date,
        INTERVAL '1 day'
      ) AS d
      LEFT JOIN (
-       SELECT COALESCE(reviewed_at, created_at)::date AS dt,
-              SUM(amount)                              AS revenue
-       FROM payments
-       WHERE status = 'approved'
+       SELECT (approved_at AT TIME ZONE $2)::date AS dt,
+              SUM(amount)                         AS revenue
+       FROM income_ledger
+       WHERE approved_at >= NOW() - (($1::int + 1) * INTERVAL '1 day')
        GROUP BY 1
      ) rev ON rev.dt = d::date
      LEFT JOIN (
-       SELECT created_at::date AS dt,
-              COUNT(*)         AS new_users
+       SELECT (created_at AT TIME ZONE $2)::date AS dt,
+              COUNT(*)                           AS new_users
        FROM users
        WHERE role = 'user'
        GROUP BY 1
      ) u ON u.dt = d::date
      LEFT JOIN (
-       SELECT created_at::date AS dt,
-              COUNT(*)         AS vouchers
+       SELECT (created_at AT TIME ZONE $2)::date AS dt,
+              COUNT(*)                           AS vouchers
        FROM voucher_meta
        GROUP BY 1
      ) v ON v.dt = d::date
      LEFT JOIN metrics_daily md ON md.snapshot_date = d::date
      ORDER BY d ASC`,
-    [days],
+    [days, config.ANALYTICS_TZ],
   );
 
   const series: TimeseriesPoint[] = result.rows.map((row) => ({

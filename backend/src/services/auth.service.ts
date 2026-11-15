@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler';
 import logger from '../config/logger';
 import * as tokenService from './token.service';
 import * as emailService from './email.service';
+import { touchOperatorActivity } from './operatorActivity.service';
 
 const BCRYPT_ROUNDS = 12;
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -137,6 +138,8 @@ export async function login(email: string, password: string): Promise<LoginResul
 
   const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name, user.role);
 
+  if (user.role === 'user') void touchOperatorActivity(user.id).catch(() => undefined);
+
   logger.info('User logged in', { userId: user.id });
   return { user: { id: user.id, name: user.name, email: user.email, role: user.role }, tokens };
 }
@@ -166,7 +169,11 @@ export async function refresh(refreshTokenStr: string): Promise<AuthTokens> {
   }
 
   const user = result.rows[0];
-  return tokenService.issueTokenPair(user.id, user.email, user.name, user.role);
+  const tokens = await tokenService.issueTokenPair(user.id, user.email, user.name, user.role);
+
+  if (user.role === 'user') void touchOperatorActivity(user.id).catch(() => undefined);
+
+  return tokens;
 }
 
 export async function verifyEmail(email: string, otp: string): Promise<LoginResult> {

@@ -7,6 +7,7 @@ import { isSafeAcctSessionId, formatRadiusExpiration, parseRadiusExpiration } fr
 import { sendDisconnectRequest } from './radclient.service';
 import { encodeCursor, decodeCursor, TimestampUuidCursor } from '../utils/cursor';
 import { getCodeLength } from './printSettings.service';
+import { recordCardBatch } from './analyticsCards.service';
 
 // ----- Interfaces -----
 
@@ -739,6 +740,14 @@ export async function createVouchers(
         );
       }
     }
+
+    await recordCardBatch(client, {
+      userId,
+      routerId,
+      cardCount: count,
+      price: data.price ?? null,
+      limitType: data.limitType,
+    });
 
     await client.query('COMMIT');
 

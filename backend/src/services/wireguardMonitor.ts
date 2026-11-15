@@ -3,6 +3,7 @@ import logger from '../config/logger';
 import { Sentry, sentryEnabled } from '../config/sentry';
 import { notifyRouterOffline, notifyRouterOnline } from './notification.service';
 import { listPeers, resetPeer, WgPeerStatus } from './wireguardPeer';
+import { recordRouterTick, RouterTick } from './routerUptimeRecorder';
 
 /** How often to check router statuses (ms). */
 const CHECK_INTERVAL_MS = 60_000;
@@ -53,6 +54,7 @@ interface RouterRow {
   wg_public_key: string;
   status: RouterStatus;
   tunnel_ip: string;
+  last_seen: Date | null;
 }
 
 /**
@@ -134,10 +136,12 @@ export async function checkRouterStatuses(): Promise<void> {
   // A total wg failure also means onlineCount = 0 this tick, which correctly
   // triggers the fleet alarm if the fleet was healthy last tick.
   let peers: WgPeerStatus[] = [];
+  let peersOk = true;
 
   try {
     peers = await listPeers();
   } catch (error) {
+    peersOk = false;
     logger.error('WireGuard monitor: failed to list peers, treating all peers as unreachable', {
       error: error instanceof Error ? error.message : String(error),
     });
@@ -153,7 +157,7 @@ export async function checkRouterStatuses(): Promise<void> {
 
   try {
     const result = await pool.query<RouterRow>(
-      'SELECT id, user_id, name, wg_public_key, status, tunnel_ip FROM routers WHERE wg_public_key IS NOT NULL'
+      'SELECT id, user_id, name, wg_public_key, status, tunnel_ip, last_seen FROM routers WHERE wg_public_key IS NOT NULL'
     );
     routers = result.rows;
   } catch (error) {
@@ -353,6 +357,35 @@ export async function checkRouterStatuses(): Promise<void> {
     } finally {
       client.release();
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Router up/down recorder — records state, outages, and heartbeat for
+  // analytics. Isolated behind its own try/catch so a recording failure
+  // cannot affect the status tick.
+  // -------------------------------------------------------------------------
+  try {
+    const tickRouters: RouterTick[] = routers.map((r) => {
+      const peer = peerMap.get(r.wg_public_key);
+      const online = determineStatus(peer, nowSeconds) === 'online';
+      let lastSeen: Date | null = null;
+      if (online && peer) {
+        lastSeen = new Date(peer.latestHandshake * 1000);
+      } else if (r.last_seen) {
+        lastSeen = new Date(r.last_seen);
+      }
+      return { id: r.id, userId: r.user_id, online, lastSeen };
+    });
+    await recordRouterTick({
+      peersOk,
+      peerCount: peers.length,
+      routers: tickRouters,
+      now: new Date(nowMs),
+    });
+  } catch (error) {
+    logger.error('WireGuard monitor: recordRouterTick raised unexpectedly', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   // -------------------------------------------------------------------------

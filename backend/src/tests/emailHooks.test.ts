@@ -94,8 +94,12 @@ describe('reviewPayment → email senders', () => {
     mockClientQuery
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rowCount: 1, rows: [PAYMENT_ROW] }) // UPDATE payments RETURNING
+      .mockResolvedValueOnce({ rows: [] }) // pairing SELECT (new — no paired row → legacy path)
       .mockResolvedValueOnce({ rows: [] }) // pending_change sub check
       .mockResolvedValueOnce({ rows: [] }) // pending sub check
+      .mockResolvedValueOnce({}) // SAVEPOINT analytics_income
+      .mockResolvedValueOnce({}) // INSERT income_ledger
+      .mockResolvedValueOnce({}) // RELEASE SAVEPOINT analytics_income
       .mockResolvedValueOnce({}); // COMMIT
     // planLabel lookup (pool.query outside the client)
     mockQuery.mockResolvedValueOnce({ rows: [{ name: 'Starter' }] });
