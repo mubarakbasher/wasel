@@ -32,13 +32,16 @@ const pendingPayment = {
   reviewed_at: null,
 };
 
-function renderPage() {
-  const queryClient = new QueryClient({
+function newQueryClient() {
+  return new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   });
+}
+
+function renderPage(queryClient: QueryClient = newQueryClient()) {
   return render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
@@ -110,5 +113,62 @@ describe('PaymentsPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
 
     expect(await screen.findByText('Already reviewed')).toBeInTheDocument();
+  });
+
+  it('PaymentsPage: the table has an Approved column', async () => {
+    const approved = {
+      ...pendingPayment,
+      id: 'pay_2',
+      user_name: 'Omar Ali',
+      status: 'approved',
+      reviewed_at: '2026-07-02T09:30:00.000Z',
+    };
+    const rejected = {
+      ...pendingPayment,
+      id: 'pay_3',
+      user_name: 'Sara Osman',
+      status: 'rejected',
+      rejection_reason: 'Blurry receipt',
+      reviewed_at: '2026-07-03T08:00:00.000Z',
+    };
+    mockGet.mockResolvedValue({
+      data: { data: [approved, pendingPayment, rejected], meta: { total: 3 } },
+    });
+    renderPage();
+    await screen.findByText('Omar Ali');
+
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    const column = headers.indexOf('Approved');
+    // Right after the day the payment was made, so the two can be read together.
+    expect(headers[column - 1]).toBe('Date');
+    const approvedCell = (name: string) =>
+      within(screen.getByText(name).closest('tr') as HTMLElement).getAllByRole('cell')[column];
+
+    // 09:30 UTC on the admin (Khartoum) clock.
+    expect(approvedCell('Omar Ali')).toHaveTextContent('02/07/2026, 11:30');
+    // Not reviewed yet.
+    expect(approvedCell('Jane Doe')).toHaveTextContent(/^—$/);
+    // Reviewed, but rejected: it was never approved, so it has no approval time.
+    expect(approvedCell('Sara Osman')).toHaveTextContent(/^—$/);
+  });
+
+  it('a decision also marks the Money analytics as out of date', async () => {
+    const user = userEvent.setup();
+    const queryClient = newQueryClient();
+    const moneyKey = ['admin', 'analytics', 'money', 'month'];
+    const operatorsKey = ['admin', 'analytics', 'operators', '30d'];
+    queryClient.setQueryData(moneyKey, { data: {}, meta: {} });
+    queryClient.setQueryData(operatorsKey, { data: {}, meta: {} });
+    renderPage(queryClient);
+    await screen.findByText('Jane Doe');
+
+    await user.click(screen.getByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    expect(await screen.findByText('Payment approved successfully.')).toBeInTheDocument();
+
+    // Income is counted from approved payments: every cached Money period is stale now.
+    expect(queryClient.getQueryState(moneyKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(operatorsKey)?.isInvalidated).toBe(false);
   });
 });

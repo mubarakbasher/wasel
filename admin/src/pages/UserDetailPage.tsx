@@ -3,13 +3,23 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus, AlertTriangle, FileText, Check } from 'lucide-react';
 import api from '../lib/api';
-import { formatDate, formatDateTime } from '../lib/datetime';
+import { analyticsKey, fetchOperator, type AnalyticsMeta } from '../lib/analytics';
+import { formatDate, formatDateTime, formatDay } from '../lib/datetime';
+import {
+  apiErrorMessage,
+  formatDuration,
+  formatNumber,
+  formatPercent,
+  formatQuota,
+} from '../lib/format';
+import type { PeriodQuery } from '../lib/period';
 import ErrorPanel from '../components/ErrorPanel';
 import StatusBadge from '../components/StatusBadge';
 import Button from '../components/ui/Button';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SetupGuideView from '../components/SetupGuideView';
+import OperatorAnalyticsSection from '../components/analytics/OperatorAnalyticsSection';
 
 interface UserInfo {
   id: string;
@@ -51,12 +61,28 @@ interface UserDetailResponse {
   routerCount: number;
 }
 
-function extractErr(err: unknown, fallback = 'Request failed'): string {
-  const e = err as {
-    response?: { data?: { error?: { message?: string } } };
-    message?: string;
-  };
-  return e.response?.data?.error?.message ?? e.message ?? fallback;
+// The Uptime and Drops columns of the routers table always cover this period.
+// It is the one the analytics section below opens on, so the page loads both
+// from a single request.
+const ROUTER_STATS_PERIOD: PeriodQuery = { period: '30d' };
+const ROUTER_STATS_SPAN = 'the last 30 days';
+
+/** "2026-11-10" → "10 Nov 2026". */
+function dayWithYear(day: string): string {
+  return `${formatDay(day)} ${day.slice(0, 4)}`;
+}
+
+/** The line under the routers table: what Uptime and Drops cover. */
+function routerStatsNote(failed: boolean, meta: AnalyticsMeta | undefined): string {
+  if (failed) return 'Uptime and drops could not be loaded.';
+  const span = `Uptime and drops cover ${ROUTER_STATS_SPAN}.`;
+  if (!meta) return span;
+  if (meta.routerHistoryStart === null) return `${span} Router uptime starts recording at launch.`;
+  // A history younger than the period: the figures cover less than the period says.
+  if (meta.routerHistoryStart > meta.range.from) {
+    return `${span} Router history began on ${dayWithYear(meta.routerHistoryStart)}.`;
+  }
+  return span;
 }
 
 export default function UserDetailPage() {
@@ -77,6 +103,21 @@ export default function UserDetailPage() {
     enabled: !!id,
   });
 
+  // Analytics exist for operators only: an admin account has none to ask for.
+  const isOperator = data?.user.role === 'user';
+
+  // Uptime and drops per router. Same key as OperatorAnalyticsSection, so this
+  // is its request, not a second one. A failure leaves the columns empty and
+  // nothing else on the page waits for it.
+  const routerStatsQuery = useQuery({
+    queryKey: [...analyticsKey('operator', ROUTER_STATS_PERIOD), id],
+    queryFn: () => fetchOperator(id as string, ROUTER_STATS_PERIOD),
+    enabled: !!id && isOperator,
+  });
+  const routerStats = new Map(
+    (routerStatsQuery.data?.data.routers ?? []).map((stats) => [stats.routerId, stats]),
+  );
+
   const flash = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
@@ -91,7 +132,7 @@ export default function UserDetailPage() {
       setVerifyConfirm(false);
       flash('User verified.');
     },
-    onError: (err) => flash(extractErr(err, 'Verify failed')),
+    onError: (err) => flash(apiErrorMessage(err) ?? 'Verify failed'),
   });
 
   return (
@@ -183,7 +224,9 @@ export default function UserDetailPage() {
                   />
                   <InfoRow
                     label="Vouchers"
-                    value={`${data.subscription.vouchersUsed} / ${data.subscription.voucherQuota}`}
+                    value={`${formatNumber(data.subscription.vouchersUsed)} / ${formatQuota(
+                      data.subscription.voucherQuota,
+                    )}`}
                   />
                 </div>
               </div>
@@ -207,54 +250,98 @@ export default function UserDetailPage() {
             {data.routers.length === 0 ? (
               <p className="text-sm text-slate-500">This user has no routers yet.</p>
             ) : (
-              <div className="overflow-hidden rounded-lg border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">
-                    <tr>
-                      <th className="px-4 py-2.5">Name</th>
-                      <th className="px-4 py-2.5">Status</th>
-                      <th className="px-4 py-2.5">Tunnel IP</th>
-                      <th className="px-4 py-2.5">Created</th>
-                      <th className="px-4 py-2.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {data.routers.map((r) => (
-                      <tr key={r.id}>
-                        <td className="px-4 py-2.5 font-medium text-slate-900">{r.name}</td>
-                        <td className="px-4 py-2.5">
-                          <StatusBadge status={r.status} />
-                        </td>
-                        <td className="px-4 py-2.5">
-                          {r.tunnel_ip ? (
-                            <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">
-                              {r.tunnel_ip}
-                            </code>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-600">
-                          {formatDate(r.created_at)}
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => setSetupRouterId(r.id)}
-                            title="View setup script"
-                            leftIcon={<FileText className="w-4 h-4" />}
-                          >
-                            View setup
-                          </Button>
-                        </td>
+              <>
+                {/* Scrolls sideways on a narrow screen instead of clipping its columns. */}
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">
+                      <tr>
+                        <th className="px-4 py-2.5">Name</th>
+                        <th className="px-4 py-2.5">Status</th>
+                        <th className="px-4 py-2.5 text-right">Uptime</th>
+                        <th className="px-4 py-2.5 text-right">Drops</th>
+                        <th className="px-4 py-2.5">Tunnel IP</th>
+                        <th className="px-4 py-2.5">Created</th>
+                        <th className="px-4 py-2.5 text-right">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.routers.map((r) => {
+                        const stats = routerStats.get(r.id);
+                        const statsPending = routerStatsQuery.isLoading ? (
+                          <span
+                            aria-hidden="true"
+                            className="inline-block h-4 w-10 rounded bg-slate-200 align-middle animate-pulse"
+                          />
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        );
+                        return (
+                          <tr key={r.id}>
+                            <td className="px-4 py-2.5 font-medium text-slate-900">{r.name}</td>
+                            <td className="px-4 py-2.5">
+                              <StatusBadge status={r.status} />
+                            </td>
+                            <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap text-slate-700">
+                              {stats && stats.uptimePct !== null
+                                ? formatPercent(stats.uptimePct, 1)
+                                : statsPending}
+                            </td>
+                            <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap text-slate-700">
+                              {stats ? (
+                                <>
+                                  {formatNumber(stats.drops)}
+                                  {stats.drops > 0 && (
+                                    <div className="text-xs text-slate-500">
+                                      longest {formatDuration(stats.longestOutageSec)}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                statsPending
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              {r.tunnel_ip ? (
+                                <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">
+                                  {r.tunnel_ip}
+                                </code>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">
+                              {formatDate(r.created_at)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setSetupRouterId(r.id)}
+                                title="View setup script"
+                                leftIcon={<FileText className="w-4 h-4" />}
+                                className="whitespace-nowrap"
+                              >
+                                View setup
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {isOperator && (
+                  <p className="mt-3 text-xs text-slate-500">
+                    {routerStatsNote(routerStatsQuery.isError, routerStatsQuery.data?.meta)}
+                  </p>
+                )}
+              </>
             )}
           </div>
+
+          {/* Analytics: its own request and period, so a failure stays in its own card. */}
+          {id && isOperator && <OperatorAnalyticsSection userId={id} />}
         </div>
       )}
 
@@ -350,7 +437,7 @@ function AddRouterModal({
       queryClient.invalidateQueries({ queryKey: ['admin-user', userId] });
       setCreatedRouterId(router.id);
     },
-    onError: (err) => setErrorMsg(extractErr(err)),
+    onError: (err) => setErrorMsg(apiErrorMessage(err) ?? 'Request failed'),
   });
 
   const trimmedName = name.trim();

@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  ChartColumn,
   Users,
   CreditCard,
   Banknote,
@@ -28,6 +29,7 @@ export interface NavItem {
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+  { label: 'Analytics', path: '/analytics', icon: ChartColumn },
   { label: 'Users', path: '/users', icon: Users },
   { label: 'Subscriptions', path: '/subscriptions', icon: CreditCard },
   { label: 'Plans', path: '/plans', icon: Package },
@@ -59,6 +61,9 @@ export function pageTitleFor(pathname: string): string {
   // Detail routes (not in the sidebar nav).
   if (/^\/users\/[^/]+$/.test(pathname)) return 'User Detail';
   if (/^\/messages\/[^/]+$/.test(pathname)) return 'Conversation';
+
+  // Every tab under /analytics/ carries the section title.
+  if (pathname.startsWith('/analytics/')) return 'Analytics';
 
   return 'Admin Panel';
 }

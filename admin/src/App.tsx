@@ -6,6 +6,7 @@ import AppLayout from './components/layout/AppLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import UsersPage from './pages/UsersPage';
 import UserDetailPage from './pages/UserDetailPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
@@ -68,6 +69,9 @@ export default function App() {
                   }
                 >
                   <Route path="/dashboard" element={<DashboardPage />} />
+                  {/* /analytics has no tab: AnalyticsPage sends it, and any unknown tab, to /analytics/money. */}
+                  <Route path="/analytics" element={<AnalyticsPage />} />
+                  <Route path="/analytics/:tab" element={<AnalyticsPage />} />
                   <Route path="/users" element={<UsersPage />} />
                   <Route path="/users/:id" element={<UserDetailPage />} />
                   <Route path="/subscriptions" element={<SubscriptionsPage />} />

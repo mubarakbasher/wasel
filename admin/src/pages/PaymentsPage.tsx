@@ -73,6 +73,9 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
+      // Income, renewals and "payments waiting" on the Money tab all read
+      // payments: every cached period of it is out of date after a decision.
+      queryClient.invalidateQueries({ queryKey: ['admin', 'analytics', 'money'] });
       toast.success(
         confirmAction?.decision === 'approved'
           ? 'Payment approved successfully.'
@@ -178,6 +181,13 @@ export default function PaymentsPage() {
       key: 'created_at',
       header: 'Date',
       render: (row) => formatDateTime(row.created_at),
+    },
+    {
+      // The day income is counted on (Analytics, Money tab). `reviewed_at` is
+      // also set by a rejection, so only an approved payment has a time here.
+      key: 'reviewed_at',
+      header: 'Approved',
+      render: (row) => (row.status === 'approved' ? formatDateTime(row.reviewed_at) : '—'),
     },
     {
       key: 'actions',
