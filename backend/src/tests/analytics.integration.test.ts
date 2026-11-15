@@ -30,6 +30,27 @@ function safeHost(url: string): boolean {
   }
 }
 
+// ---- Module-level schema-routing Pool wrapper (accessible by all describe blocks) ----
+function buildSchemaPool(realPool: Pool, s: string): Pool {
+  const proxy = Object.create(realPool) as Pool & { connect: () => Promise<PoolClient> };
+  proxy.query = (async (...args: Parameters<Pool['query']>) => {
+    const client = await realPool.connect();
+    try {
+      await client.query(`SET search_path = ${s}, public`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await (client.query as any)(...args);
+    } finally {
+      client.release();
+    }
+  }) as Pool['query'];
+  proxy.connect = async () => {
+    const client = await realPool.connect();
+    await client.query(`SET search_path = ${s}, public`);
+    return client;
+  };
+  return proxy;
+}
+
 describe.skipIf(!enabled)('analytics integration tests', { timeout: 120_000 }, () => {
   let pool: Pool;
   let schema: string;
@@ -44,6 +65,7 @@ describe.skipIf(!enabled)('analytics integration tests', { timeout: 120_000 }, (
   }
 
   // ---- Schema-routing Pool wrapper (same pattern as voucherCodeReuse.integration.test.ts) ----
+  // (kept for backward compat; delegates to the module-level helper)
   function buildSchemaPool(realPool: Pool, s: string): Pool {
     const proxy = Object.create(realPool) as Pool & { connect: () => Promise<PoolClient> };
     proxy.query = (async (...args: Parameters<Pool['query']>) => {
@@ -2040,3 +2062,152 @@ describe.skipIf(!enabled)('[C8-test] paying-vs-granted rule (earlier paid, curre
     // is 1 from the first assertion above.
   });
 });
+
+// ---------------------------------------------------------------------------
+// F1 — real-Postgres backfill cursor precision test
+//
+// One router: 5,001 cards all sharing a microsecond-precise created_at
+// (2026-07-23 21:57:16.553510+00), plus 10 older cards.  After a full cards
+// backfill the batches must sum to exactly 5,011.
+// ---------------------------------------------------------------------------
+
+describe.skipIf(!enabled)(
+  '[F1] backfill cursor precision — real Postgres',
+  { timeout: 180_000 },
+  () => {
+    let bpPool: Pool;
+    let bpSchema: string;
+
+    beforeAll(async () => {
+      const dbUrl = process.env.INTEGRATION_DATABASE_URL!;
+      if (!safeHost(dbUrl)) throw new Error('INTEGRATION_DATABASE_URL must be localhost');
+
+      const { Pool: RealPool } = await vi.importActual<typeof import('pg')>('pg');
+      bpPool = new RealPool({ connectionString: dbUrl, max: 5 });
+      bpSchema = `test_backfill_precision_${Date.now()}`;
+
+      const bq = (sql: string, params?: unknown[]) => bpPool.query(sql, params);
+
+      await bq(`CREATE SCHEMA ${bpSchema}`);
+
+      // Minimal tables needed by backfillCards
+      await bq(`CREATE TABLE ${bpSchema}.users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL, email TEXT,
+        role TEXT NOT NULL DEFAULT 'user',
+        password_hash TEXT NOT NULL DEFAULT 'x',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        email_verified BOOLEAN NOT NULL DEFAULT true
+      )`);
+      await bq(`CREATE TABLE ${bpSchema}.routers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL,
+        name TEXT NOT NULL,
+        tunnel_ip TEXT,
+        status TEXT NOT NULL DEFAULT 'offline',
+        last_seen TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+      await bq(`CREATE TABLE ${bpSchema}.voucher_meta (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        router_id UUID NOT NULL,
+        user_id UUID NOT NULL,
+        radius_username VARCHAR(64) NOT NULL UNIQUE,
+        status VARCHAR(32) NOT NULL DEFAULT 'unused',
+        limit_type VARCHAR(16),
+        limit_value NUMERIC,
+        price NUMERIC(10,2),
+        validity_seconds INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+      await bq(`CREATE TABLE ${bpSchema}.analytics_card_batches (
+        id BIGSERIAL PRIMARY KEY,
+        user_id UUID NOT NULL,
+        router_id UUID NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        card_count INTEGER NOT NULL,
+        price NUMERIC(10,2),
+        limit_type VARCHAR(10),
+        source VARCHAR(10) NOT NULL DEFAULT 'live'
+      )`);
+      await bq(`CREATE TABLE ${bpSchema}.analytics_state (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+      await bq(
+        `INSERT INTO ${bpSchema}.analytics_state (key) VALUES ('radacct_cursor'),('monitor_heartbeat') ON CONFLICT DO NOTHING`,
+      );
+      await bq(`CREATE TABLE ${bpSchema}.schema_migrations (
+        filename TEXT PRIMARY KEY,
+        executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+      // migration 045 must be AFTER the card timestamps so all cards are captured
+      await bq(`INSERT INTO ${bpSchema}.schema_migrations (filename, executed_at)
+                VALUES ('045_analytics_recording.sql', NOW()) ON CONFLICT DO NOTHING`);
+
+      // Seed operator + router
+      const userRes = await bq(
+        `INSERT INTO ${bpSchema}.users (name, email) VALUES ('BPOp','bp@test.com') RETURNING id`,
+      );
+      const userId = userRes.rows[0].id as string;
+      const routerRes = await bq(
+        `INSERT INTO ${bpSchema}.routers (user_id, name) VALUES ($1, 'bp-router') RETURNING id`,
+        [userId],
+      );
+      const routerId = routerRes.rows[0].id as string;
+
+      // Batch 1: 5,001 cards all with EXACT microsecond precision
+      await bq(
+        `INSERT INTO ${bpSchema}.voucher_meta
+           (router_id, user_id, radius_username, status, limit_type, price, validity_seconds, created_at)
+         SELECT $1, $2, 'bp-' || i, 'unused', 'time', 50, 3600,
+                '2026-07-23 21:57:16.553510+00'::timestamptz
+           FROM generate_series(1, 5001) AS g(i)`,
+        [routerId, userId],
+      );
+
+      // Batch 2: 10 older cards (earlier date — should be a separate page)
+      await bq(
+        `INSERT INTO ${bpSchema}.voucher_meta
+           (router_id, user_id, radius_username, status, limit_type, price, validity_seconds, created_at)
+         SELECT $1, $2, 'bpold-' || i, 'unused', 'time', 50, 3600,
+                '2026-05-01 10:00:00+00'::timestamptz
+           FROM generate_series(1, 10) AS g(i)`,
+        [routerId, userId],
+      );
+    });
+
+    afterAll(async () => {
+      if (bpPool) {
+        await bpPool.query(`DROP SCHEMA IF EXISTS ${bpSchema} CASCADE`).catch(() => undefined);
+        await bpPool.end();
+      }
+      vi.resetModules();
+    });
+
+    it('sums to exactly 5,011 cards with no loss at page boundary', async () => {
+      // Route the backfill script's pool to bpSchema
+      vi.resetModules();
+      const bpSchemaPool = buildSchemaPool(bpPool, bpSchema);
+      vi.doMock('../config/database', () => ({
+        pool: bpSchemaPool,
+        getPool: () => bpSchemaPool,
+      }));
+
+      const { runBackfill: runBP } = await import('../scripts/analyticsBackfill');
+
+      await runBP({ confirm: true, step: 'cards', ignoreWindow: true, _delayMs: 0 });
+
+      const sumRes = await bpPool.query<{ total: string }>(
+        `SELECT COALESCE(SUM(card_count),0)::text AS total
+           FROM ${bpSchema}.analytics_card_batches
+          WHERE source = 'backfill'`,
+      );
+      expect(Number(sumRes.rows[0].total)).toBe(5011);
+
+      vi.resetModules();
+    });
+  },
+);
+

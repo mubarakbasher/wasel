@@ -70,6 +70,13 @@ export interface BackfillOpts {
   confirm: boolean;
   step: BackfillStep;
   ignoreWindow: boolean;
+  /**
+   * When true (and confirm is also true): before the cards step, delete every
+   * analytics_card_batches row with source='backfill', every analytics_state key
+   * that starts with 'backfill_cards_router:', and the 'backfill_cards_done' key.
+   * Does nothing in a dry run.  Defaults to false.
+   */
+  resetCards?: boolean;
   /** Injected for tests; defaults to new Date() */
   _now?: Date;
   /** Override pause ms for tests; defaults to BASE_PAUSE_MS */
@@ -184,6 +191,7 @@ async function backfillCards(
       const tChunkStart = Date.now();
       let page: Array<{
         created_at: Date;
+        created_at_text: string;
         id: string;
         price: string | null;
         limit_type: string | null;
@@ -194,20 +202,25 @@ async function backfillCards(
         const res = await withGuardedClient(async (client) => {
           return client.query<{
             created_at: Date;
+            created_at_text: string;
             id: string;
             price: string | null;
             limit_type: string | null;
             cnt: string;
           }>(
             cursorCreatedAt
-              ? `SELECT created_at, id, price::text, limit_type, COUNT(*) OVER () AS cnt
+              ? `SELECT created_at,
+                        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_text,
+                        id, price::text, limit_type, COUNT(*) OVER () AS cnt
                    FROM voucher_meta
                   WHERE router_id = $1::uuid
                     AND created_at < $2::timestamptz
                     AND (created_at < $3::timestamptz OR (created_at = $3::timestamptz AND id < $4::uuid))
                   ORDER BY created_at DESC, id DESC
                   LIMIT $5::int`
-              : `SELECT created_at, id, price::text, limit_type, COUNT(*) OVER () AS cnt
+              : `SELECT created_at,
+                        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_text,
+                        id, price::text, limit_type, COUNT(*) OVER () AS cnt
                    FROM voucher_meta
                   WHERE router_id = $1::uuid
                     AND created_at < $2::timestamptz
@@ -243,19 +256,20 @@ async function backfillCards(
 
       totalPages++;
 
-      // Group by (created_at, price, limit_type) → batch rows
+      // Group by (created_at_text, price, limit_type) → batch rows.
+      // Use the full-precision text from Postgres so microseconds are preserved.
       const groups = new Map<
         string,
-        { created_at: Date; price: number | null; limit_type: string | null; count: number }
+        { created_at_text: string; price: number | null; limit_type: string | null; count: number }
       >();
       for (const row of page) {
-        const key = `${row.created_at.toISOString()}|${row.price}|${row.limit_type}`;
+        const key = `${row.created_at_text}|${row.price}|${row.limit_type}`;
         const existing = groups.get(key);
         if (existing) {
           existing.count++;
         } else {
           groups.set(key, {
-            created_at: row.created_at,
+            created_at_text: row.created_at_text,
             price: row.price !== null ? Number(row.price) : null,
             limit_type: row.limit_type,
             count: 1,
@@ -268,11 +282,11 @@ async function backfillCards(
           await pool.query(
             `INSERT INTO analytics_card_batches
                (user_id, router_id, created_at, card_count, price, limit_type, source)
-             SELECT user_id, $1, $2, $3, $4, $5, 'backfill'
+             SELECT user_id, $1, $2::timestamptz, $3, $4, $5, 'backfill'
                FROM routers WHERE id = $1`,
             [
               routerId,
-              batch.created_at,
+              batch.created_at_text,
               batch.count,
               batch.price,
               batch.limit_type,
@@ -282,14 +296,14 @@ async function backfillCards(
         }
       }
 
-      // Save progress
+      // Save progress — cursor uses the full-precision text, never a JS Date round-trip.
       const lastRow = page[page.length - 1];
-      const newCursor = `${lastRow.created_at.toISOString()}::${lastRow.id}`;
+      const newCursor = `${lastRow.created_at_text}::${lastRow.id}`;
       if (confirm) {
         await setAnalyticsState(`backfill_cards_router:${routerId}`, newCursor);
       }
 
-      cursorCreatedAt = lastRow.created_at.toISOString();
+      cursorCreatedAt = lastRow.created_at_text;
       cursorId = lastRow.id;
 
       if (page.length < PAGE_SIZE) {
@@ -460,10 +474,40 @@ async function backfillUsage(confirm: boolean, basePauseMs: number = BASE_PAUSE_
 
 async function backfillDays(confirm: boolean, basePauseMs: number = BASE_PAUSE_MS): Promise<number> {
   const tz = config.ANALYTICS_TZ;
-  const startDate = config.ANALYTICS_USAGE_START_DATE;
+  const usageStartDate = config.ANALYTICS_USAGE_START_DATE;
   const today = khartoumToday(new Date(), tz);
 
-  let currentDay = startDate;
+  // Determine the earliest day that has batches (in configured tz), so card-day
+  // rebuilds cover history that pre-dates the usage-start date.
+  const batchMinRes = await pool.query<{ d: string | null }>(
+    `SELECT to_char((MIN(created_at) AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS d
+       FROM analytics_card_batches`,
+    [tz],
+  );
+  const cardStartDay: string = batchMinRes.rows[0]?.d ?? usageStartDate;
+
+  // Determine the earliest tracked_since day for uptime; skip uptime entirely when none.
+  const uptimeMinRes = await pool.query<{ d: string | null }>(
+    `SELECT to_char((MIN(tracked_since) AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS d
+       FROM router_uptime_state`,
+    [tz],
+  );
+  const uptimeStartDay: string | null = uptimeMinRes.rows[0]?.d ?? null;
+
+  // The main loop starts from the earliest of cardStartDay and uptimeStartDay.
+  const effectiveStart =
+    uptimeStartDay !== null && uptimeStartDay < cardStartDay
+      ? uptimeStartDay
+      : cardStartDay;
+
+  logger.info('analyticsBackfill: days step bounds', {
+    cardStartDay,
+    uptimeStartDay,
+    effectiveStart,
+    today,
+  });
+
+  let currentDay = effectiveStart;
   let daysRebuilt = 0;
   let consecutiveFailures = 0;
   let pauseMs = basePauseMs;
@@ -474,8 +518,12 @@ async function backfillDays(confirm: boolean, basePauseMs: number = BASE_PAUSE_M
     const tChunkStart = Date.now();
     try {
       if (confirm) {
-        await rebuildCardDay(currentDay);
-        await rebuildUptimeDay(currentDay);
+        if (currentDay >= cardStartDay) {
+          await rebuildCardDay(currentDay);
+        }
+        if (uptimeStartDay !== null && currentDay >= uptimeStartDay) {
+          await rebuildUptimeDay(currentDay);
+        }
       }
       consecutiveFailures = 0;
       daysRebuilt++;
@@ -532,6 +580,20 @@ export async function runBackfill(opts: BackfillOpts): Promise<BackfillReport> {
   const runUsage = step === 'usage' || step === 'all';
   const runDays = step === 'days' || step === 'all';
 
+  if (runCards && confirm && opts.resetCards) {
+    // Reset: wipe previous backfill batches and progress so the step runs clean.
+    const batchDel = await pool.query(
+      `DELETE FROM analytics_card_batches WHERE source = 'backfill'`,
+    );
+    const stateDel = await pool.query(
+      `DELETE FROM analytics_state WHERE key LIKE 'backfill_cards_router:%' OR key = 'backfill_cards_done'`,
+    );
+    logger.info('analyticsBackfill: resetCards wiped previous run', {
+      batchRowsDeleted: batchDel.rowCount,
+      stateRowsDeleted: stateDel.rowCount,
+    });
+  }
+
   if (runCards) {
     report.cards = await backfillCards(confirm, delayMs);
     logger.info('analyticsBackfill: cards step complete', report.cards);
@@ -562,15 +624,16 @@ export async function runBackfill(opts: BackfillOpts): Promise<BackfillReport> {
 if (require.main === module) {
   const confirm = process.env['CONFIRM'] === '1';
   const ignoreWindow = process.env['IGNORE_WINDOW'] === '1';
+  const resetCards = process.env['RESET_CARDS'] === '1';
   const rawStep = process.env['STEP'] ?? 'all';
   const validSteps: BackfillStep[] = ['cards', 'first-use', 'usage', 'days', 'all'];
   const step: BackfillStep = validSteps.includes(rawStep as BackfillStep)
     ? (rawStep as BackfillStep)
     : 'all';
 
-  logger.info('analyticsBackfill: starting', { confirm, step, ignoreWindow });
+  logger.info('analyticsBackfill: starting', { confirm, step, ignoreWindow, resetCards });
 
-  runBackfill({ confirm, step, ignoreWindow })
+  runBackfill({ confirm, step, ignoreWindow, resetCards })
     .then((report) => {
       logger.info('analyticsBackfill: done', report);
       process.exit(0);
