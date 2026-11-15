@@ -318,8 +318,10 @@ builder as the screen; `toCsv` from `backend/src/utils/csv.ts:87`; audit-logged;
 **Network**
 - Online now / Now: live `routers.status`; when the monitor heartbeat is older than 3 minutes the tab shows
   "status unknown" instead (a failed `wg show` marks every router offline in `routers.status`).
-- Uptime %: up seconds ÷ observed seconds, across routers seen online since recording began; never-connected
-  and not-seen-since-launch routers are counted separately.
+- Uptime %: up seconds ÷ observed seconds **within the selected period**, across the routers being tracked
+  (a router is tracked from the first time it is seen online after launch); never-connected and
+  not-seen-since-launch routers are counted separately. The headline card and the per-router column use the
+  same period, so they change together with the picker.
 - Drop: an outage confirmed after 180 s, counted on its start day. Keep dropping: ≥ 5 in the last 7 days.
 - Sessions, data, busiest hours: by session start, in Khartoum time. Sessions with no matching router stay
   in platform totals only.
