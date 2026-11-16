@@ -594,4 +594,68 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  // ── Footer hint switches with QR knob ───────────────────────────────────
+
+  group('VoucherPrintingScreen footer hint', () {
+    /// Finds the InputDecoration hint text on the footer TextField.
+    String? footerHint(WidgetTester tester) {
+      final fields = tester.widgetList<TextField>(find.byType(TextField));
+      for (final f in fields) {
+        final hint = f.decoration?.hintText;
+        if (hint != null &&
+            (hint.contains('browser') ||
+                hint.contains('camera') ||
+                hint.contains('المتصفح') ||
+                hint.contains('الكاميرا'))) {
+          return hint;
+        }
+      }
+      return null;
+    }
+
+    testWidgets(
+        'hint is default sentence when Detailed + showQr=false',
+        (tester) async {
+      await tester.pumpWidget(_buildApp(const PrintSettings(
+        templateId: VoucherTemplateId.detailed,
+        knobs: PrintKnobs(showQr: false),
+      )));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.text('Footer Text', skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      expect(
+        footerHint(tester),
+        equals(
+            'Connect to the Wi-Fi, open your browser and enter the code'),
+      );
+    });
+
+    testWidgets(
+        'hint switches to QR sentence when Detailed + showQr=true + address',
+        (tester) async {
+      await tester.pumpWidget(_buildApp(const PrintSettings(
+        templateId: VoucherTemplateId.detailed,
+        knobs: PrintKnobs(showQr: true, hotspotAddress: 'wifi.shop.net'),
+      )));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.text('Footer Text', skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      expect(
+        footerHint(tester),
+        equals(
+            'Connect to the Wi-Fi, open your camera and scan the QR code'),
+      );
+    });
+  });
 }

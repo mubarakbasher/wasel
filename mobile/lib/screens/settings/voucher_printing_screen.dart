@@ -436,7 +436,7 @@ class _VoucherPrintingScreenState
                 const Divider(height: 1, color: AppColors.border),
                 _TextKnobTile(
                   label: context.tr('knob.footerText'),
-                  hint: context.tr('print.howToDefault'),
+                  hint: context.tr(s.howToKey),
                   controller: _footerController,
                   focusNode: _footerFocus,
                   maxLength: 120,

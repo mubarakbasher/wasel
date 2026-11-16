@@ -101,7 +101,7 @@ class _VoucherPrintScreenState extends ConsumerState<VoucherPrintScreen> {
     final settings =
         ref.read(printSettingsProvider).settings ?? const PrintSettings();
     final cacheKey = '$columns|${settings.cacheKey}';
-    final howTo = context.tr('print.howToDefault');
+    final howTo = context.tr(settings.howToKey);
 
     return _buildCache.enqueue(
       key: cacheKey,

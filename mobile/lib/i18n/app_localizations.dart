@@ -821,6 +821,7 @@ class AppLocalizations {
 
     // ── Print settings ──────────────────────────────────────────────────────
     'print.howToDefault': 'Connect to the Wi-Fi, open your browser and enter the code',
+    'print.howToQr': 'Connect to the Wi-Fi, open your camera and scan the QR code',
     'print.batch': 'Batch',
 
     // ── Settings – Voucher Printing ─────────────────────────────────────────
@@ -1802,6 +1803,7 @@ class AppLocalizations {
 
     // ── Print settings ──────────────────────────────────────────────────────
     'print.howToDefault': 'اتصل بالشبكة ثم افتح المتصفح وأدخل الرمز',
+    'print.howToQr': 'اتصل بالشبكة ثم افتح الكاميرا وامسح رمز QR',
     'print.batch': 'دفعة',
 
     // ── Settings – Voucher Printing ─────────────────────────────────────────

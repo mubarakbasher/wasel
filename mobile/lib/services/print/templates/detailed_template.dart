@@ -41,7 +41,7 @@ class DetailedTemplate extends VoucherCardTemplate {
 
     // QR box sized ≤ h * 0.8.
     final double qrSize = (h * 0.8).clamp(10.0, bodyH - m.pad * 0.6);
-    final qrData = (knobs.showQr && knobs.hotspotAddress.isNotEmpty)
+    final qrData = knobs.qrEnabled
         ? 'http://${knobs.hotspotAddress}/login'
             '?username=${item.code}&password=${item.code}'
         : null;

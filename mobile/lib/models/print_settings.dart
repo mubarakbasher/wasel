@@ -73,6 +73,11 @@ class PrintKnobs {
     'stripsPerPage':  stripsPerPage,
   };
 
+  /// True when the QR block should be rendered: showQr is on and an address
+  /// has been provided. Use this single getter instead of repeating the
+  /// conjunction throughout the codebase.
+  bool get qrEnabled => showQr && hotspotAddress.isNotEmpty;
+
   PrintKnobs copyWith({
     String? headerText,
     String? footerText,
@@ -140,6 +145,17 @@ class PrintSettings {
         defaultColumns: defaultColumns ?? this.defaultColumns,
         knobs:          knobs          ?? this.knobs,
       );
+
+  /// Localisation key for the footer how-to sentence.
+  ///
+  /// Returns 'print.howToQr' when the Detailed template has QR enabled,
+  /// otherwise 'print.howToDefault'. An operator's own footerText always
+  /// wins (resolved in PrintStyle.footerText), so this key is only used when
+  /// footerText is empty.
+  String get howToKey =>
+      (templateId == VoucherTemplateId.detailed && knobs.qrEnabled)
+          ? 'print.howToQr'
+          : 'print.howToDefault';
 
   /// Stable cache key incorporating template + knobs + columns.
   /// Used as the PdfPreview key so stale previews are discarded on change.
