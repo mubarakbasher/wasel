@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app';
 import { authHeader, authHeaderFor, TEST_USER, TEST_USER_2 } from './helpers';
-import { DEFAULT_PRINT_SETTINGS, DEFAULT_CODE_LENGTH } from '../validators/printSettings.validators';
-import { getCodeLength } from '../services/printSettings.service';
+import { DEFAULT_PRINT_SETTINGS } from '../validators/printSettings.validators';
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof vi.fn>;
 
@@ -255,35 +254,6 @@ describe('PUT /api/v1/settings/print — acceptance', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.templateId).toBe('detailed');
     expect(res.body.data.knobs.hotspotAddress).toBe('login.example.com');
-  });
-});
-
-// ─── getCodeLength unit tests ─────────────────────────────────────────────────
-
-describe('getCodeLength service — unit tests', () => {
-  it('returns DEFAULT_CODE_LENGTH when no row exists', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-
-    const result = await getCodeLength('test-user-id');
-
-    expect(result).toBe(DEFAULT_CODE_LENGTH);
-    expect(result).toBe(8);
-  });
-
-  it('returns the stored code_length from the row', async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ code_length: 10 }] });
-
-    const result = await getCodeLength('test-user-id');
-
-    expect(result).toBe(10);
-  });
-
-  it('returns DEFAULT_CODE_LENGTH (fail-open) when pool.query rejects', async () => {
-    mockQuery.mockRejectedValueOnce(new Error('DB connection lost'));
-
-    const result = await getCodeLength('test-user-id');
-
-    expect(result).toBe(DEFAULT_CODE_LENGTH);
   });
 });
 

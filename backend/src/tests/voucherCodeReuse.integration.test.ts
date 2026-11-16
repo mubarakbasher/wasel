@@ -87,6 +87,16 @@ describe.skipIf(!enabled)('voucherCodeReuse integration tests', { timeout: 30000
     `);
     await q(`CREATE INDEX ON ${schema}.radacct (username)`);
     await q(`
+      CREATE TABLE ${schema}.radreply (
+        id        bigserial PRIMARY KEY,
+        username  varchar(64) NOT NULL,
+        attribute varchar(64) NOT NULL,
+        op        varchar(2)  NOT NULL,
+        value     varchar(253) NOT NULL
+      )
+    `);
+    await q(`CREATE INDEX radreply_username_idx ON ${schema}.radreply (username)`);
+    await q(`
       CREATE TABLE ${schema}.routers (
         id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id    uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -148,6 +158,13 @@ describe.skipIf(!enabled)('voucherCodeReuse integration tests', { timeout: 30000
              VALUES ('uid-ra-only-1', 'raonly01', now() - interval '1 hour', now(), 3600)`);
     const taken = await codesTaken(['raonly01']);
     expect(taken).toContain('raonly01');
+  });
+
+  it('VOUCHER_CODE_TAKEN_SQL: radreply-only code is reported taken', async () => {
+    await q(`INSERT INTO ${schema}.radreply (username, attribute, op, value) VALUES ('rronly01', 'Mikrotik-Rate-Limit', ':=', '1M/1M')`);
+    const taken = await codesTaken(['rronly01', 'zzz11111']);
+    expect(taken).toContain('rronly01');
+    expect(taken).not.toContain('zzz11111');
   });
 
   it('VOUCHER_CODE_TAKEN_SQL: both tables have the code — returned once', async () => {

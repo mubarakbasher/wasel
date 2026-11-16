@@ -1,3 +1,18 @@
+/** Regex that matches valid speed values: 256k, 512k, 1M … 10M (lowercase k, uppercase M). */
+export const SPEED_VALUE_RE = /^[1-9][0-9]{0,3}[kM]$/;
+
+/**
+ * Build a symmetric FreeRADIUS Mikrotik-Rate-Limit value from a speed string.
+ * Returns `"<speed>/<speed>"` (e.g. `"1M/1M"`).
+ * Throws when the speed does not match SPEED_VALUE_RE.
+ */
+export function buildSymmetricRateLimit(speed: string): string {
+  if (!SPEED_VALUE_RE.test(speed)) {
+    throw new Error(`Invalid speed value: "${speed}"`);
+  }
+  return `${speed}/${speed}`;
+}
+
 /** True if an Acct-Session-Id from radacct contains only safe chars (defense-in-depth before forwarding to radclient). */
 export function isSafeAcctSessionId(id: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(id);

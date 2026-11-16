@@ -49,6 +49,7 @@ const MOCK_VOUCHER_ROW = {
   limit_unit: null,
   validity_seconds: null,
   price: null,
+  speed_limit: null,
   created_at: now,
   updated_at: now,
 };
@@ -99,12 +100,18 @@ function mockCheckQuotaQueries(mq: ReturnType<typeof vi.fn>, exhausted = false):
 }
 
 /**
- * Mock the getCodeLength query that runs after verifyRouterOwnership on every
+ * Mock the getCardCreationSettings query that runs after verifyRouterOwnership on every
  * POST /vouchers call. Must be inserted once per POST test, immediately after
  * the verifyRouterOwnership mock and before the collision-check mock.
  */
-function mockPrintSettingsQuery(mq: ReturnType<typeof vi.fn>, len = DEFAULT_CODE_LENGTH): void {
-  mq.mockResolvedValueOnce({ rows: [{ code_length: len }] });
+function mockPrintSettingsQuery(
+  mq: ReturnType<typeof vi.fn>,
+  len = DEFAULT_CODE_LENGTH,
+  speed: { enabled: boolean; speed: string } = { enabled: false, speed: '2M' },
+): void {
+  mq.mockResolvedValueOnce({
+    rows: [{ code_length: len, speed_limit_enabled: speed.enabled, speed_limit: speed.speed }],
+  });
 }
 
 // Suppress unused import warning for TEST_PROFILE_ID (legacy tests removed)
@@ -176,7 +183,7 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     mockCheckQuotaQueries(mockQuery);
     // verifyRouterOwnership returns tunnel_ip (used for ROUTER_NOT_READY guard)
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
-    // getCodeLength
+    // getCardCreationSettings
     mockPrintSettingsQuery(mockQuery);
     // username uniqueness check — not taken
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -268,7 +275,7 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
-    mockPrintSettingsQuery(mockQuery, 6); // getCodeLength → 6
+    mockPrintSettingsQuery(mockQuery, 6); // getCardCreationSettings → code length 6
     mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
 
     mockClientQuery
@@ -306,7 +313,7 @@ describe('POST /api/v1/routers/:id/vouchers', () => {
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
-    mockPrintSettingsQuery(mockQuery, 12); // getCodeLength → 12
+    mockPrintSettingsQuery(mockQuery, 12); // getCardCreationSettings → code length 12
     mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
 
     mockClientQuery
@@ -448,7 +455,7 @@ describe('VOUCHER_CODE_TAKEN_SQL covers both radcheck and radacct', () => {
     mockCheckQuotaQueries(mockQuery);
     // verifyRouterOwnership
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
-    // getCodeLength
+    // getCardCreationSettings
     mockPrintSettingsQuery(mockQuery);
     // collision-check: no taken codes
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -479,52 +486,290 @@ describe('VOUCHER_CODE_TAKEN_SQL covers both radcheck and radacct', () => {
   });
 });
 
-// ─── POST fail-open: print-settings DB error must not block voucher creation ──
+// ─── POST card settings unavailable ──────────────────────────────────────────
 
-describe('POST /api/v1/routers/:id/vouchers — print settings fail-open', () => {
+describe('POST /api/v1/routers/:id/vouchers — card settings unavailable', () => {
   const validBody = { limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 };
 
-  it('creates batch with DEFAULT_CODE_LENGTH codes when getCodeLength rejects', async () => {
+  it('returns 503 CARD_SETTINGS_UNAVAILABLE when getCardCreationSettings rejects', async () => {
     // requireSubscription (2 queries)
     mockSubscriptionQuery(mockQuery);
     // checkQuota (2 queries)
     mockCheckQuotaQueries(mockQuery);
     // verifyRouterOwnership
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
-    // getCodeLength — DB error (fail-open: should NOT abort the request)
+    // getCardCreationSettings — DB error (fail-safe: must abort the request)
     mockQuery.mockRejectedValueOnce(new Error('boom'));
-    // username uniqueness check — not taken
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-
-    mockClientQuery
-      .mockResolvedValueOnce(undefined)                        // BEGIN
-      .mockResolvedValueOnce({ rows: [{ vouchers_used: 11 }], rowCount: 1 }) // UPDATE subscriptions
-      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })     // INSERT voucher_meta
-      .mockResolvedValueOnce(undefined)                        // INSERT radcheck
-      .mockResolvedValueOnce(undefined);                       // COMMIT
-
-    // Batch enrichment (3 parallel queries)
-    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
 
     const res = await request(app)
       .post(BASE_URL)
       .set(authHeader())
       .send(validBody);
 
-    expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('CARD_SETTINGS_UNAVAILABLE');
+    expect(mockClientQuery).not.toHaveBeenCalled();
+  });
+});
 
-    // Verify the generated username has DEFAULT_CODE_LENGTH (8) characters.
-    const insertCall = mockClientQuery.mock.calls.find(
+// ─── POST speed limit ─────────────────────────────────────────────────────────
+
+describe('POST /api/v1/routers/:id/vouchers — speed limit', () => {
+  it('limit on, time card without validity: stamps voucher_meta and writes one Mikrotik-Rate-Limit row', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery, 8, { enabled: true, speed: '1M' });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
+
+    const mockVoucherRowWithSpeed = { ...MOCK_VOUCHER_ROW, speed_limit: '1M' };
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)                                        // BEGIN
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })   // UPDATE subscriptions
+      .mockResolvedValueOnce({ rows: [mockVoucherRowWithSpeed] })              // INSERT voucher_meta
+      .mockResolvedValueOnce(undefined)                                        // INSERT radcheck
+      .mockResolvedValueOnce(undefined)                                        // INSERT radreply (Mikrotik-Rate-Limit)
+      .mockResolvedValueOnce(undefined)                                        // SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined)                                        // INSERT analytics_card_batches
+      .mockResolvedValueOnce(undefined)                                        // RELEASE SAVEPOINT analytics_cards
+      .mockResolvedValueOnce(undefined);                                       // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data[0].speedLimit).toBe('1M');
+
+    // voucher_meta INSERT: SQL matches /speed_limit/ and 9th param (index 8) is '1M'
+    const vmCall = mockClientQuery.mock.calls.find(
       (c) => typeof c[0] === 'string' && (c[0] as string).includes('voucher_meta'),
     );
-    expect(insertCall).toBeDefined();
-    // The inserted username is the second parameter in the batch INSERT.
-    const insertParams = insertCall![1] as unknown[];
-    // The flat params array: userId, router_id, username, group_profile, comment, ...
-    // Locate the username — it is the 3rd param (index 2).
-    const username = insertParams[2] as string;
-    expect(username).toHaveLength(DEFAULT_CODE_LENGTH);
+    expect(vmCall).toBeDefined();
+    expect((vmCall![0] as string)).toMatch(/speed_limit/);
+    const vmParams = vmCall![1] as unknown[];
+    expect(vmParams[8]).toBe('1M');
+
+    // radreply INSERT: params include Mikrotik-Rate-Limit and '1M/1M'
+    const rrCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radreply'),
+    );
+    expect(rrCall).toBeDefined();
+    const rrParams = rrCall![1] as unknown[];
+    expect(rrParams).toEqual([expect.any(String), 'Mikrotik-Rate-Limit', ':=', '1M/1M']);
+  });
+
+  it('limit on, data card over 4 GB with validity: four rows per card, rate limit last', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery, 8, { enabled: true, speed: '256k' });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
+
+    const mockVoucherRowWithSpeed = { ...MOCK_VOUCHER_ROW, speed_limit: '256k' };
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [mockVoucherRowWithSpeed] })
+      .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined) // INSERT radreply (Session-Timeout + Mikrotik-Total-Limit + Gigawords + Mikrotik-Rate-Limit)
+      .mockResolvedValueOnce(undefined) // SAVEPOINT
+      .mockResolvedValueOnce(undefined) // INSERT analytics
+      .mockResolvedValueOnce(undefined) // RELEASE
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'data', limitValue: 5, limitUnit: 'GB', validitySeconds: 86400, count: 1, price: 5 });
+
+    expect(res.status).toBe(201);
+
+    const rrCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radreply'),
+    );
+    expect(rrCall).toBeDefined();
+    const rrParams = rrCall![1] as unknown[];
+    // 4 rows × 4 params = 16
+    expect(rrParams).toHaveLength(16);
+    // Last row (index 12-15): Mikrotik-Rate-Limit
+    expect(rrParams[13]).toBe('Mikrotik-Rate-Limit');
+    expect(rrParams[15]).toBe('256k/256k');
+  });
+
+  it('limit off: no Mikrotik-Rate-Limit anywhere and speed_limit is null', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery, 8, { enabled: false, speed: '2M' });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
+      .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined) // SAVEPOINT
+      .mockResolvedValueOnce(undefined) // INSERT analytics
+      .mockResolvedValueOnce(undefined) // RELEASE
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data[0].speedLimit).toBeNull();
+
+    // No Mikrotik-Rate-Limit in any client call
+    const rateLimitCalls = mockClientQuery.mock.calls.filter(
+      (c) => JSON.stringify(c).includes('Mikrotik-Rate-Limit'),
+    );
+    expect(rateLimitCalls).toHaveLength(0);
+
+    // voucher_meta params[8] is null
+    const vmCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('voucher_meta'),
+    );
+    const vmParams = vmCall![1] as unknown[];
+    expect(vmParams[8]).toBeNull();
+  });
+
+  it('ignores a speedLimit sent by the client', async () => {
+    mockSubscriptionQuery(mockQuery);
+    mockCheckQuotaQueries(mockQuery);
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery, 8, { enabled: false, speed: '2M' });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 1 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [MOCK_VOUCHER_ROW] })
+      .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined) // SAVEPOINT
+      .mockResolvedValueOnce(undefined) // INSERT analytics
+      .mockResolvedValueOnce(undefined) // RELEASE
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'time', limitValue: 60, limitUnit: 'minutes', count: 1, price: 5, speedLimit: '10M' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data[0].speedLimit).toBeNull();
+
+    const rateLimitCalls = mockClientQuery.mock.calls.filter(
+      (c) => JSON.stringify(c).includes('Mikrotik-Rate-Limit'),
+    );
+    expect(rateLimitCalls).toHaveLength(0);
+    const vmCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('voucher_meta'),
+    );
+    const vmParams = vmCall![1] as unknown[];
+    expect(vmParams[8]).toBeNull();
+  });
+
+  it('3000 data cards over 4 GB with validity and the limit on build one 48,000-parameter radreply INSERT', async () => {
+    // requireSubscription (2 queries)
+    mockSubscriptionQuery(mockQuery);
+    // checkQuota with enterprise quota (-1 = unlimited)
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...ACTIVE_SUBSCRIPTION_ROW, voucher_quota: -1, vouchers_used: 0 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // getPlanByTier
+    mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
+    mockPrintSettingsQuery(mockQuery, 8, { enabled: true, speed: '1M' });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
+
+    const voucher3000Rows = Array.from({ length: 3000 }, (_, i) => ({
+      ...MOCK_VOUCHER_ROW,
+      id: `id-${i}`,
+      radius_username: `user${String(i).padStart(8, '0')}`,
+      speed_limit: '1M',
+    }));
+
+    mockClientQuery
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ vouchers_used: 3000 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: voucher3000Rows })
+      .mockResolvedValueOnce(undefined) // INSERT radcheck
+      .mockResolvedValueOnce(undefined) // INSERT radreply
+      .mockResolvedValueOnce(undefined) // SAVEPOINT
+      .mockResolvedValueOnce(undefined) // INSERT analytics
+      .mockResolvedValueOnce(undefined) // RELEASE
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    mockBatchVoucherInfoQueries(mockQuery, voucher3000Rows.map((v) => v.radius_username));
+    // fire-and-forget router name lookup (count > 1)
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: 'Test Router' }] });
+
+    const res = await request(app)
+      .post(BASE_URL)
+      .set(authHeader())
+      .send({ limitType: 'data', limitValue: 5, limitUnit: 'GB', validitySeconds: 86400, count: 3000, price: 5 });
+
+    expect(res.status).toBe(201);
+
+    // For 3000 cards with validity + data > 4GB + speed: 4 rows per card = 12000 rows × 4 params = 48000
+    const rrCall = mockClientQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('radreply'),
+    );
+    expect(rrCall).toBeDefined();
+    const rrParams = rrCall![1] as unknown[];
+    expect(rrParams).toHaveLength(48000);
+  });
+
+  it('GET /:vid: a row with speed_limit null returns speedLimit null in the response', async () => {
+    // requireSubscription (2 queries)
+    mockSubscriptionQuery(mockQuery);
+    // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: TEST_ROUTER_ID }] });
+    // SELECT voucher_meta — row without a speed cap
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...MOCK_VOUCHER_ROW, speed_limit: null }] });
+    // Batch enrichment (3 queries)
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .get(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(Object.prototype.hasOwnProperty.call(res.body.data, 'speedLimit')).toBe(true);
+    expect(res.body.data.speedLimit).toBeNull();
+  });
+
+  it('GET /:vid: a row with speed_limit "256k" returns speedLimit "256k" in the response', async () => {
+    // requireSubscription (2 queries)
+    mockSubscriptionQuery(mockQuery);
+    // verifyRouterOwnership
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: TEST_ROUTER_ID }] });
+    // SELECT voucher_meta — row with a speed cap
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...MOCK_VOUCHER_ROW, speed_limit: '256k' }] });
+    // Batch enrichment (3 queries)
+    mockBatchVoucherInfoQueries(mockQuery, ['testuser1']);
+
+    const res = await request(app)
+      .get(`${BASE_URL}/${TEST_VOUCHER_ID}`)
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.speedLimit).toBe('256k');
+  });
+
+  it('VOUCHER_CODE_TAKEN_SQL also checks radreply', () => {
+    expect(VOUCHER_CODE_TAKEN_SQL).toMatch(/radreply/);
   });
 });
 
@@ -854,7 +1099,7 @@ describe('POST /api/v1/routers/:id/vouchers — F2 quota race regression', () =>
     mockSubscriptionQuery(mockQuery);  // requireSubscription
     mockCheckQuotaQueries(mockQuery);  // checkQuota pre-check passes
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
-    mockPrintSettingsQuery(mockQuery); // getCodeLength
+    mockPrintSettingsQuery(mockQuery); // getCardCreationSettings
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // Transaction: guarded UPDATE returns rowCount 0 (another request beat us)
@@ -931,7 +1176,7 @@ describe('POST /api/v1/routers/:id/vouchers — F3 count cap regression', () => 
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] });
-    mockPrintSettingsQuery(mockQuery); // getCodeLength
+    mockPrintSettingsQuery(mockQuery); // getCardCreationSettings
     mockQuery.mockResolvedValueOnce({ rows: [] }); // uniqueness check
 
     // Stub the transaction — guarded quota UPDATE succeeds, then batch inserts
@@ -967,7 +1212,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
-    mockPrintSettingsQuery(mockQuery); // getCodeLength
+    mockPrintSettingsQuery(mockQuery); // getCardCreationSettings
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // Transaction:
@@ -1039,7 +1284,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
-    mockPrintSettingsQuery(mockQuery); // getCodeLength
+    mockPrintSettingsQuery(mockQuery); // getCardCreationSettings
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // Transaction:
@@ -1113,7 +1358,7 @@ describe('POST /api/v1/routers/:id/vouchers — Mikrotik-Total-Limit reply attri
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockQuery.mockResolvedValueOnce({ rows: [{ tunnel_ip: '10.10.0.2' }] }); // verifyRouterOwnership
-    mockPrintSettingsQuery(mockQuery); // getCodeLength
+    mockPrintSettingsQuery(mockQuery); // getCardCreationSettings
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // Transaction:
@@ -1185,7 +1430,7 @@ describe('POST /api/v1/routers/:id/vouchers — Packet-Src-IP-Address router sco
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockOwnership(mockQuery, TUNNEL_IP);
-    mockPrintSettingsQuery(mockQuery); // getCodeLength
+    mockPrintSettingsQuery(mockQuery); // getCardCreationSettings
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     // 3 time vouchers — BEGIN + UPDATE + INSERT voucher_meta + INSERT radcheck + COMMIT
@@ -1238,7 +1483,7 @@ describe('POST /api/v1/routers/:id/vouchers — Packet-Src-IP-Address router sco
     mockSubscriptionQuery(mockQuery);
     mockCheckQuotaQueries(mockQuery);
     mockOwnership(mockQuery, TUNNEL_IP);
-    mockPrintSettingsQuery(mockQuery); // getCodeLength
+    mockPrintSettingsQuery(mockQuery); // getCardCreationSettings
     mockQuery.mockResolvedValueOnce({ rows: [] }); // username uniqueness check
 
     const DATA_100MB = 100 * 1024 * 1024;

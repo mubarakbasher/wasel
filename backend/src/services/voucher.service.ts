@@ -3,10 +3,10 @@ import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import crypto from 'crypto';
 import { decrypt } from '../utils/encryption';
-import { isSafeAcctSessionId, formatRadiusExpiration, parseRadiusExpiration } from '../utils/radius';
+import { isSafeAcctSessionId, formatRadiusExpiration, parseRadiusExpiration, buildSymmetricRateLimit } from '../utils/radius';
 import { sendDisconnectRequest } from './radclient.service';
 import { encodeCursor, decodeCursor, TimestampUuidCursor } from '../utils/cursor';
-import { getCodeLength } from './printSettings.service';
+import { getCardCreationSettings } from './cardSettings.service';
 import { recordCardBatch } from './analyticsCards.service';
 
 // ----- Interfaces -----
@@ -24,6 +24,7 @@ export interface VoucherMetaRow {
   limit_unit: string | null;
   validity_seconds: number | null;
   price: string | null; // DECIMAL comes as string from pg
+  speed_limit?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -50,6 +51,7 @@ export interface VoucherInfo {
   usedValue: number | null;
   validitySeconds: number | null;
   price: number | null;
+  speedLimit: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -127,18 +129,23 @@ function generateRandomString(length: number, charset = 'ABCDEFGHJKLMNPQRSTUVWXY
 
 /**
  * SQL used by createVouchers to check whether a candidate username is already taken.
- * It covers BOTH radcheck and radacct in a single round-trip because radacct rows
- * outlive the voucher that created them: deleting a voucher removes its radcheck rows
- * but leaves its session history intact. A new card that reuses the same code would
- * inherit that history, causing the validity-expiration job to compute an Expiration
- * already in the past on the card's very first nightly run.
+ * It covers radcheck, radacct and radreply in a single round-trip:
+ *   - radacct rows outlive the voucher that created them: deleting a voucher removes its
+ *     radcheck rows but leaves its session history intact. A new card reusing the same
+ *     code would inherit that history, causing the validity-expiration job to compute an
+ *     Expiration already in the past on the card's very first nightly run.
+ *   - radreply rows (Mikrotik-Rate-Limit etc.) are also left by deleted vouchers.
+ *     A re-issued code would inherit the old speed cap. radreply_username_idx serves
+ *     this branch — no migration needed.
  *
- * radacct_username_idx on (username) already serves this query — no migration needed.
+ * radacct_username_idx on (username) already serves the radacct branch.
  */
 export const VOUCHER_CODE_TAKEN_SQL = `
 SELECT username FROM radcheck WHERE username = ANY($1::text[])
 UNION
 SELECT username FROM radacct  WHERE username = ANY($1::text[])
+UNION
+SELECT username FROM radreply  WHERE username = ANY($1::text[])
 `.trim();
 
 /**
@@ -399,6 +406,7 @@ function assembleVoucherInfo(
     usedValue,
     validitySeconds: row.validity_seconds,
     price: row.price ? parseFloat(row.price) : null,
+    speedLimit: row.speed_limit ?? null,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
@@ -495,6 +503,7 @@ async function insertRadiusEntriesV2(
   normalizedLimitValue: number,
   validitySeconds: number | null | undefined,
   tunnelIp: string,
+  speedLimit: string | null,
 ): Promise<void> {
   // radcheck: Cleartext-Password
   await client.query(
@@ -564,6 +573,17 @@ async function insertRadiusEntriesV2(
       );
     }
   }
+
+  // Mikrotik-Rate-Limit: symmetric speed cap — MUST be inserted last in radreply,
+  // matching the order used by the batched creation path in createVouchers.
+  // Any future radreply addition should go before this block.
+  if (speedLimit) {
+    const rateLimit = buildSymmetricRateLimit(speedLimit);
+    await client.query(
+      'INSERT INTO radreply (username, attribute, op, value) VALUES ($1, $2, $3, $4)',
+      [username, 'Mikrotik-Rate-Limit', ':=', rateLimit],
+    );
+  }
 }
 
 // ----- Service Functions -----
@@ -595,7 +615,8 @@ export async function createVouchers(
   const count = data.count;
   const normalizedValue = normalizeLimit(data.limitValue, data.limitUnit);
 
-  const codeLength = await getCodeLength(userId);
+  const { codeLength, speedLimit } = await getCardCreationSettings(userId);
+  const rateLimitValue = speedLimit ? buildSymmetricRateLimit(speedLimit) : null;
 
   // Generate codes, regenerating any that collide with the shared global RADIUS namespace.
   // VOUCHER_CODE_TAKEN_SQL checks radcheck AND radacct: radacct rows outlive the deleted
@@ -643,18 +664,18 @@ export async function createVouchers(
     let pIdx = 1;
     for (const cred of credentials) {
       vmPlaceholders.push(
-        `($${pIdx++}, $${pIdx++}, $${pIdx++}, NULL, NULL, 'unused', $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`,
+        `($${pIdx++}, $${pIdx++}, $${pIdx++}, NULL, NULL, 'unused', $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`,
       );
       vmValues.push(
         userId, routerId, cred.username,
         data.limitType, normalizedValue, data.limitUnit,
-        data.validitySeconds ?? null, data.price,
+        data.validitySeconds ?? null, data.price, speedLimit,
       );
     }
     const vmResult = await client.query<VoucherMetaRow>(
       `INSERT INTO voucher_meta
          (user_id, router_id, radius_username, group_profile, comment, status,
-          limit_type, limit_value, limit_unit, validity_seconds, price)
+          limit_type, limit_value, limit_unit, validity_seconds, price, speed_limit)
        VALUES ${vmPlaceholders.join(', ')}
        RETURNING *`,
       vmValues,
@@ -703,11 +724,12 @@ export async function createVouchers(
       rcValues,
     );
 
-    // ── Batched INSERT: radreply (Session-Timeout + Mikrotik-Total-Limit) ──────
+    // ── Batched INSERT: radreply (Session-Timeout + Mikrotik-Total-Limit + Mikrotik-Rate-Limit) ──
     // Build the full row list first, then run a single INSERT when any rows
     // were added. Session-Timeout is added for every voucher when a validity
     // window is set; Mikrotik-Total-Limit (and Gigawords for >4 GB limits) is
     // added for every data voucher so the router enforces the byte ceiling live.
+    // Mikrotik-Rate-Limit is pushed last per card when a speed limit is configured.
     //
     // lowWord / rrGigawords are batch-constant (all vouchers share the same
     // normalizedValue) — compute them once here rather than inside the loop.
@@ -731,6 +753,11 @@ export async function createVouchers(
             rrPlaceholders.push(`($${rrIdx++}, $${rrIdx++}, $${rrIdx++}, $${rrIdx++})`);
             rrValues.push(cred.username, 'Mikrotik-Total-Limit-Gigawords', ':=', String(rrGigawords));
           }
+        }
+        // Mikrotik-Rate-Limit is pushed last per card, after all data-limit rows.
+        if (rateLimitValue) {
+          rrPlaceholders.push(`($${rrIdx++}, $${rrIdx++}, $${rrIdx++}, $${rrIdx++})`);
+          rrValues.push(cred.username, 'Mikrotik-Rate-Limit', ':=', rateLimitValue);
         }
       }
       if (rrPlaceholders.length > 0) {
@@ -758,6 +785,7 @@ export async function createVouchers(
       limitType: data.limitType,
       limitValue: data.limitValue,
       limitUnit: data.limitUnit,
+      speedLimit,
     });
 
     return batchToVoucherInfo(vouchers);

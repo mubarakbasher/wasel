@@ -10,6 +10,7 @@ import dashboardRoutes from './dashboard.routes';
 import reportRoutes from './report.routes';
 import notificationRoutes from './notification.routes';
 import printSettingsRoutes from './printSettings.routes';
+import cardSpeedRoutes from './cardSpeed.routes';
 import supportRoutes from './support.routes';
 import adminRoutes from './admin.routes';
 import { pool } from '../config/database';
@@ -105,7 +106,11 @@ router.use('/routers/:id/sessions', sessionRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/reports', reportRoutes);
 router.use('/notifications', notificationRoutes);
+// Two separate routers mount under /settings intentionally: printSettingsRoutes owns
+// /settings/print and cardSpeedRoutes owns /settings/card-speed. Their sub-paths do
+// not overlap. If a future route is added to either, verify it does not shadow the other.
 router.use('/settings', printSettingsRoutes);
+router.use('/settings', cardSpeedRoutes);
 router.use('/support', supportRoutes);
 router.use('/admin', adminRoutes);
 

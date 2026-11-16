@@ -84,6 +84,9 @@ export const ErrorCodes = {
   ROUTER_QUOTA_EXCEEDED: 'ROUTER_QUOTA_EXCEEDED',
   ROUTER_LIMIT_REACHED: 'ROUTER_LIMIT_REACHED',
 
+  // ── Card settings ─────────────────────────────────────────────────────────
+  CARD_SETTINGS_UNAVAILABLE: 'CARD_SETTINGS_UNAVAILABLE',
+
   // ── Voucher ───────────────────────────────────────────────────────────────
   VOUCHER_NOT_FOUND: 'VOUCHER_NOT_FOUND',
   VOUCHER_LIMIT_REACHED: 'VOUCHER_LIMIT_REACHED',

@@ -3,7 +3,6 @@ import logger from '../config/logger';
 import {
   PrintSettings,
   DEFAULT_PRINT_SETTINGS,
-  DEFAULT_CODE_LENGTH,
   printSettingsSchema,
 } from '../validators/printSettings.validators';
 
@@ -114,27 +113,3 @@ export async function upsertPrintSettings(
   }
 }
 
-/**
- * Retrieve only the code length for voucher generation.
- * Returns DEFAULT_CODE_LENGTH when no row exists AND on any query error,
- * so a problem with the optional user_print_settings table can never block
- * voucher creation (fail-open by design).
- * Kept lightweight — this is on the voucher-creation hot path.
- */
-export async function getCodeLength(userId: string): Promise<number> {
-  try {
-    const result = await pool.query<{ code_length: number }>(
-      `SELECT code_length FROM user_print_settings WHERE user_id = $1`,
-      [userId],
-    );
-
-    if (result.rows.length === 0) {
-      return DEFAULT_CODE_LENGTH;
-    }
-
-    return result.rows[0].code_length;
-  } catch (error) {
-    logger.error('Failed to get code length, falling back to default', { error, userId });
-    return DEFAULT_CODE_LENGTH;
-  }
-}
