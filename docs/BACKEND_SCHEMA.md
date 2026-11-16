@@ -90,6 +90,7 @@ There is no down-migration mechanism. Rollbacks are written as new forward migra
 | `023_voucher_nas_scope_rollback.sql` | Deletes all `NAS-IP-Address ==` radcheck rows (RFC 2865 §5.4 — the AVP is NAS-self-reported, never matches the WG peer IP) |
 | `024_drop_router_provision_columns.sql` | Drops the 6 provision columns from `021` |
 | `043_user_print_settings.sql` | `user_print_settings` — per-operator voucher print settings (code length, template, knobs) |
+| `047_card_speed_limit.sql` | Card speed limit: `user_print_settings.speed_limit_enabled` + `speed_limit` (format CHECK), `voucher_meta.speed_limit` (nullable). Runs under `SET LOCAL lock_timeout = '3s'` because it alters `voucher_meta` |
 
 ---
 
@@ -156,6 +157,7 @@ erDiagram
         varchar limit_type
         bigint limit_value
         integer validity_seconds
+        varchar speed_limit
     }
     payments {
         uuid id PK
@@ -192,6 +194,8 @@ erDiagram
         varchar template_id
         smallint default_columns
         jsonb knobs
+        boolean speed_limit_enabled
+        varchar speed_limit
     }
     notifications {
         uuid id PK
@@ -323,6 +327,7 @@ Created in 003; wizard columns in `010_voucher_wizard.sql`; `unused` status in 0
 | `limit_unit` | VARCHAR(10) | nullable | The unit the operator chose (`minutes`/`hours`/`days`/`MB`/`GB`) — **display only**, never used in math after creation |
 | `validity_seconds` | INTEGER | nullable | Wall-clock validity window measured **from first login**, not creation; enforced via the radcheck `Expiration` row written by `validityExpiration` job |
 | `price` | DECIMAL(10,2) | nullable | Operator-facing sale price, informational |
+| `speed_limit` | VARCHAR(8) | nullable (047), no CHECK | The speed stamped on the card at creation, as a wire value (`256k` … `10M`). `NULL` = no cap (created with the limit off, or before the feature). Mirrors the card's `radreply` `Mikrotik-Rate-Limit` row; never changed after creation |
 | `created_at` / `updated_at` | TIMESTAMPTZ | | trigger-maintained |
 
 **Indexes:** `idx_voucher_meta_user_id`, `idx_voucher_meta_router_id`, `idx_voucher_meta_status`, `idx_voucher_meta_radius_username`, plus composite `idx_voucher_meta_user_router` (017).
@@ -487,7 +492,11 @@ Created in `018_tunnel_subnet_pool.sql`. Pre-seeded pool of every /30 block in `
 
 ### 3.15 `user_print_settings`
 
-Created in `043_user_print_settings.sql`. Per-operator voucher print settings — a 1:1 row keyed by `user_id`. Absent row means all defaults (Classic template, 8-digit codes, 4 columns). `code_length` is read on the voucher-creation hot path by `getCodeLength(userId)`.
+Created in `043_user_print_settings.sql`; speed columns added in `047_card_speed_limit.sql`. Per-operator card settings — a 1:1 row keyed by `user_id`. Absent row means all defaults (Classic template, 8-digit codes, 4 columns, speed limit off).
+
+Two separate API resources write this row and never touch each other's columns: `GET/PUT /settings/print` (`printSettings.service.ts`: `code_length`, `template_id`, `default_columns`, `knobs`) and `GET/PUT /settings/card-speed` (`cardSettings.service.ts`: the two speed columns only). That separation is why a print-settings save from an older app or a second phone can never switch the speed limit off.
+
+`code_length` and the speed columns are read together on the voucher-creation path by `getCardCreationSettings(userId)`, one query, before `BEGIN`. It **fails closed**: a query error or a malformed stored speed returns `503 CARD_SETTINGS_UNAVAILABLE` and no card is created (a silently unlimited batch could not be repaired, because existing cards are never touched). This replaced the fail-open `getCodeLength` of 2026-11-10.
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
@@ -496,6 +505,8 @@ Created in `043_user_print_settings.sql`. Per-operator voucher print settings �
 | `template_id` | VARCHAR(16) | NOT NULL, default `'classic'`, CHECK `IN ('classic','detailed','strips')` | Card template used at print time |
 | `default_columns` | SMALLINT | NOT NULL, default 4, CHECK `BETWEEN 2 AND 9` | Pre-fills the column slider on the print screen; ignored by Strips template (1 column) |
 | `knobs` | JSONB | NOT NULL, default `'{}'` | Flat settings bag: `headerText`, `footerText`, `hotspotAddress`, `showPrice`, `showQr`, `showBatch`, `stripsPerPage`. Absent keys fall back to defaults at read time |
+| `speed_limit_enabled` | BOOLEAN | NOT NULL, default `false` (047) | When true, every card created from then on is stamped with `speed_limit`. New cards only |
+| `speed_limit` | VARCHAR(8) | NOT NULL, default `'2M'`, CHECK `~ '^[1-9][0-9]{0,3}[kM]$'` (047) | Wire value (lowercase `k`, uppercase `M`). Kept when the limit is switched off, so the last choice is remembered. The CHECK guards format only; the option list (`256k` … `10M`) lives in `cardSpeed.validators.ts` and is enforced when enabling |
 | `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, default now() | trigger-maintained |
 
 ---
@@ -511,7 +522,7 @@ All eight base tables are created in `002_freeradius_tables.sql`; `012_fix_radiu
 | Table | Standard purpose | How Wasel uses it |
 |---|---|---|
 | `radcheck` | Per-user check attributes | One row-set per voucher: `Cleartext-Password := <username>` (voucher code is both username and password), `Simultaneous-Use := 1`, the router lock `Packet-Src-IP-Address == <routers.tunnel_ip>` (migration 041), the limit attribute (`Max-All-Session` or `Max-Total-Octets` [+ `-Gigawords`]), `Expiration` (written later by the validity job), and `Auth-Type := Reject` for disabled/expired vouchers |
-| `radreply` | Per-user reply attributes | `Session-Timeout := validity_seconds` — caps the **first** session at the validity window before the `Expiration` row exists; on re-auth `rlm_expiration` overwrites it with the remaining wall-clock time (`insertRadiusEntriesV2` comment, `voucher.service.ts`) |
+| `radreply` | Per-user reply attributes | Up to four rows per card, all `:=`, written once at creation and never edited. `Session-Timeout := validity_seconds` caps the **first** session at the validity window before the `Expiration` row exists; on re-auth `rlm_expiration` overwrites it with the remaining wall-clock time. `Mikrotik-Total-Limit` (+ `-Gigawords` above 4 GB) is the router-enforced byte ceiling for data cards. `Mikrotik-Rate-Limit := <s>/<s>` (e.g. `1M/1M`), written last, is the per-card speed cap when the operator's speed limit is on (047); the value is only ever built from a validated speed by `buildSymmetricRateLimit`. The router enforces it with a per-user simple queue, which MikroTik FastTrack bypasses — see the card speed limit design doc |
 | `radgroupcheck` | Group check attributes | Legacy profile path: `Max-All-Session` (from `radius_profiles.total_time`), `Max-Total-Octets` (from `total_data`) |
 | `radgroupreply` | Group reply attributes | Legacy profile path: `Mikrotik-Rate-Limit := "up/down"` (e.g. `2M/5M`), `Session-Timeout` |
 | `radusergroup` | username → group mapping | Legacy profile vouchers only; wizard vouchers never get a row. Blocks profile deletion while populated |
@@ -649,7 +660,7 @@ stateDiagram-v2
 
 | Transition | Actor | SQL touched |
 |---|---|---|
-| create → `unused` | `POST /routers/:id/vouchers` → `createVouchers` | INSERT `voucher_meta` + `radcheck` (`Cleartext-Password`, `Simultaneous-Use`, `Packet-Src-IP-Address ==` router lock, limit attr) + optional `radreply` `Session-Timeout`; `UPDATE subscriptions SET vouchers_used += n` |
+| create → `unused` | `POST /routers/:id/vouchers` → `createVouchers` | INSERT `voucher_meta` + `radcheck` (`Cleartext-Password`, `Simultaneous-Use`, `Packet-Src-IP-Address ==` router lock, limit attr) + optional `radreply` rows (`Session-Timeout`, `Mikrotik-Total-Limit`, `Mikrotik-Rate-Limit` when the speed limit is on); `UPDATE subscriptions SET vouchers_used += n` |
 | `unused` → `active` | The user logs in; FreeRADIUS writes the accounting Start | INSERT `radacct` (FR-owned). Within ≤30 s the `validityExpiration` job (`backend/src/jobs/validityExpiration.ts`) INSERTs the `Expiration` radcheck row = `MIN(acctstarttime) + validity_seconds` (race-guarded conditional INSERT with `::varchar` casts). Full reconciliation also runs at startup (+3 min) and daily at 02:10 UTC. |
 | `active`/`used` → `expired` (usage) | `usageLimitEnforcement` job (incremental fast pass every 30 s + reconciliation at startup +5 min and daily 02:40 UTC) | When `SUM(acctsessiontime)` or `SUM(acctinputoctets+acctoutputoctets)` ≥ `voucher_meta.limit_value`: DELETE+INSERT `Auth-Type := Reject` in `radcheck`, `UPDATE voucher_meta SET status='expired'` |
 | `active` → kicked (validity) | `validityCoaDisconnect` job (every 30 s, LIMIT 200 per tick) | SELECT expired-Expiration + active-radacct + `nas.secret`, then RFC 5176 Disconnect-Request to `nasipaddress:3799` via `sendDisconnectRequest` (`backend/src/services/radclient.service.ts`) |

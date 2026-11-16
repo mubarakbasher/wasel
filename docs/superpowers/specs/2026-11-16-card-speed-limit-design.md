@@ -109,11 +109,21 @@ The setting sits on the existing per-operator row so creation still needs one qu
 list is not in the CHECK; the CHECK guards format only, so adding or removing an option needs no
 migration.
 
+The migration runs under `SET LOCAL lock_timeout = '3s'` (the convention migration 042 set):
+`ALTER TABLE voucher_meta` takes ACCESS EXCLUSIVE, FreeRADIUS reads `voucher_meta` on rejected
+logins while the backend boots, and failing fast is better than queuing every reader behind the
+DDL. If it times out the backend exits and the migration is retried on the next start. Do not
+deploy between 01:15 and 01:45 UTC (backup window).
+
 ### API — its own resource
 
 `GET /api/v1/settings/card-speed` → `{ enabled, speed, options }`
-`PUT /api/v1/settings/card-speed` ← `{ enabled, speed }` (both required, strict; `speed` must be in
-the option list) → same shape as GET
+`PUT /api/v1/settings/card-speed` ← `{ enabled, speed }` (both required, strict) → same shape as GET
+
+- `speed` must match the format regex. When `enabled` is true it must also be in the option list.
+  When `enabled` is false any format-valid speed is accepted, so an operator whose stored speed is
+  no longer an option can still switch the limit off.
+- A failed read answers `503 CARD_SETTINGS_UNAVAILABLE`.
 
 `authenticate` only, like `/settings/print`. The upsert writes only the two speed columns;
 `upsertPrintSettings` is not changed and never names them. This is what makes the anti-goal hold
@@ -125,7 +135,8 @@ mirrored list in the app.
 - `getCodeLength` is replaced by `getCardCreationSettings(userId) → { codeLength, speedLimit }`
   (`speedLimit` is `'1M'` or `null`), still one query.
   - No row → defaults, limit off.
-  - Query error, or an enabled row whose stored speed fails the format regex →
+  - Query error, a row whose enabled flag is not a boolean, or an enabled row whose stored speed
+    fails the format regex →
     `AppError(503, 'CARD_SETTINGS_UNAVAILABLE')`. Thrown before `BEGIN`: no quota consumed, no rows
     written. This deliberately replaces the fail-open of 2026-11-10; a silently unlimited batch
     cannot be repaired, because existing cards are never touched.
@@ -147,16 +158,26 @@ shared card DTO. Create, list, detail, update and admin responses all carry it, 
 ### App
 
 - **Own model, service and provider** for the speed setting, separate from print settings. The
-  provider fetches on every open, discards a fetch that a save overtook, serialises saves and rolls
-  back to the last server-confirmed value. A 404 (backend without the feature) hides the section.
+  provider fetches on every open, waits for saves already in flight before it fetches, discards a
+  fetch that a save overtook, serialises saves and rolls back to the last server-confirmed value.
+  A failed save leaves an error that survives a reload, so the operator still sees it after
+  leaving the screen. `reset()` (logout) invalidates anything still in flight. A 404 (backend
+  without the feature) hides the section.
 - **Voucher Printing screen:** a "Card speed" section after Code Length: switch with a "new cards
-  only" hint, then chips from `options` and the caption "Download and upload: 1M each".
+  only" hint, then chips from `options` and the caption "Download and upload: 1M each". Switching
+  on with a remembered speed that is no longer an option sends 2M (or the first option) instead.
+  Text fields on this screen are no longer overwritten while they have focus.
 - **Wizard:** loads the setting when it opens. With the limit on, step 3 shows a Speed summary row
-  and a one-line strip fixed directly above the Create button: "Speed limit is on: these cards will
-  be limited to 1M." with a **Change** link to Voucher Printing. The strip lives in the fixed bottom
-  bar because a box in the scroll list is off screen on small phones and whenever the keyboard is
-  open. With the limit off the wizard is unchanged.
-- **Success dialog:** shows the applied speed from the create response.
+  and a strip fixed directly above the Create button: "Speed limit 1M is on for these cards." with
+  a **Change** link to Voucher Printing. The speed comes early in the sentence so the two-line
+  ellipsis can never cut it off. The strip lives in the fixed bottom bar because a box in the
+  scroll list is off screen on small phones and whenever the keyboard is open. It is shown only
+  when at least 340 logical px of height remain (screen height minus keyboard minus status bar);
+  on a small phone it hides while the keyboard is open and returns when it closes. It is always
+  visible on arrival at step 3, because the keyboard is closed then. With the limit off, or when
+  the last fetch failed, there is no strip.
+- **Success dialog:** states the speed from the create response: "Speed: 1M", or "Speed: No limit"
+  when the cards carry none and the backend offers the feature. This is the authoritative value.
 - **Card details:** a Speed row after validity when `speedLimit` is set.
 - **Labels** are derived from the wire value at render time: `1M` → "1M" / "1 ميجا", `256k` →
   "256K" / "256 كيلو". An unexpected value is shown unchanged.
@@ -177,6 +198,18 @@ shared card DTO. Create, list, detail, update and admin responses all carry it, 
 - File layout for the new backend service functions and the exact Flutter widget structure.
 - Arabic copy. Drafts: "تحديد سرعة الكروت", "يُطبَّق على الكروت الجديدة فقط",
   "تحديد السرعة مفعّل: هذه الكروت ستكون محدودة بسرعة {0}". The owner reviews them on staging.
+
+## Decided during review, deferred
+
+- A warning in the wizard when the last speed save failed. Covered for now by the save-error banner
+  on the settings screen and by the success dialog always stating the applied speed; a persistent
+  warning needs a dismissal design.
+- The real-PostgreSQL test for "a print-settings save never changes the speed columns" runs a copy
+  of the print upsert statement. The mocked SQL-text assertion is the primary guard; exporting the
+  statement would mean editing a function this design says not to touch.
+- The create-card and update-card request schemas stay non-strict (unknown keys are stripped, not
+  rejected). Making them strict was tried in review and reverted: it changes two existing
+  endpoints for every client, including released app builds.
 
 ## Noticed, not included
 

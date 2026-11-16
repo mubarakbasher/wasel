@@ -637,6 +637,44 @@ FAIL trigger: both rows report `true`, or the column is null — the second save
 or the `xmax` probe did not survive the `RETURNING` list. Either way the write path is not doing what
 the audit trail claims.
 
+### 11.10b Card Speed Limit on a Real Router
+
+Design: `docs/superpowers/specs/2026-11-16-card-speed-limit-design.md`. The card carries the speed
+(`radreply` `Mikrotik-Rate-Limit := <s>/<s>`); the router enforces it with a per-user simple queue.
+MikroTik's factory FastTrack rule lets traffic skip simple queues, so the limit can be ignored while
+RADIUS is doing everything right. This check tells the two apart.
+
+> **Keep Torch, the packet sniffer and the traffic generator CLOSED while testing.** FastTrack is
+> inactive while any of them runs, so the limit falsely appears to work.
+
+In the staging app (debug APK built with the staging `API_BASE_URL`): Settings → Voucher Printing,
+switch **Limit card speed** on and pick 1M. Create one card on the staging router; the wizard's last
+step must show the Speed row and the strip above Create, and the success dialog "Speed: 1M".
+
+- [ ] The card carries the speed:
+
+```bash
+docker compose exec postgres psql -U wasel -d wasel -c \
+  "SELECT attribute, op, value FROM radreply WHERE username = '<code>' ORDER BY id;" \
+  -c "SELECT speed_limit FROM voucher_meta WHERE radius_username = '<code>';"
+# Expected: a last row  Mikrotik-Rate-Limit | := | 1M/1M   and speed_limit = 1M
+```
+
+- [ ] Record whether the router has an enabled FastTrack rule (RouterOS terminal):
+  `/ip firewall filter print where action=fasttrack-connection`
+- [ ] Log a phone in with the card. `/queue simple print` shows a dynamic queue for the user at
+  `1M/1M`.
+- [ ] Run a speed test on the phone (Torch closed). Download and upload stay near 1 Mbps.
+- [ ] If they do not: add `accept` rules for the hotspot network in both directions above the
+  FastTrack rule, reconnect the phone so no fasttracked connection survives, and test again. Note
+  the router's CPU during the test.
+- [ ] Switch the limit off, create another card: it has no `Mikrotik-Rate-Limit` row and
+  `speed_limit` is NULL; the first card still has its row.
+
+FAIL trigger: the card has no rate-limit row with the switch on, or has one with the switch off —
+that is a backend bug. A correct row with a speed test far above the limit is the FastTrack case:
+record it and decide the router-side handling before the feature is offered to operators.
+
 ### 11.11 Full Checklist Summary
 
 | Step | Expected result | Pass / Fail |
@@ -652,6 +690,7 @@ the audit trail claims.
 | Delete voucher + CoA Disconnect | `acctstoptime` set, phone drops | |
 | Admin panel headers | One HSTS, `no-cache` shell, `immutable` assets, CSP identical | |
 | Email template upsert | First save audits `created = true`, second `false` | |
+| Card speed limit | Card has `Mikrotik-Rate-Limit := 1M/1M`; speed test near 1 Mbps with Torch closed; FastTrack state recorded | |
 
 ---
 
