@@ -3,11 +3,20 @@ name: Mobile CI
 on:
   push:
     branches: [main, dev]
-    paths: ['mobile/**', 'backend/src/utils/errorCodes.ts']
+    paths: ['mobile/**', 'backend/src/utils/errorCodes.ts', '.github/workflows/mobile.yml']
   pull_request:
     branches: [main, dev]
-    paths: ['mobile/**', 'backend/src/utils/errorCodes.ts']
+    paths: ['mobile/**', 'backend/src/utils/errorCodes.ts', '.github/workflows/mobile.yml']
   workflow_dispatch:
+
+env:
+  # The Flutter version the app is developed and released with. `channel: stable`
+  # on its own installs whichever stable is newest on the day of the run, so a new
+  # Flutter release can fail this workflow with no change in the repo: the
+  # November 2026 stable deprecates `package:flutter/material.dart`, and
+  # `dart analyze --fatal-infos` turns those 132 notices into a failure.
+  # Raise this together with the local toolchain when the app is migrated.
+  FLUTTER_VERSION: '3.41.2'
 
 jobs:
   analyze-and-test:
@@ -22,6 +31,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - run: flutter pub get
@@ -46,6 +56,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - run: flutter pub get
