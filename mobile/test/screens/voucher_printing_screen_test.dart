@@ -1,11 +1,12 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wasel/i18n/app_localizations.dart';
+import 'package:wasel/models/card_speed_setting.dart';
 import 'package:wasel/models/print_settings.dart';
+import 'package:wasel/providers/card_speed_provider.dart';
 import 'package:wasel/providers/print_settings_provider.dart';
 import 'package:wasel/screens/settings/voucher_printing_screen.dart';
 import 'package:wasel/services/print_settings_service.dart';
@@ -65,18 +66,57 @@ class _NoopStorage implements SecureStorageService {
 }
 
 // ---------------------------------------------------------------------------
+// Fake CardSpeedNotifier — records save() calls; load() is a no-op.
+// ---------------------------------------------------------------------------
+
+class _FakeCardSpeedNotifier extends CardSpeedNotifier {
+  final List<({bool enabled, String speed})> saves = [];
+
+  _FakeCardSpeedNotifier(CardSpeedState initialState) {
+    state = initialState;
+  }
+
+  @override
+  Future<void> load() async {}
+
+  @override
+  Future<void> save({required bool enabled, required String speed}) async {
+    saves.add((enabled: enabled, speed: speed));
+    state = state.copyWith(
+      setting: CardSpeedSetting(
+        enabled: enabled,
+        speed: speed,
+        options: state.setting?.options ?? const [],
+      ),
+      clearError: true,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helper: pump the screen.
 // ---------------------------------------------------------------------------
 
-Widget _buildApp(PrintSettings settings) {
+/// Default speed state: unavailable so existing tests are unaffected.
+final _kUnavailableSpeed = const CardSpeedState(unavailable: true);
+
+Widget _buildApp(
+  PrintSettings settings, {
+  CardSpeedState? speedState,
+  Locale locale = const Locale('en'),
+}) {
+  final cs = speedState ?? _kUnavailableSpeed;
   return ProviderScope(
     overrides: [
       printSettingsProvider
           .overrideWith((_) => _FakePrintSettingsNotifier(settings)),
       thumbnailRendererProvider
           .overrideWithValue(_FakeThumbnailRenderer()),
+      cardSpeedProvider
+          .overrideWith((_) => _FakeCardSpeedNotifier(cs)),
     ],
     child: MaterialApp(
+      locale: locale,
       theme: AppTheme.light,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
@@ -95,6 +135,14 @@ Widget _buildApp(PrintSettings settings) {
 // ---------------------------------------------------------------------------
 
 void main() {
+  setUpAll(() async {
+    final loader = FontLoader('Cairo');
+    for (final weight in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+      loader.addFont(rootBundle.load('assets/fonts/Cairo-$weight.ttf'));
+    }
+    await loader.load();
+  });
+
   group('VoucherPrintingScreen', () {
     testWidgets('shows three template tiles', (tester) async {
       await tester.pumpWidget(_buildApp(const PrintSettings()));
@@ -227,6 +275,323 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('easier to guess'), findsNothing);
+    });
+  });
+
+  // ── Card speed section ───────────────────────────────────────────────────
+
+  group('VoucherPrintingScreen card speed section', () {
+    testWidgets('speed section is hidden when backend does not offer it',
+        (tester) async {
+      await tester.pumpWidget(_buildApp(
+        const PrintSettings(),
+        speedState: const CardSpeedState(unavailable: true),
+      ));
+      await tester.pump();
+
+      expect(find.byKey(const Key('cardSpeedSwitch')), findsNothing);
+    });
+
+    testWidgets('limit off shows the switch and no chips', (tester) async {
+      final setting = CardSpeedSetting(
+        enabled: false,
+        speed: '2M',
+        options: const ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M'],
+      );
+      await tester.pumpWidget(_buildApp(
+        const PrintSettings(),
+        speedState: CardSpeedState(setting: setting),
+      ));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.byKey(const Key('cardSpeedSwitch'), skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('cardSpeedSwitch')), findsOneWidget);
+      expect(
+          find.byKey(const Key('cardSpeedChip_2M'), skipOffstage: false),
+          findsNothing);
+    });
+
+    testWidgets(
+        'limit on shows one chip per server option with saved speed selected and caption',
+        (tester) async {
+      final setting = CardSpeedSetting(
+        enabled: true,
+        speed: '2M',
+        options: const ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M'],
+      );
+      await tester.pumpWidget(_buildApp(
+        const PrintSettings(),
+        speedState: CardSpeedState(setting: setting),
+      ));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.byKey(const Key('cardSpeedChip_2M'), skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      // 8 chips total
+      for (final w in ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M']) {
+        expect(
+            find.byKey(Key('cardSpeedChip_$w')), findsOneWidget,
+            reason: 'chip for $w');
+      }
+      // The saved speed (2M) must be selected.
+      final chip2M = tester.widget<ChoiceChip>(
+          find.byKey(const Key('cardSpeedChip_2M')));
+      expect(chip2M.selected, isTrue, reason: '2M chip must be selected');
+      // All other chips must be unselected.
+      for (final w in ['256k', '512k', '1M', '3M', '4M', '5M', '10M']) {
+        final chip = tester.widget<ChoiceChip>(find.byKey(Key('cardSpeedChip_$w')));
+        expect(chip.selected, isFalse, reason: '$w chip must not be selected');
+      }
+      // caption visible
+      expect(find.byKey(const Key('cardSpeedCaption')), findsOneWidget);
+      final captionWidget = tester.widget<Text>(
+          find.byKey(const Key('cardSpeedCaption')));
+      expect(captionWidget.data, contains('2M'));
+    });
+
+    testWidgets(
+        'a saved speed not in options selects no chip and still shows in caption',
+        (tester) async {
+      final setting = CardSpeedSetting(
+        enabled: true,
+        speed: '8M',
+        options: const ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M'],
+      );
+      await tester.pumpWidget(_buildApp(
+        const PrintSettings(),
+        speedState: CardSpeedState(setting: setting),
+      ));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.byKey(const Key('cardSpeedCaption'), skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      final captionWidget = tester.widget<Text>(
+          find.byKey(const Key('cardSpeedCaption')));
+      expect(captionWidget.data, contains('8M'));
+      // No chip is selected
+      final chips = tester.widgetList<ChoiceChip>(find.byType(ChoiceChip));
+      expect(chips.any((ch) => ch.selected), isFalse);
+    });
+
+    testWidgets('tapping a chip saves enabled true with that speed',
+        (tester) async {
+      final setting = CardSpeedSetting(
+        enabled: true,
+        speed: '2M',
+        options: const ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M'],
+      );
+      late _FakeCardSpeedNotifier notifier;
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          printSettingsProvider.overrideWith(
+              (_) => _FakePrintSettingsNotifier(const PrintSettings())),
+          thumbnailRendererProvider
+              .overrideWithValue(_FakeThumbnailRenderer()),
+          cardSpeedProvider.overrideWith((_) {
+            notifier = _FakeCardSpeedNotifier(CardSpeedState(setting: setting));
+            return notifier;
+          }),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: const VoucherPrintingScreen(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.byKey(const Key('cardSpeedChip_1M'), skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('cardSpeedChip_1M')));
+      await tester.pump();
+
+      expect(notifier.saves, hasLength(1));
+      expect(notifier.saves.first.enabled, isTrue);
+      expect(notifier.saves.first.speed, '1M');
+    });
+
+    // M4: switching on with speed not in options → sends '2M' (the default)
+    testWidgets('M4 switching on with speed not in options sends 2M', (tester) async {
+      final setting = CardSpeedSetting(
+        enabled: false,
+        speed: '8M',
+        options: const ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M'],
+      );
+      late _FakeCardSpeedNotifier notifier;
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          printSettingsProvider.overrideWith(
+              (_) => _FakePrintSettingsNotifier(const PrintSettings())),
+          thumbnailRendererProvider
+              .overrideWithValue(_FakeThumbnailRenderer()),
+          cardSpeedProvider.overrideWith((_) {
+            notifier = _FakeCardSpeedNotifier(CardSpeedState(setting: setting));
+            return notifier;
+          }),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: const VoucherPrintingScreen(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.byKey(const Key('cardSpeedSwitch'), skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('cardSpeedSwitch')));
+      await tester.pump();
+
+      expect(notifier.saves, hasLength(1));
+      expect(notifier.saves.first.enabled, isTrue);
+      expect(notifier.saves.first.speed, '2M');
+    });
+
+    testWidgets('switching on sends the remembered speed', (tester) async {
+      final setting = CardSpeedSetting(
+        enabled: false,
+        speed: '5M',
+        options: const ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M'],
+      );
+      late _FakeCardSpeedNotifier notifier;
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          printSettingsProvider.overrideWith(
+              (_) => _FakePrintSettingsNotifier(const PrintSettings())),
+          thumbnailRendererProvider
+              .overrideWithValue(_FakeThumbnailRenderer()),
+          cardSpeedProvider.overrideWith((_) {
+            notifier = _FakeCardSpeedNotifier(CardSpeedState(setting: setting));
+            return notifier;
+          }),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: const VoucherPrintingScreen(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.byKey(const Key('cardSpeedSwitch'), skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('cardSpeedSwitch')));
+      await tester.pump();
+
+      expect(notifier.saves, hasLength(1));
+      expect(notifier.saves.first.enabled, isTrue);
+      expect(notifier.saves.first.speed, '5M');
+    });
+
+    testWidgets('switching off sends the current speed', (tester) async {
+      final setting = CardSpeedSetting(
+        enabled: true,
+        speed: '1M',
+        options: const ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M'],
+      );
+      late _FakeCardSpeedNotifier notifier;
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          printSettingsProvider.overrideWith(
+              (_) => _FakePrintSettingsNotifier(const PrintSettings())),
+          thumbnailRendererProvider
+              .overrideWithValue(_FakeThumbnailRenderer()),
+          cardSpeedProvider.overrideWith((_) {
+            notifier = _FakeCardSpeedNotifier(CardSpeedState(setting: setting));
+            return notifier;
+          }),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: const VoucherPrintingScreen(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.byKey(const Key('cardSpeedSwitch'), skipOffstage: false),
+        find.byType(ListView),
+        const Offset(0, -200),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('cardSpeedSwitch')));
+      await tester.pump();
+
+      expect(notifier.saves, hasLength(1));
+      expect(notifier.saves.first.enabled, isFalse);
+      expect(notifier.saves.first.speed, '1M');
+    });
+
+    testWidgets('lays out at 320 px wide in Arabic without overflow',
+        (tester) async {
+      tester.view.physicalSize = const Size(320 * 3, 569 * 3);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final setting = CardSpeedSetting(
+        enabled: true,
+        speed: '2M',
+        options: const ['256k', '512k', '1M', '2M', '3M', '4M', '5M', '10M'],
+      );
+      await tester.pumpWidget(_buildApp(
+        const PrintSettings(),
+        speedState: CardSpeedState(setting: setting),
+        locale: const Locale('ar'),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
     });
   });
 }

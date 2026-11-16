@@ -5,7 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../i18n/app_localizations.dart';
+import '../../i18n/voucher_format.dart';
 import '../../models/print_settings.dart';
+import '../../providers/card_speed_provider.dart';
 import '../../providers/print_settings_provider.dart';
 import '../../providers/routers_provider.dart';
 import '../../theme/app_colors.dart';
@@ -26,6 +28,9 @@ class _VoucherPrintingScreenState
   final _headerController = TextEditingController();
   final _footerController = TextEditingController();
   final _hotspotController = TextEditingController();
+  final _headerFocus = FocusNode();
+  final _footerFocus = FocusNode();
+  final _hotspotFocus = FocusNode();
 
   Timer? _debounce;
   bool _syncingControllers = false;
@@ -38,6 +43,7 @@ class _VoucherPrintingScreenState
       if (ref.read(printSettingsProvider).isEmpty) {
         notifier.load();
       }
+      ref.read(cardSpeedProvider.notifier).load();
     });
   }
 
@@ -46,21 +52,24 @@ class _VoucherPrintingScreenState
     _headerController.dispose();
     _footerController.dispose();
     _hotspotController.dispose();
+    _headerFocus.dispose();
+    _footerFocus.dispose();
+    _hotspotFocus.dispose();
     _debounce?.cancel();
     super.dispose();
   }
 
   void _syncControllers(PrintSettings s) {
     _syncingControllers = true;
-    if (_headerController.text != s.knobs.headerText) {
-      _headerController.text = s.knobs.headerText;
+    // Skip a controller whose field has focus — the operator is mid-edit and
+    // the debounce will save their text shortly. Overwriting now would lose
+    // keystrokes when a card-speed state change rebuilds the screen.
+    void syncOne(TextEditingController c, FocusNode f, String v) {
+      if (!f.hasFocus && c.text != v) c.text = v;
     }
-    if (_footerController.text != s.knobs.footerText) {
-      _footerController.text = s.knobs.footerText;
-    }
-    if (_hotspotController.text != s.knobs.hotspotAddress) {
-      _hotspotController.text = s.knobs.hotspotAddress;
-    }
+    syncOne(_headerController, _headerFocus, s.knobs.headerText);
+    syncOne(_footerController, _footerFocus, s.knobs.footerText);
+    syncOne(_hotspotController, _hotspotFocus, s.knobs.hotspotAddress);
     _syncingControllers = false;
   }
 
@@ -96,6 +105,7 @@ class _VoucherPrintingScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(printSettingsProvider);
+    final speedState = ref.watch(cardSpeedProvider);
 
     if (state.isLoading && state.isEmpty) {
       return Scaffold(
@@ -130,6 +140,7 @@ class _VoucherPrintingScreenState
           ],
           _buildCodeLengthSection(state, s),
           const SizedBox(height: AppSpacing.xl),
+          _buildSpeedLimitSection(speedState),
           _buildTemplateSection(s),
           const SizedBox(height: AppSpacing.xl),
           _buildKnobsSection(state, s),
@@ -206,6 +217,142 @@ class _VoucherPrintingScreenState
     );
   }
 
+  // ── Speed limit section ──────────────────────────────────────────────────
+
+  Widget _buildSpeedLimitSection(CardSpeedState cs) {
+    // Hidden when backend doesn't support the feature.
+    if (cs.unavailable) return const SizedBox.shrink();
+
+    // Show header + loading indicator while the first fetch is in progress,
+    // so the section doesn't pop in late and push template tiles.
+    if (cs.setting == null && cs.error == null) {
+      if (!cs.isLoading) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title: context.tr('settings.cardSpeed')),
+          const SizedBox(height: AppSpacing.sm),
+          const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: AppSpacing.xl),
+        ],
+      );
+    }
+
+    // Error state with no setting to show.
+    if (cs.setting == null && cs.error != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title: context.tr('settings.cardSpeed')),
+          const SizedBox(height: AppSpacing.sm),
+          InlineErrorBanner(message: cs.error!),
+          const SizedBox(height: AppSpacing.xs),
+          TextButton(
+            onPressed: () => ref.read(cardSpeedProvider.notifier).load(),
+            child: Text(context.tr('common.retry')),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+        ],
+      );
+    }
+
+    final setting = cs.setting!;
+    final enabled = setting.enabled;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(title: context.tr('settings.cardSpeed')),
+        const SizedBox(height: AppSpacing.sm),
+        if (cs.error != null) ...[
+          InlineErrorBanner(message: cs.error!),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        AppCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SwitchListTile(
+                key: const Key('cardSpeedSwitch'),
+                title: Text(context.tr('settings.limitCardSpeed'),
+                    style: AppTypography.body),
+                subtitle: Text(context.tr('settings.limitCardSpeedHint'),
+                    style: AppTypography.footnote
+                        .copyWith(color: AppColors.textSecondary)),
+                value: enabled,
+                contentPadding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: AppSpacing.lg),
+                onChanged: (v) {
+                  String speed = setting.speed;
+                  if (v && setting.options.isNotEmpty && !setting.options.contains(setting.speed)) {
+                    speed = setting.options.contains('2M') ? '2M' : setting.options.first;
+                  }
+                  ref.read(cardSpeedProvider.notifier).save(enabled: v, speed: speed);
+                },
+              ),
+              if (enabled) ...[
+                const Divider(height: 1, color: AppColors.border),
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.sm,
+                      children: setting.options.map((wire) {
+                        final isSelected = wire == setting.speed;
+                        return ChoiceChip(
+                          key: Key('cardSpeedChip_$wire'),
+                          label: Text(localizedSpeedText(context, wire)),
+                          selected: isSelected,
+                          showCheckmark: false,
+                          onSelected: (_) => ref
+                              .read(cardSpeedProvider.notifier)
+                              .save(enabled: true, speed: wire),
+                          labelStyle: AppTypography.subhead.copyWith(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.textPrimary,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                          side: BorderSide(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.border,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                  child: Text(
+                    key: const Key('cardSpeedCaption'),
+                    context.tr('settings.cardSpeedCaption',
+                        [localizedSpeedText(context, setting.speed)]),
+                    style: AppTypography.footnote
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        // Also show save-error banner inside the section.
+        if (cs.saveError != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          InlineErrorBanner(message: cs.saveError!),
+        ],
+        const SizedBox(height: AppSpacing.xl),
+      ],
+    );
+  }
+
   // ── Template section ─────────────────────────────────────────────────────
 
   Widget _buildTemplateSection(PrintSettings s) {
@@ -266,6 +413,7 @@ class _VoucherPrintingScreenState
                 label: context.tr('knob.headerText'),
                 hint: context.tr('knob.headerTextHint'),
                 controller: _headerController,
+                focusNode: _headerFocus,
                 maxLength: 60,
                 onChanged: (_) {
                   if (_syncingControllers) return;
@@ -290,6 +438,7 @@ class _VoucherPrintingScreenState
                   label: context.tr('knob.footerText'),
                   hint: context.tr('print.howToDefault'),
                   controller: _footerController,
+                  focusNode: _footerFocus,
                   maxLength: 120,
                   onChanged: (_) {
                     if (_syncingControllers) return;
@@ -323,6 +472,7 @@ class _VoucherPrintingScreenState
                     label: context.tr('knob.hotspotAddress'),
                     hint: context.tr('knob.hotspotAddressHint'),
                     controller: _hotspotController,
+                    focusNode: _hotspotFocus,
                     maxLength: 100,
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(
@@ -526,6 +676,7 @@ class _TextKnobTile extends StatelessWidget {
   final String label;
   final String hint;
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final int maxLength;
   final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String> onChanged;
@@ -536,6 +687,7 @@ class _TextKnobTile extends StatelessWidget {
     required this.controller,
     required this.maxLength,
     required this.onChanged,
+    this.focusNode,
     this.inputFormatters,
   });
 
@@ -546,6 +698,7 @@ class _TextKnobTile extends StatelessWidget {
           horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
         maxLength: maxLength,
         maxLines: 1,
         inputFormatters: inputFormatters,

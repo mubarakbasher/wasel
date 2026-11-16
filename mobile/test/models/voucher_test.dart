@@ -80,5 +80,46 @@ void main() {
       expect(json['limitType'], 'time');
       expect(json['price'], 1.50);
     });
+
+    test('fromJson reads speedLimit', () {
+      final v = Voucher.fromJson({
+        'id': 'v-1',
+        'userId': 'u-1',
+        'routerId': 'r-1',
+        'username': 'X',
+        'status': 'unused',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'updatedAt': '2026-01-01T00:00:00.000Z',
+        'speedLimit': '1M',
+      });
+      expect(v.speedLimit, '1M');
+    });
+
+    test('fromJson tolerates a missing speedLimit key', () {
+      final v = Voucher.fromJson({
+        'id': 'v-1',
+        'userId': 'u-1',
+        'routerId': 'r-1',
+        'username': 'X',
+        'status': 'unused',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'updatedAt': '2026-01-01T00:00:00.000Z',
+      });
+      expect(v.speedLimit, isNull);
+    });
+
+    test('fromJson treats non-string speedLimit as null', () {
+      final v = Voucher.fromJson({
+        'id': 'v-1',
+        'userId': 'u-1',
+        'routerId': 'r-1',
+        'username': 'X',
+        'status': 'unused',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'updatedAt': '2026-01-01T00:00:00.000Z',
+        'speedLimit': 5,
+      });
+      expect(v.speedLimit, isNull);
+    });
   });
 }

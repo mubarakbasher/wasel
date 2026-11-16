@@ -407,6 +407,14 @@ class _VoucherDetailScreenState extends ConsumerState<VoucherDetailScreen>
             value: voucherValidityText(context, v.validitySeconds),
             icon: Icons.hourglass_bottom,
           ),
+          if (v.speedLimit != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            _InfoRow(
+              label: context.tr('vouchers.speed'),
+              value: localizedSpeedText(context, v.speedLimit!),
+              icon: Icons.speed,
+            ),
+          ],
           if (v.price != null) ...[
             const SizedBox(height: AppSpacing.md),
             _InfoRow(

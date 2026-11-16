@@ -10,11 +10,13 @@ import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
 import '../services/secure_storage.dart';
 import '../utils/error_messages.dart';
+import 'card_speed_provider.dart';
 import 'dashboard_provider.dart';
 import 'hotspot_templates_provider.dart';
 import 'locale_provider.dart';
 import 'notification_prefs_provider.dart';
 import 'notifications_provider.dart';
+import 'print_settings_provider.dart';
 import 'reports_provider.dart';
 import 'routers_provider.dart';
 import 'sessions_provider.dart';
@@ -136,7 +138,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     safeReset(() => ref.read(dashboardProvider.notifier).reset());
     safeReset(() => ref.read(reportsProvider.notifier).reset());
     safeReset(() => ref.read(notificationPrefsProvider.notifier).reset());
+    safeReset(() => ref.read(printSettingsProvider.notifier).reset());
     safeReset(() => ref.read(hotspotTemplateNotifierProvider.notifier).reset());
+    safeReset(() => ref.read(cardSpeedProvider.notifier).reset());
   }
 
   /// Kick off loads for user-scoped providers that screens read but don't

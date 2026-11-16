@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../i18n/app_localizations.dart';
 import '../../i18n/voucher_format.dart';
 import '../../models/voucher.dart';
+import '../../providers/card_speed_provider.dart';
 import '../../providers/print_settings_provider.dart';
 import '../../providers/routers_provider.dart';
 import '../../providers/vouchers_provider.dart';
@@ -60,6 +61,18 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
     if (routers.where((r) => r.id == widget.routerId).isEmpty) {
       Future.microtask(() => ref.read(routersProvider.notifier).loadRouters());
     }
+    Future.microtask(() => ref.read(cardSpeedProvider.notifier).load());
+  }
+
+  /// The active speed wire string when the speed-limit feature is on and the
+  /// last load succeeded; null when unavailable, error, or disabled.
+  String? get _activeSpeed {
+    final cs = ref.watch(cardSpeedProvider);
+    // Don't promise a cap when the last fetch failed — the stale value may no
+    // longer match the server (design anti-goal: batch created without a cap
+    // the operator cannot see is missing).
+    if (cs.error != null) return null;
+    return cs.setting?.enabled == true ? cs.setting!.speed : null;
   }
 
   @override
@@ -137,6 +150,9 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
         .where((r) => r.id == widget.routerId)
         .firstOrNull;
     final routerName = router?.name ?? context.tr('routers.defaultRouterName');
+    final appliedSpeed =
+        vouchers.isNotEmpty ? vouchers.first.speedLimit : null;
+    final speedUnavailable = ref.read(cardSpeedProvider).unavailable;
 
     showDialog(
       context: context,
@@ -174,6 +190,25 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
               style: AppTypography.body.copyWith(color: AppColors.textSecondary),
               textAlign: TextAlign.center,
             ),
+            if (appliedSpeed != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                '${ctx.tr('vouchers.speed')}: ${localizedSpeedText(ctx, appliedSpeed)}',
+                key: const Key('appliedSpeedText'),
+                style: AppTypography.body
+                    .copyWith(color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ] else if (!speedUnavailable) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                '${ctx.tr('vouchers.speed')}: ${ctx.tr('vouchers.speedNoLimit')}',
+                key: const Key('appliedSpeedText'),
+                style: AppTypography.body
+                    .copyWith(color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ],
             const SizedBox(height: AppSpacing.xl),
             SizedBox(
               width: double.infinity,
@@ -797,6 +832,13 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
                   ),
                 if (printState.settings != null)
                   const SizedBox(height: AppSpacing.sm),
+                if (_activeSpeed != null) ...[
+                  _buildSummaryRow(
+                    context.tr('vouchers.speed'),
+                    localizedSpeedText(context, _activeSpeed!),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                ],
                 _buildSummaryRow(
                   context.tr('vouchers.price'),
                   context.tr('vouchers.each', ['${price.toStringAsFixed(2)} ${context.tr('common.currencySymbol')}']),
@@ -835,48 +877,107 @@ class _CreateVoucherWizardState extends ConsumerState<CreateVoucherWizard> {
 
   // ---- Bottom Bar ----
 
+  // Minimum vertical room (px, logical) the bottom bar needs to show the strip
+  // without overflowing on a 320×569 phone with a 24 px status bar and 280 px
+  // keyboard: 569 - 280 - 24 = 265 px is too tight; 340 is the safe threshold.
+  static const double _kStripMinHeight = 340.0;
+
+  Widget _buildSpeedStrip(String speed) {
+    return Container(
+      key: const Key('speedLimitStrip'),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, size: 16, color: AppColors.primary),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              context.tr('vouchers.speedLimitNotice',
+                  [localizedSpeedText(context, speed)]),
+              style: AppTypography.footnote
+                  .copyWith(color: AppColors.primary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          TextButton(
+            key: const Key('speedLimitChange'),
+            onPressed: _isSubmitting
+                ? null
+                : () => context.push('/settings/voucher-printing'),
+            style: TextButton.styleFrom(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(context.tr('vouchers.speedLimitChange')),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBottomBar() {
+    final speed = _activeSpeed;
+    final mq = MediaQuery.of(context);
+    final room = mq.size.height - mq.viewInsets.bottom - mq.padding.top;
+    final showStrip = _currentStep == 2 && speed != null && room >= _kStripMinHeight;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (_currentStep > 0) ...[
-              Expanded(
-                child: SizedBox(
-                  height: 48,
-                  child: OutlinedButton(
-                    onPressed: _isSubmitting ? null : _goBack,
-                    child: Text(context.tr('common.back')),
+            if (showStrip) ...[
+              _buildSpeedStrip(speed),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+            Row(
+              children: [
+                if (_currentStep > 0) ...[
+                  Expanded(
+                    child: SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: _isSubmitting ? null : _goBack,
+                        child: Text(context.tr('common.back')),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.lg),
+                ],
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: _currentStep < 2
+                        ? ElevatedButton(
+                            onPressed: _goNext,
+                            child: Text(context.tr('common.next')),
+                          )
+                        : ElevatedButton(
+                            onPressed: _isSubmitting ? null : _submit,
+                            child: _isSubmitting
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Text(
+                                    int.tryParse(_countController.text.trim()) == 1
+                                        ? context.tr('vouchers.createVoucher')
+                                        : context.tr('vouchers.createNVouchers',
+                                            [_countController.text.trim()]),
+                                  ),
+                          ),
                   ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.lg),
-            ],
-            Expanded(
-              child: SizedBox(
-                height: 48,
-                child: _currentStep < 2
-                    ? ElevatedButton(
-                        onPressed: _goNext,
-                        child: Text(context.tr('common.next')),
-                      )
-                    : ElevatedButton(
-                        onPressed: _isSubmitting ? null : _submit,
-                        child: _isSubmitting
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text(
-                                int.tryParse(_countController.text.trim()) == 1
-                                    ? context.tr('vouchers.createVoucher')
-                                    : context.tr('vouchers.createNVouchers', [_countController.text.trim()]),
-                              ),
-                      ),
-              ),
+              ],
             ),
           ],
         ),

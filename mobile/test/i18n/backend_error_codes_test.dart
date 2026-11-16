@@ -110,7 +110,7 @@ void main() {
       // Ratchet: codes are append-only per the contract in errorCodes.ts.
       expect(
         codes.length,
-        greaterThanOrEqualTo(85),
+        greaterThanOrEqualTo(86),
         reason: 'errorCodes.ts declares fewer codes than before — codes must '
             'never be removed',
       );

@@ -446,6 +446,17 @@ class AppLocalizations {
     'error.UPLOAD_DIR_UNWRITABLE': 'Uploads are temporarily unavailable. Please try again later.',
     'error.UPLOAD_VERIFY_FAILED': 'The uploaded file could not be verified. Please try again.',
     'error.READ_ERROR': 'The file could not be read. Please try again.',
+    'error.CARD_SETTINGS_UNAVAILABLE': "Couldn't read your card settings. Please try again.",
+
+    // ── Speed units ──────────────────────────────────────────────────────────
+    'speed.mega': '{0}M',
+    'speed.kilo': '{0}K',
+
+    // ── Extra Vouchers (speed) ────────────────────────────────────────────────
+    'vouchers.speed': 'Speed',
+    'vouchers.speedLimitNotice': 'Speed limit {0} is on for these cards.',
+    'vouchers.speedNoLimit': 'No limit',
+    'vouchers.speedLimitChange': 'Change',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'Wasel',
@@ -814,13 +825,17 @@ class AppLocalizations {
 
     // ── Settings – Voucher Printing ─────────────────────────────────────────
     'settings.voucherPrinting': 'Voucher Printing',
-    'settings.voucherPrintingSubtitle': 'Templates, code length, layout',
+    'settings.voucherPrintingSubtitle': 'Templates, code length, speed limit',
     'settings.codeLength': 'Code Length',
     'settings.codeLengthHint': 'Applies to new batches only. Existing vouchers keep their length.',
     'settings.codeLengthShortWarning': 'Short codes have fewer possible combinations and are easier to guess.',
     'settings.cardTemplate': 'Card Template',
     'settings.templateOptions': 'Template Options',
     'settings.defaultColumns': 'Default Columns',
+    'settings.cardSpeed': 'Card Speed',
+    'settings.limitCardSpeed': 'Limit card speed',
+    'settings.limitCardSpeedHint': 'Applies to new cards only. Cards already created keep their speed.',
+    'settings.cardSpeedCaption': 'Download and upload: {0} each',
 
     // ── Template names & descriptions ───────────────────────────────────────
     'template.classic': 'Classic',
@@ -1394,6 +1409,17 @@ class AppLocalizations {
     'error.UPLOAD_DIR_UNWRITABLE': 'الرفع غير متاح مؤقتًا. يرجى المحاولة لاحقًا.',
     'error.UPLOAD_VERIFY_FAILED': 'تعذّر التحقق من الملف المرفوع. يرجى المحاولة مرة أخرى.',
     'error.READ_ERROR': 'تعذّر قراءة الملف. يرجى المحاولة مرة أخرى.',
+    'error.CARD_SETTINGS_UNAVAILABLE': 'تعذّرت قراءة إعدادات الكروت. حاول مرة أخرى.',
+
+    // ── Speed units ──────────────────────────────────────────────────────────
+    'speed.mega': '{0} ميجا',
+    'speed.kilo': '{0} كيلو',
+
+    // ── Extra Vouchers (speed) ────────────────────────────────────────────────
+    'vouchers.speed': 'السرعة',
+    'vouchers.speedLimitNotice': 'تحديد السرعة {0} مفعّل لهذه الكروت.',
+    'vouchers.speedNoLimit': 'بدون تحديد',
+    'vouchers.speedLimitChange': 'تغيير',
 
     // ── Extra common ─────────────────────────────────────────────────────────
     'common.appName': 'واصل',
@@ -1780,13 +1806,17 @@ class AppLocalizations {
 
     // ── Settings – Voucher Printing ─────────────────────────────────────────
     'settings.voucherPrinting': 'طباعة الكروت',
-    'settings.voucherPrintingSubtitle': 'القوالب، طول الرمز، التخطيط',
+    'settings.voucherPrintingSubtitle': 'القوالب، طول الرمز، تحديد السرعة',
     'settings.codeLength': 'طول الرمز',
     'settings.codeLengthHint': 'ينطبق على الدفعات الجديدة فقط. الكروت الموجودة تحتفظ بطولها.',
     'settings.codeLengthShortWarning': 'الأرقام القصيرة تحتوي على عدد أقل من التركيبات الممكنة ويسهل تخمينها.',
     'settings.cardTemplate': 'قالب الكرت',
     'settings.templateOptions': 'خيارات القالب',
     'settings.defaultColumns': 'عدد الأعمدة الافتراضي',
+    'settings.cardSpeed': 'سرعة الكروت',
+    'settings.limitCardSpeed': 'تحديد سرعة الكروت',
+    'settings.limitCardSpeedHint': 'يُطبَّق على الكروت الجديدة فقط. الكروت المُنشأة سابقاً تبقى كما هي.',
+    'settings.cardSpeedCaption': 'التحميل والرفع: {0} لكل منهما',
 
     // ── Template names & descriptions ───────────────────────────────────────
     'template.classic': 'كلاسيكي',

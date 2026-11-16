@@ -3,6 +3,28 @@ import 'package:flutter/material.dart';
 import '../models/voucher.dart';
 import 'app_localizations.dart';
 
+/// Returns a localized speed label for a wire speed string.
+///
+/// - `'1M'` → `speed.mega` with `'1'` → e.g. `'1M'` / `'1 ميجا'`
+/// - `'256k'` → `speed.kilo` with `'256'` → e.g. `'256K'` / `'256 كيلو'`
+/// - A symmetric pair such as `'1M/1M'` is treated as `'1M'`.
+/// - Any other value is returned unchanged.
+String localizedSpeedText(BuildContext c, String wire) {
+  // Strip symmetric pair: '1M/1M' → '1M'
+  final parts = wire.split('/');
+  final effective = (parts.length == 2 && parts[0] == parts[1]) ? parts[0] : wire;
+
+  final megaMatch = RegExp(r'^([1-9][0-9]{0,3})M$').firstMatch(effective);
+  if (megaMatch != null) {
+    return c.tr('speed.mega', [megaMatch.group(1)!]);
+  }
+  final kiloMatch = RegExp(r'^([1-9][0-9]{0,3})k$').firstMatch(effective);
+  if (kiloMatch != null) {
+    return c.tr('speed.kilo', [kiloMatch.group(1)!]);
+  }
+  return wire;
+}
+
 /// Maps a voucher status value to a localized display label.
 ///
 /// Recognised values: active / unused / expired / disabled / used.

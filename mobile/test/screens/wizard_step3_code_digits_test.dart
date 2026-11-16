@@ -9,11 +9,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wasel/i18n/app_localizations.dart';
+import 'package:wasel/models/card_speed_setting.dart';
 import 'package:wasel/models/print_settings.dart';
 import 'package:wasel/models/router_model.dart';
+import 'package:wasel/providers/card_speed_provider.dart';
 import 'package:wasel/providers/print_settings_provider.dart';
 import 'package:wasel/providers/routers_provider.dart';
 import 'package:wasel/providers/vouchers_provider.dart';
+import 'package:wasel/services/card_speed_service.dart';
 import 'package:wasel/screens/vouchers/create_voucher_wizard.dart';
 import 'package:wasel/services/print_settings_service.dart';
 import 'package:wasel/services/secure_storage.dart';
@@ -68,6 +71,20 @@ class _FakeVouchersNotifier extends VouchersNotifier {
   void clearError() {}
 }
 
+class _FakeCardSpeedNotifier extends CardSpeedNotifier {
+  _FakeCardSpeedNotifier() : super(service: _NoopCardSpeedService()) {
+    state = const CardSpeedState();
+  }
+
+  @override
+  Future<void> load() async {}
+}
+
+class _NoopCardSpeedService extends CardSpeedService {
+  @override
+  Future<CardSpeedSetting?> fetch() async => null;
+}
+
 // ---------------------------------------------------------------------------
 // Helper: advance to step 3 (Count & Price step).
 // ---------------------------------------------------------------------------
@@ -79,6 +96,7 @@ Widget _buildApp({int codeLength = 8}) {
           (_) => _FakePrintSettingsNotifier(PrintSettings(codeLength: codeLength))),
       routersProvider.overrideWith((_) => _FakeRoutersNotifier()),
       vouchersProvider.overrideWith((_) => _FakeVouchersNotifier()),
+      cardSpeedProvider.overrideWith((_) => _FakeCardSpeedNotifier()),
     ],
     child: MaterialApp(
       theme: AppTheme.light,

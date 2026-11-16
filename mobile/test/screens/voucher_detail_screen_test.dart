@@ -45,6 +45,7 @@ Voucher _makeVoucher({
   String? comment,
   double? price,
   int? simultaneousUse,
+  String? speedLimit,
 }) {
   return Voucher(
     id: _kVoucherId,
@@ -63,6 +64,7 @@ Voucher _makeVoucher({
     simultaneousUse: simultaneousUse,
     createdAt: _kCreatedAtUtc,
     updatedAt: _kCreatedAtUtc,
+    speedLimit: speedLimit,
   );
 }
 
@@ -316,6 +318,30 @@ void main() {
         isTrue,
         reason: 'date value must be TextDirection.ltr to keep digit order in Arabic',
       );
+    });
+  });
+
+  // ── Speed limit row ───────────────────────────────────────────────────────
+
+  group('VoucherDetailScreen — speed row', () {
+    testWidgets('shows a Speed row when the card has a speed', (tester) async {
+      final v = _makeVoucher(speedLimit: '256k');
+      final notifier = _FakeVouchersNotifier(v);
+      await tester.pumpWidget(_buildApp(notifier));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Speed'), findsOneWidget);
+      // localizedSpeedText renders '256k' as '256K' in English
+      expect(find.text('256K'), findsOneWidget);
+    });
+
+    testWidgets('shows no Speed row when speedLimit is null', (tester) async {
+      final v = _makeVoucher();
+      final notifier = _FakeVouchersNotifier(v);
+      await tester.pumpWidget(_buildApp(notifier));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Speed'), findsNothing);
     });
   });
 }

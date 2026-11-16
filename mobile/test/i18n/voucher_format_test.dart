@@ -340,4 +340,57 @@ void main() {
       );
     });
   });
+
+  // ── localizedSpeedText ────────────────────────────────────────────────────
+
+  group('localizedSpeedText', () {
+    testWidgets('1M → "1M" (en)', (t) async {
+      expect(
+        await _resolve(t, const Locale('en'), (c) => localizedSpeedText(c, '1M')),
+        '1M',
+      );
+    });
+
+    testWidgets('256k → "256K" (en)', (t) async {
+      expect(
+        await _resolve(t, const Locale('en'), (c) => localizedSpeedText(c, '256k')),
+        '256K',
+      );
+    });
+
+    testWidgets('symmetric pair 1M/1M → treated as 1M (en)', (t) async {
+      expect(
+        await _resolve(t, const Locale('en'), (c) => localizedSpeedText(c, '1M/1M')),
+        '1M',
+      );
+    });
+
+    testWidgets('asymmetric pair 1M/2M → returned unchanged (en)', (t) async {
+      expect(
+        await _resolve(t, const Locale('en'), (c) => localizedSpeedText(c, '1M/2M')),
+        '1M/2M',
+      );
+    });
+
+    testWidgets('unknown string → returned unchanged (en)', (t) async {
+      expect(
+        await _resolve(t, const Locale('en'), (c) => localizedSpeedText(c, 'fast')),
+        'fast',
+      );
+    });
+
+    testWidgets('1M → "1 ميجا" (ar)', (t) async {
+      expect(
+        await _resolve(t, const Locale('ar'), (c) => localizedSpeedText(c, '1M')),
+        '1 ميجا',
+      );
+    });
+
+    testWidgets('256k → "256 كيلو" (ar)', (t) async {
+      expect(
+        await _resolve(t, const Locale('ar'), (c) => localizedSpeedText(c, '256k')),
+        '256 كيلو',
+      );
+    });
+  });
 }
