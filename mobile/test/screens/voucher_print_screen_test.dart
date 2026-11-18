@@ -135,19 +135,19 @@ void main() {
       expect(find.textContaining('Columns: 6'), findsOneWidget);
     });
 
-    testWidgets('Strips template shows strips-per-page label, not slider',
+    testWidgets('Strips template shows column slider (1-3) and per-page label',
         (tester) async {
       await tester.pumpWidget(_buildApp(const PrintSettings(
         templateId: VoucherTemplateId.strips,
-        knobs: PrintKnobs(stripsPerPage: 8),
+        knobs: PrintKnobs(stripsPerPage: 8, stripsColumns: 1),
       )));
       await tester.pump();
       await tester.pump();
 
-      // Strips label present (e.g. "8 per page").
+      // Strips label present (e.g. "8 per page" for 8 rows x 1 col).
       expect(find.textContaining('per page'), findsOneWidget);
-      // Column slider absent.
-      expect(find.textContaining('Columns:'), findsNothing);
+      // Column slider IS shown for Strips (range 1–3).
+      expect(find.textContaining('Columns:'), findsOneWidget);
     });
   });
 }

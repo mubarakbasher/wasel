@@ -39,6 +39,7 @@ class PrintKnobs {
   final bool showQr;
   final bool showBatch;
   final int stripsPerPage;    // 4..12 (Strips)
+  final int stripsColumns;    // 1..3 (Strips)
 
   const PrintKnobs({
     this.headerText = '',
@@ -48,6 +49,7 @@ class PrintKnobs {
     this.showQr = false,
     this.showBatch = true,
     this.stripsPerPage = 8,
+    this.stripsColumns = 1,
   });
 
   /// Tolerant parse: missing keys → defaults, stripsPerPage clamped 4..12.
@@ -60,6 +62,7 @@ class PrintKnobs {
       showQr:          (json['showQr']         as bool?)    ?? false,
       showBatch:       (json['showBatch']       as bool?)   ?? true,
       stripsPerPage:   ((json['stripsPerPage']  as int?)    ?? 8).clamp(4, 12),
+      stripsColumns:   ((json['stripsColumns']  is int) ? (json['stripsColumns'] as int) : 1).clamp(1, 3),
     );
   }
 
@@ -71,6 +74,7 @@ class PrintKnobs {
     'showQr':         showQr,
     'showBatch':      showBatch,
     'stripsPerPage':  stripsPerPage,
+    'stripsColumns':  stripsColumns,
   };
 
   /// True when the QR block should be rendered: showQr is on and an address
@@ -86,6 +90,7 @@ class PrintKnobs {
     bool? showQr,
     bool? showBatch,
     int? stripsPerPage,
+    int? stripsColumns,
   }) =>
       PrintKnobs(
         headerText:     headerText     ?? this.headerText,
@@ -95,6 +100,7 @@ class PrintKnobs {
         showQr:         showQr         ?? this.showQr,
         showBatch:      showBatch      ?? this.showBatch,
         stripsPerPage:  stripsPerPage  ?? this.stripsPerPage,
+        stripsColumns:  stripsColumns  ?? this.stripsColumns,
       );
 }
 
@@ -169,6 +175,7 @@ class PrintSettings {
         '|sp=${k.showPrice}'
         '|sq=${k.showQr}'
         '|sb=${k.showBatch}'
-        '|spp=${k.stripsPerPage}';
+        '|spp=${k.stripsPerPage}'
+        '|sc=${k.stripsColumns}';
   }
 }

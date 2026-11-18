@@ -504,7 +504,7 @@ Two separate API resources write this row and never touch each other's columns: 
 | `code_length` | SMALLINT | NOT NULL, default 8, CHECK `BETWEEN 6 AND 12` | Applies to new batches only; existing vouchers are untouched |
 | `template_id` | VARCHAR(16) | NOT NULL, default `'classic'`, CHECK `IN ('classic','detailed','strips')` | Card template used at print time |
 | `default_columns` | SMALLINT | NOT NULL, default 4, CHECK `BETWEEN 2 AND 9` | Pre-fills the column slider on the print screen; ignored by Strips template (1 column) |
-| `knobs` | JSONB | NOT NULL, default `'{}'` | Flat settings bag: `headerText`, `footerText`, `hotspotAddress`, `showPrice`, `showQr`, `showBatch`, `stripsPerPage`. Absent keys fall back to defaults at read time |
+| `knobs` | JSONB | NOT NULL, default `'{}'` | Flat settings bag: `headerText`, `footerText`, `hotspotAddress`, `showPrice`, `showQr`, `showBatch`, `stripsPerPage` (4–12), `stripsColumns` (1–3, added 2026-11-18). Absent keys fall back to defaults at read time |
 | `speed_limit_enabled` | BOOLEAN | NOT NULL, default `false` (047) | When true, every card created from then on is stamped with `speed_limit`. New cards only |
 | `speed_limit` | VARCHAR(8) | NOT NULL, default `'2M'`, CHECK `~ '^[1-9][0-9]{0,3}[kM]$'` (047) | Wire value (lowercase `k`, uppercase `M`). Kept when the limit is switched off, so the last choice is remembered. The CHECK guards format only; the option list (`256k` … `10M`) lives in `cardSpeed.validators.ts` and is enforced when enabling |
 | `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL, default now() | trigger-maintained |

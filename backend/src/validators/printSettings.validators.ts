@@ -6,6 +6,9 @@ export const MIN_CODE_LENGTH = 6;
 export const MAX_CODE_LENGTH = 12;
 export const DEFAULT_CODE_LENGTH = 8;
 
+export const MIN_STRIPS_COLUMNS = 1;
+export const MAX_STRIPS_COLUMNS = 3;
+
 const SAFE_TEXT_RE = /^[^\p{C}‪-‮⁦-⁩]*$/u;
 
 export const printKnobsSchema = z
@@ -35,6 +38,12 @@ export const printKnobsSchema = z
     showQr: z.boolean().default(false),
     showBatch: z.boolean().default(true),
     stripsPerPage: z.number().int().min(4).max(12).default(8),
+    stripsColumns: z
+      .number()
+      .int()
+      .min(MIN_STRIPS_COLUMNS)
+      .max(MAX_STRIPS_COLUMNS)
+      .default(1),
   })
   .strict();
 

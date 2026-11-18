@@ -14,7 +14,9 @@ export 'print/grid_layout.dart'
         voucherCardPadding,
         voucherCodeLetterSpacing,
         kMinPrintColumns,
-        kMaxPrintColumns;
+        kMaxPrintColumns,
+        kMinStripsColumns,
+        kMaxStripsColumns;
 
 import 'print/grid_layout.dart';
 import 'print/card_template.dart';

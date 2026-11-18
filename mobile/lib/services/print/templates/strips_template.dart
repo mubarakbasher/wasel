@@ -1,12 +1,10 @@
 // mobile/lib/services/print/templates/strips_template.dart
 //
-// Strips template: one voucher per full-width row, stripsPerPage rows per A4.
+// Strips template: one voucher per full-width row, stripsPerPage rows per A4,
+// stripsColumns columns per row (1–3).
 //
-// Type ramp is derived from the row height h rather than a fixed column count:
-//   codeFs   = (h * 0.32).clamp(12, 30)
-//   headerFs = (h * 0.16).clamp(8, 14)
-//   infoFs   = (h * 0.12).clamp(6.6, 10)
-// This keeps text readable at all strip counts (4 → ~200pt rows, 12 → ~65pt).
+// 1 column: full-width horizontal strip (name | code | price/batch).
+// 2–3 columns: compact stacked card (name/batch · code · limit·validity/price).
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -23,7 +21,8 @@ class StripsTemplate extends VoucherCardTemplate {
 
   @override
   VoucherGridLayout layoutFor(int columns, PrintKnobs knobs) {
-    final int n = knobs.stripsPerPage; // 4..12
+    final int rows = knobs.stripsPerPage; // 4..12
+    final int cols = knobs.stripsColumns.clamp(kMinStripsColumns, kMaxStripsColumns);
     final pageFormat = PdfPageFormat.a4.copyWith(
       marginLeft: kPrintMarginH,
       marginRight: kPrintMarginH,
@@ -32,17 +31,25 @@ class StripsTemplate extends VoucherCardTemplate {
     );
     final double usableW = pageFormat.availableWidth;
     final double usableH = pageFormat.availableHeight;
-    final double cardH = (usableH - kPrintGutterV * (n - 1)) / n;
+    final double cardH = (usableH - kPrintGutterV * (rows - 1)) / rows;
+    final double cardW = (usableW - kPrintGutterH * (cols - 1)) / cols;
     return VoucherGridLayout(
-      cardW: usableW,
+      cardW: cardW,
       cardH: cardH,
-      rows: n,
-      columns: 1,
+      rows: rows,
+      columns: cols,
     );
   }
 
   @override
   pw.Widget buildCard(CardContext ctx) {
+    if (ctx.style.knobs.stripsColumns == 1) return _fullWidthStrip(ctx);
+    return _compactStrip(ctx);
+  }
+
+  // ── 1-column full-width strip (unchanged from git HEAD) ───────────────────
+
+  pw.Widget _fullWidthStrip(CardContext ctx) {
     final double h = ctx.h;
     final double w = ctx.w;
 
@@ -196,6 +203,198 @@ class StripsTemplate extends VoucherCardTemplate {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // ── 2–3 column compact stacked card ───────────────────────────────────────
+
+  /// A single scaled-down line inside a fixed-size box. Empty or blank [text]
+  /// gives an empty box of the same size: a FittedBox around an empty Text
+  /// asserts in the pdf engine.
+  pw.Widget _scaledLine({
+    required double width,
+    required double height,
+    required String text,
+    required pw.Font font,
+    required double fontSize,
+    pw.Alignment alignment = pw.Alignment.centerLeft,
+    PdfColor? color,
+  }) {
+    if (text.trim().isEmpty) return pw.SizedBox(width: width, height: height);
+    return pw.SizedBox(
+      width: width,
+      height: height,
+      child: pw.FittedBox(
+        fit: pw.BoxFit.scaleDown,
+        alignment: alignment,
+        child: pw.Padding(
+          padding: pw.EdgeInsets.symmetric(horizontal: fontSize * 0.12),
+          child: pw.Directionality(
+            textDirection: textDirection(text),
+            child: pw.Text(
+              text,
+              style: pw.TextStyle(
+                fontSize: fontSize,
+                font: font,
+                color: color,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _compactStrip(CardContext ctx) {
+    final double w = ctx.w;
+    final double h = ctx.h;
+    final int cols = ctx.columns;
+    final item = ctx.item;
+    final style = ctx.style;
+    final knobs = style.knobs;
+
+    // ── Geometry ──────────────────────────────────────────────────────────────
+    final double padH = cols == 3 ? 4.0 : 5.0; // compact path: cols is 2 or 3
+    final double padV = (h * 0.06).clamp(2.0, 8.0);
+    final double iw = w - 2 * padH;
+    final double ih = h - 2 * padV;
+
+    double topH  = (ih * 0.22).clamp(9.0, 20.0);
+    double codeH = (ih * 0.44).clamp(18.0, 46.0);
+    double botH  = (ih * 0.22).clamp(9.0, 20.0);
+
+    final double bandSum = topH + codeH + botH;
+    if (bandSum > ih) {
+      final double scale = ih / bandSum;
+      topH  *= scale;
+      codeH *= scale;
+      botH  *= scale;
+    }
+
+    final double headerFs = topH / 1.9;
+    final double infoFs   = botH / 1.9;
+    final double codeFs   = (codeH / 1.2).clamp(8.0, 30.0);
+    final double codeLetterSpacing = cols == 2 ? 1.0 : 0.6;
+    const double gap = 4.0;
+
+    bool present(String? s) => s != null && s.trim().isNotEmpty;
+    final bool hasBatch = knobs.showBatch && present(item.batchLabel);
+    final bool hasPrice = knobs.showPrice && present(item.priceText);
+    final bool hasLimit = present(item.limitText);
+
+    final double batchW = iw * 0.30;
+    final double priceW = iw * 0.32;
+    final double nameW  = hasBatch ? iw - batchW - gap : iw;
+    final double infoW  = hasPrice ? iw - priceW - gap : iw;
+
+    // ── Top row: name (left) + optional batch (right) ─────────────────────────
+    final pw.Widget topRow = pw.Row(
+      mainAxisSize: pw.MainAxisSize.max,
+      children: [
+        _scaledLine(
+          width: nameW,
+          height: topH,
+          text: style.headerText,
+          font: style.cairoBold,
+          fontSize: headerFs,
+          alignment: pw.Alignment.centerLeft,
+        ),
+        if (hasBatch) ...[
+          pw.SizedBox(width: gap),
+          _scaledLine(
+            width: batchW,
+            height: topH,
+            text: item.batchLabel!,
+            font: style.cairo,
+            fontSize: headerFs * 0.8,
+            alignment: pw.Alignment.centerRight,
+            color: PdfColors.grey700,
+          ),
+        ],
+      ],
+    );
+
+    // ── Middle row: code centred ───────────────────────────────────────────────
+    final pw.Widget codeRow = pw.SizedBox(
+      width: iw,
+      height: codeH,
+      child: pw.Center(
+        child: codeText(item.code, codeFs, codeLetterSpacing, style.cairo),
+      ),
+    );
+
+    // ── Bottom row: limit·validity (left) + optional price (right) ───────────
+    // Limit + validity are a Row(min) of 2–3 Texts inside the same scaled box.
+    final pw.Widget limitValidity = pw.Row(
+      mainAxisSize: pw.MainAxisSize.min,
+      children: [
+        if (hasLimit) ...[
+          pw.Directionality(
+            textDirection: textDirection(item.limitText!),
+            child: pw.Text(
+              item.limitText!,
+              style: pw.TextStyle(fontSize: infoFs, font: style.cairoBold),
+            ),
+          ),
+          pw.Text(
+            ' · ',
+            style: pw.TextStyle(fontSize: infoFs, font: style.cairo),
+          ),
+        ],
+        pw.Directionality(
+          textDirection: textDirection(item.validityText),
+          child: pw.Text(
+            item.validityText,
+            style: pw.TextStyle(fontSize: infoFs, font: style.cairo),
+          ),
+        ),
+      ],
+    );
+
+    final pw.Widget botRow = pw.Row(
+      mainAxisSize: pw.MainAxisSize.max,
+      children: [
+        pw.SizedBox(
+          width: infoW,
+          height: botH,
+          child: pw.FittedBox(
+            fit: pw.BoxFit.scaleDown,
+            alignment: pw.Alignment.centerLeft,
+            child: pw.Padding(
+              padding: pw.EdgeInsets.symmetric(horizontal: infoFs * 0.12),
+              child: limitValidity,
+            ),
+          ),
+        ),
+        if (hasPrice) ...[
+          pw.SizedBox(width: gap),
+          _scaledLine(
+            width: priceW,
+            height: botH,
+            text: item.priceText!,
+            font: style.cairo,
+            fontSize: infoFs,
+            alignment: pw.Alignment.centerRight,
+          ),
+        ],
+      ],
+    );
+
+    return pw.Container(
+      width: w,
+      height: h,
+      padding: pw.EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.black, width: 0.5),
+      ),
+      child: pw.Column(
+        mainAxisAlignment: pw.MainAxisAlignment.center,
+        children: [
+          topRow,
+          codeRow,
+          botRow,
         ],
       ),
     );

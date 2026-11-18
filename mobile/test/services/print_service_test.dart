@@ -12,7 +12,9 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pdf/pdf.dart';
 import 'package:wasel/models/print_settings.dart';
+import 'package:wasel/services/print/templates/strips_template.dart';
 import 'package:wasel/services/print_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -431,11 +433,115 @@ void main() {
       final s2 = s1.copyWith(knobs: const PrintKnobs(showPrice: true));
       expect(s1.cacheKey, isNot(equals(s2.cacheKey)));
     });
+
+    // stripsColumns model tests
+    test('PrintKnobs default stripsColumns is 1', () {
+      const k = PrintKnobs();
+      expect(k.stripsColumns, 1);
+    });
+
+    test('PrintKnobs.fromJson clamps stripsColumns to 1..3', () {
+      expect(PrintKnobs.fromJson({'stripsColumns': 0}).stripsColumns, 1);
+      expect(PrintKnobs.fromJson({'stripsColumns': 9}).stripsColumns, 3);
+      expect(PrintKnobs.fromJson({'stripsColumns': 2}).stripsColumns, 2);
+    });
+
+    test('PrintKnobs.fromJson treats missing stripsColumns as 1', () {
+      expect(PrintKnobs.fromJson({}).stripsColumns, 1);
+    });
+
+    test('PrintKnobs.fromJson treats non-int stripsColumns as 1', () {
+      expect(PrintKnobs.fromJson({'stripsColumns': 'two'}).stripsColumns, 1);
+    });
+
+    test('PrintKnobs toJson round-trips stripsColumns', () {
+      const k = PrintKnobs(stripsColumns: 2);
+      final json = k.toJson();
+      expect(json['stripsColumns'], 2);
+      final k2 = PrintKnobs.fromJson(json);
+      expect(k2.stripsColumns, 2);
+    });
+
+    test('PrintKnobs copyWith stripsColumns', () {
+      const k = PrintKnobs(stripsColumns: 1);
+      final k2 = k.copyWith(stripsColumns: 3);
+      expect(k2.stripsColumns, 3);
+      expect(k.stripsColumns, 1); // unchanged
+    });
+
+    test('cacheKey differs between stripsColumns 1 and 2', () {
+      const s1 = PrintSettings(
+        templateId: VoucherTemplateId.strips,
+        knobs: PrintKnobs(stripsColumns: 1),
+      );
+      const s2 = PrintSettings(
+        templateId: VoucherTemplateId.strips,
+        knobs: PrintKnobs(stripsColumns: 2),
+      );
+      expect(s1.cacheKey, isNot(equals(s2.cacheKey)));
+    });
   });
 
   // -------------------------------------------------------------------------
   // voucherPdfPageCountFor — template-aware page count
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // StripsTemplate layoutFor tests
+  // -------------------------------------------------------------------------
+
+  group('StripsTemplate layoutFor', () {
+    // A4 usable dimensions with 16pt margins:
+    //   usableW ≈ 563.28, usableH ≈ 809.89
+    // stripsColumns=1 (baseline):
+    //   cardW = usableW, columns = 1, rows = stripsPerPage
+    // stripsColumns=2:
+    //   cardW = (usableW - 4) / 2, columns = 2
+    // stripsColumns=3:
+    //   cardW = (usableW - 4*2) / 3, columns = 3
+
+    test('stripsColumns=1 layout: cardW=full usable width, columns=1, rows=stripsPerPage', () {
+      const knobs = PrintKnobs(stripsPerPage: 8, stripsColumns: 1);
+      const template = StripsTemplate();
+      final layout = template.layoutFor(1, knobs);
+      // Verify full usable width (within floating-point tolerance)
+      final pageFormat = PdfPageFormat.a4.copyWith(
+        marginLeft: 16, marginRight: 16, marginTop: 16, marginBottom: 16,
+      );
+      expect(layout.cardW, closeTo(pageFormat.availableWidth, 0.01));
+      expect(layout.columns, 1);
+      expect(layout.rows, 8);
+      expect(layout.perPage, 8);
+    });
+
+    test('stripsColumns=2 layout: cardW follows formula, columns=2, perPage=rows*2', () {
+      const knobs = PrintKnobs(stripsPerPage: 8, stripsColumns: 2);
+      const template = StripsTemplate();
+      final layout = template.layoutFor(2, knobs);
+      final pageFormat = PdfPageFormat.a4.copyWith(
+        marginLeft: 16, marginRight: 16, marginTop: 16, marginBottom: 16,
+      );
+      final expectedW = (pageFormat.availableWidth - 4 * (2 - 1)) / 2;
+      expect(layout.cardW, closeTo(expectedW, 0.01));
+      expect(layout.columns, 2);
+      expect(layout.rows, 8);
+      expect(layout.perPage, 16);
+    });
+
+    test('stripsColumns=3 layout: cardW follows formula, columns=3, perPage=rows*3', () {
+      const knobs = PrintKnobs(stripsPerPage: 4, stripsColumns: 3);
+      const template = StripsTemplate();
+      final layout = template.layoutFor(3, knobs);
+      final pageFormat = PdfPageFormat.a4.copyWith(
+        marginLeft: 16, marginRight: 16, marginTop: 16, marginBottom: 16,
+      );
+      final expectedW = (pageFormat.availableWidth - 4 * (3 - 1)) / 3;
+      expect(layout.cardW, closeTo(expectedW, 0.01));
+      expect(layout.columns, 3);
+      expect(layout.rows, 4);
+      expect(layout.perPage, 12);
+    });
+  });
 
   group('voucherPdfPageCountFor', () {
     // Classic/Detailed: must equal voucherPdfPageCount for all columns 2..9
@@ -482,6 +588,22 @@ void main() {
       expect(voucherPdfPageCountFor(12, 1, s), 1);
       expect(voucherPdfPageCountFor(13, 1, s), 2);
       expect(voucherPdfPageCountFor(100, 1, s), 9); // ceil(100/12)=9
+    });
+
+    test('Strips stripsColumns=2 stripsPerPage=8: 40 items = 3 pages (8*2=16 per page, ceil(40/16)=3)', () {
+      const s = PrintSettings(
+        templateId: VoucherTemplateId.strips,
+        knobs: PrintKnobs(stripsPerPage: 8, stripsColumns: 2),
+      );
+      expect(voucherPdfPageCountFor(40, 2, s), 3);
+    });
+
+    test('Strips stripsColumns=1 stripsPerPage=8: 40 items = 5 pages (ceil(40/8)=5)', () {
+      const s = PrintSettings(
+        templateId: VoucherTemplateId.strips,
+        knobs: PrintKnobs(stripsPerPage: 8, stripsColumns: 1),
+      );
+      expect(voucherPdfPageCountFor(40, 1, s), 5);
     });
   });
 
@@ -776,6 +898,237 @@ void main() {
             );
           }
         },
+      );
+    }
+
+    // stripsColumns PDF-generation tests
+    for (final sc in [1, 2, 3]) {
+      for (final spp in [4, 8, 12]) {
+        test(
+          'stripsColumns=$sc stripsPerPage=$spp produces valid PDF',
+          () async {
+            final items = buildExtendedFixtures(withPrice: true, withBatch: true);
+            final bytes = await svc.generateVouchersPdf(
+              items,
+              'Wasel Net',
+              columns: sc,
+              settings: PrintSettings(
+                templateId: VoucherTemplateId.strips,
+                knobs: PrintKnobs(
+                  stripsPerPage: spp,
+                  stripsColumns: sc,
+                  showPrice: true,
+                  showBatch: true,
+                ),
+              ),
+            );
+            expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+            expect(bytes.length, greaterThan(2000));
+          },
+          timeout: const Timeout(Duration(minutes: 2)),
+        );
+      }
+    }
+
+    // Compact-strip (2–3 columns) coverage per the spec.
+    group('compact strip (stripsColumns 2 and 3)', () {
+      final compactItems = [
+        // 12-digit code
+        const VoucherPrintItem(
+          code: '123456789012',
+          limitText: '2 GB',
+          validityText: '7 days',
+          priceText: '5 SDG',
+          batchLabel: '261101-1430',
+        ),
+        // null limitText
+        const VoucherPrintItem(
+          code: 'NULLLIMIT1',
+          limitText: null,
+          validityText: '30 days',
+          priceText: '10 USD',
+          batchLabel: '261101-1430',
+        ),
+        // 54-character business name test handled via headerText knob below.
+        // 25-character limit text
+        const VoucherPrintItem(
+          code: 'LONGPLAN001',
+          limitText: 'High Speed Unlimited Plan',
+          validityText: '7 days',
+          priceText: '15 SDG',
+          batchLabel: '261101-1430',
+        ),
+        // Arabic strings
+        const VoucherPrintItem(
+          code: 'AR00000001',
+          limitText: 'غير محدود',
+          validityText: 'أسبوع',
+          priceText: '٥ ر.س',
+          batchLabel: '261101-1430',
+        ),
+      ];
+
+      // A FittedBox around an empty Text asserts in the pdf engine, so empty
+      // name, limit, price and batch label must never reach one.
+      for (final sc in [2, 3]) {
+        test('stripsColumns=$sc with empty name, limit, price and batch label',
+            () async {
+          final bytes = await svc.generateVouchersPdf(
+            const [
+              VoucherPrintItem(
+                code: 'EMPTY0001',
+                limitText: '',
+                validityText: '7 days',
+                priceText: '',
+                batchLabel: '',
+              ),
+              VoucherPrintItem(
+                code: 'BLANK0002',
+                limitText: '   ',
+                validityText: '7 days',
+                priceText: ' ',
+                batchLabel: ' ',
+              ),
+            ],
+            '',
+            columns: sc,
+            settings: PrintSettings(
+              templateId: VoucherTemplateId.strips,
+              knobs: PrintKnobs(
+                stripsPerPage: 8,
+                stripsColumns: sc,
+                showPrice: true,
+                showBatch: true,
+              ),
+            ),
+          );
+          expect(bytes, isNotEmpty);
+        });
+      }
+
+      for (final sc in [2, 3]) {
+        for (final spp in [4, 8, 12]) {
+          test(
+            'stripsColumns=$sc stripsPerPage=$spp price+batch on',
+            () async {
+              final bytes = await svc.generateVouchersPdf(
+                compactItems,
+                'Wasel Net',
+                columns: sc,
+                settings: PrintSettings(
+                  templateId: VoucherTemplateId.strips,
+                  knobs: PrintKnobs(
+                    stripsPerPage: spp,
+                    stripsColumns: sc,
+                    showPrice: true,
+                    showBatch: true,
+                  ),
+                ),
+              );
+              expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+              expect(bytes.length, greaterThan(2000));
+            },
+            timeout: const Timeout(Duration(minutes: 2)),
+          );
+
+          test(
+            'stripsColumns=$sc stripsPerPage=$spp price+batch off',
+            () async {
+              final bytes = await svc.generateVouchersPdf(
+                compactItems,
+                'Wasel Net',
+                columns: sc,
+                settings: PrintSettings(
+                  templateId: VoucherTemplateId.strips,
+                  knobs: PrintKnobs(
+                    stripsPerPage: spp,
+                    stripsColumns: sc,
+                    showPrice: false,
+                    showBatch: false,
+                  ),
+                ),
+              );
+              expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+              expect(bytes.length, greaterThan(2000));
+            },
+            timeout: const Timeout(Duration(minutes: 2)),
+          );
+        }
+
+        test(
+          'stripsColumns=$sc long business name (54 chars)',
+          () async {
+            final bytes = await svc.generateVouchersPdf(
+              compactItems,
+              'Al Noor Wireless Internet Services and Trading Company',
+              columns: sc,
+              settings: PrintSettings(
+                templateId: VoucherTemplateId.strips,
+                knobs: PrintKnobs(
+                  stripsPerPage: 8,
+                  stripsColumns: sc,
+                  showPrice: true,
+                  showBatch: true,
+                ),
+              ),
+            );
+            expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+            expect(bytes.length, greaterThan(2000));
+          },
+          timeout: const Timeout(Duration(minutes: 2)),
+        );
+
+        test(
+          'stripsColumns=$sc Arabic strings with Arabic business name',
+          () async {
+            final bytes = await svc.generateVouchersPdf(
+              compactItems,
+              'شركة النور للاتصالات والإنترنت',
+              columns: sc,
+              settings: PrintSettings(
+                templateId: VoucherTemplateId.strips,
+                knobs: PrintKnobs(
+                  stripsPerPage: 8,
+                  stripsColumns: sc,
+                  showPrice: true,
+                  showBatch: true,
+                ),
+              ),
+            );
+            expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+            expect(bytes.length, greaterThan(2000));
+          },
+          timeout: const Timeout(Duration(minutes: 2)),
+        );
+      }
+    });
+
+    // null limitText at all stripsColumns
+    for (final sc in [1, 2, 3]) {
+      test(
+        'stripsColumns=$sc null limitText produces valid PDF',
+        () async {
+          final items = [
+            const VoucherPrintItem(
+              code: 'NULL0001',
+              limitText: null,
+              validityText: 'مفتوح',
+              priceText: '5 SDG',
+              batchLabel: '261101-1430',
+            ),
+          ];
+          final bytes = await svc.generateVouchersPdf(
+            items,
+            'Wasel Net',
+            columns: sc,
+            settings: PrintSettings(
+              templateId: VoucherTemplateId.strips,
+              knobs: PrintKnobs(stripsColumns: sc, showPrice: true, showBatch: true),
+            ),
+          );
+          expect(utf8.decode(bytes.sublist(0, 5)), equals('%PDF-'));
+        },
+        timeout: const Timeout(Duration(minutes: 2)),
       );
     }
 

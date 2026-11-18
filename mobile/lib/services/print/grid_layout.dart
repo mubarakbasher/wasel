@@ -21,6 +21,12 @@ const int kMinPrintColumns = 2;
 /// Maximum column count the print slider exposes to operators.
 const int kMaxPrintColumns = 9;
 
+/// Minimum strips column count (Strips template only).
+const int kMinStripsColumns = 1;
+
+/// Maximum strips column count (Strips template only).
+const int kMaxStripsColumns = 3;
+
 // ---------------------------------------------------------------------------
 // VoucherGridLayout
 // ---------------------------------------------------------------------------

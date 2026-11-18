@@ -844,7 +844,7 @@ class AppLocalizations {
     'template.detailed': 'Detailed',
     'template.detailedDescription': 'Header band, batch info, QR code option.',
     'template.strips': 'Strips',
-    'template.stripsDescription': 'Full-width rows, stacked on a single page.',
+    'template.stripsDescription': 'Rows of strips, in 1 to 3 columns.',
 
     // ── Knob labels ──────────────────────────────────────────────────────────
     'knob.headerText': 'Header Text',
@@ -856,6 +856,7 @@ class AppLocalizations {
     'knob.showQr': 'Show QR Code',
     'knob.showBatch': 'Show Batch Label',
     'knob.stripsPerPage': 'Strips per Page',
+    'knob.stripsColumns': 'Columns',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'No active sessions',
@@ -1826,7 +1827,7 @@ class AppLocalizations {
     'template.detailed': 'مفصّل',
     'template.detailedDescription': 'شريط رأس، معلومات الدفعة، خيار رمز QR.',
     'template.strips': 'شرائح',
-    'template.stripsDescription': 'صفوف كاملة العرض مكدسة في صفحة واحدة.',
+    'template.stripsDescription': 'صفوف من الشرائح في عمود إلى ثلاثة أعمدة.',
 
     // ── Knob labels ──────────────────────────────────────────────────────────
     'knob.headerText': 'نص الرأس',
@@ -1838,6 +1839,7 @@ class AppLocalizations {
     'knob.showQr': 'إظهار رمز QR',
     'knob.showBatch': 'إظهار تسمية الدفعة',
     'knob.stripsPerPage': 'شرائح في الصفحة',
+    'knob.stripsColumns': 'الأعمدة',
 
     // ── Extra Sessions ──────────────────────────────────────────────────────
     'sessions.noActiveSessions': 'لا توجد جلسات نشطة',

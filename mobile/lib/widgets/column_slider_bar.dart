@@ -16,6 +16,8 @@ class ColumnSliderBar extends StatelessWidget {
   final int voucherCount;
   final ValueChanged<int> onChanged;
   final ValueChanged<int> onChangeEnd;
+  final int? minColumns;
+  final int? maxColumns;
 
   const ColumnSliderBar({
     super.key,
@@ -23,6 +25,8 @@ class ColumnSliderBar extends StatelessWidget {
     required this.voucherCount,
     required this.onChanged,
     required this.onChangeEnd,
+    this.minColumns,
+    this.maxColumns,
   });
 
   @override
@@ -55,9 +59,9 @@ class ColumnSliderBar extends StatelessWidget {
                   ),
                   child: Slider(
                     value: sliderColumns.toDouble(),
-                    min: kMinPrintColumns.toDouble(),
-                    max: kMaxPrintColumns.toDouble(),
-                    divisions: kMaxPrintColumns - kMinPrintColumns,
+                    min: (minColumns ?? kMinPrintColumns).toDouble(),
+                    max: (maxColumns ?? kMaxPrintColumns).toDouble(),
+                    divisions: (maxColumns ?? kMaxPrintColumns) - (minColumns ?? kMinPrintColumns),
                     activeColor: AppColors.primary,
                     onChanged: (v) => onChanged(v.round()),
                     onChangeEnd: (v) => onChangeEnd(v.round()),

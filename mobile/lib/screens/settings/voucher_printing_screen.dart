@@ -501,7 +501,11 @@ class _VoucherPrintingScreenState
                 ),
                 const Divider(height: 1, color: AppColors.border),
                 _StripsStepper(
+                  key: const Key('stripsPerPageStepper'),
+                  label: context.tr('knob.stripsPerPage'),
                   value: s.knobs.stripsPerPage,
+                  decrementKey: const Key('stripsPerPageMinus'),
+                  incrementKey: const Key('stripsPerPagePlus'),
                   onDecrement: s.knobs.stripsPerPage <= 4
                       ? null
                       : () => _saveKnob(state,
@@ -510,6 +514,22 @@ class _VoucherPrintingScreenState
                       ? null
                       : () => _saveKnob(state,
                           (k) => k.copyWith(stripsPerPage: k.stripsPerPage + 1)),
+                ),
+                const Divider(height: 1, color: AppColors.border),
+                _StripsStepper(
+                  key: const Key('stripsColumnsStepper'),
+                  label: context.tr('knob.stripsColumns'),
+                  value: s.knobs.stripsColumns,
+                  decrementKey: const Key('stripsColumnsMinus'),
+                  incrementKey: const Key('stripsColumnsPlus'),
+                  onDecrement: s.knobs.stripsColumns <= 1
+                      ? null
+                      : () => _saveKnob(state,
+                          (k) => k.copyWith(stripsColumns: k.stripsColumns - 1)),
+                  onIncrement: s.knobs.stripsColumns >= 3
+                      ? null
+                      : () => _saveKnob(state,
+                          (k) => k.copyWith(stripsColumns: k.stripsColumns + 1)),
                 ),
               ],
             ],
@@ -717,14 +737,21 @@ class _TextKnobTile extends StatelessWidget {
 // ── Strips per page stepper tile ──────────────────────────────────────────────
 
 class _StripsStepper extends StatelessWidget {
+  final String label;
   final int value;
   final VoidCallback? onDecrement;
   final VoidCallback? onIncrement;
+  final Key? decrementKey;
+  final Key? incrementKey;
 
   const _StripsStepper({
+    super.key,
+    required this.label,
     required this.value,
     this.onDecrement,
     this.onIncrement,
+    this.decrementKey,
+    this.incrementKey,
   });
 
   @override
@@ -735,14 +762,21 @@ class _StripsStepper extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(context.tr('knob.stripsPerPage'),
-                style: AppTypography.body),
+            child: Text(label, style: AppTypography.body),
           ),
-          IconButton(icon: const Icon(Icons.remove), onPressed: onDecrement),
+          IconButton(
+            key: decrementKey,
+            icon: const Icon(Icons.remove),
+            onPressed: onDecrement,
+          ),
           Text(value.toString(),
               style: AppTypography.body
                   .copyWith(fontWeight: FontWeight.w600)),
-          IconButton(icon: const Icon(Icons.add), onPressed: onIncrement),
+          IconButton(
+            key: incrementKey,
+            icon: const Icon(Icons.add),
+            onPressed: onIncrement,
+          ),
         ],
       ),
     );

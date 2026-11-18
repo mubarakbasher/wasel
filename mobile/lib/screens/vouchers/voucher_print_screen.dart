@@ -60,6 +60,9 @@ class _VoucherPrintScreenState extends ConsumerState<VoucherPrintScreen> {
   /// Whether columns have been initialised from [PrintSettings.defaultColumns].
   bool _columnsInitialised = false;
 
+  /// Local strips-column value (not saved; for this print only).
+  int _stripsColumns = 1;
+
   final SerialBuildCache<String, Uint8List> _buildCache = SerialBuildCache();
 
   late final PrintService _printService =
@@ -76,30 +79,43 @@ class _VoucherPrintScreenState extends ConsumerState<VoucherPrintScreen> {
     });
   }
 
-  /// Called once after settings are available to seed the column slider from
-  /// [PrintSettings.defaultColumns].
-  void _maybeInitColumns(PrintSettings s) {
+  /// Called once after settings have actually loaded to seed the column slider
+  /// from [PrintSettings.defaultColumns].
+  ///
+  /// The flag is only set to true once the seed has been scheduled, so a call
+  /// while settings are still at their defaults (provider not yet loaded) is a
+  /// no-op and will retry on the next build (Minor finding 9 fix).
+  void _maybeInitColumns(PrintSettings s, {required bool settingsLoaded}) {
     if (_columnsInitialised) return;
+    // Don't seed until real settings have arrived from the provider.
+    if (!settingsLoaded) return;
     _columnsInitialised = true;
     final cols = s.defaultColumns.clamp(kMinPrintColumns, kMaxPrintColumns);
-    if (cols != _sliderColumns) {
-      // Schedule setState for next frame — we may be inside build.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            _sliderColumns = cols;
-            _previewColumns = cols;
-          });
-        }
-      });
-    }
+    final stripsCols = s.knobs.stripsColumns.clamp(kMinStripsColumns, kMaxStripsColumns);
+    if (cols == _sliderColumns && stripsCols == _stripsColumns) return;
+    // Schedule setState for next frame — we may be inside build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _sliderColumns = cols;
+          _previewColumns = cols;
+          _stripsColumns = stripsCols;
+        });
+      }
+    });
   }
 
   Future<Uint8List> _generatePdf(PdfPageFormat format) {
-    final columns = _previewColumns;
-    final generation = _generation;
-    final settings =
+    final baseSettings =
         ref.read(printSettingsProvider).settings ?? const PrintSettings();
+    final isStrips = baseSettings.templateId == VoucherTemplateId.strips;
+    // For Strips, apply the local strips-column slider (not saved).
+    final settings = isStrips
+        ? baseSettings.copyWith(
+            knobs: baseSettings.knobs.copyWith(stripsColumns: _stripsColumns))
+        : baseSettings;
+    final columns = isStrips ? _stripsColumns : _previewColumns;
+    final generation = _generation;
     final cacheKey = '$columns|${settings.cacheKey}';
     final howTo = context.tr(settings.howToKey);
 
@@ -135,11 +151,17 @@ class _VoucherPrintScreenState extends ConsumerState<VoucherPrintScreen> {
     final settingsState = ref.watch(printSettingsProvider);
     final settings = settingsState.settings ?? const PrintSettings();
 
-    _maybeInitColumns(settings);
+    _maybeInitColumns(settings, settingsLoaded: settingsState.settings != null);
 
     final isStrips = settings.templateId == VoucherTemplateId.strips;
+    // For Strips page count use effective settings with current strips columns.
+    final effectiveSettings = isStrips
+        ? settings.copyWith(
+            knobs: settings.knobs.copyWith(stripsColumns: _stripsColumns))
+        : settings;
+    final effectiveColumns = isStrips ? _stripsColumns : _previewColumns;
     final totalPages = voucherPdfPageCountFor(
-        widget.vouchers.length, _previewColumns, settings);
+        widget.vouchers.length, effectiveColumns, effectiveSettings);
     final previewTruncated = totalPages > _kMaxPreviewPages;
 
     return Scaffold(
@@ -148,9 +170,25 @@ class _VoucherPrintScreenState extends ConsumerState<VoucherPrintScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (isStrips)
-            _StripsLabel(stripsPerPage: settings.knobs.stripsPerPage)
-          else
+          if (isStrips) ...[
+            ColumnSliderBar(
+              sliderColumns: _stripsColumns,
+              voucherCount: widget.vouchers.length,
+              minColumns: kMinStripsColumns,
+              maxColumns: kMaxStripsColumns,
+              onChanged: (v) => setState(() => _stripsColumns = v),
+              onChangeEnd: (v) {
+                setState(() {
+                  _stripsColumns = v;
+                  _generation++;
+                });
+              },
+            ),
+            _StripsLabel(
+              stripsPerPage: settings.knobs.stripsPerPage,
+              stripsColumns: _stripsColumns,
+            ),
+          ] else
             ColumnSliderBar(
               sliderColumns: _sliderColumns,
               voucherCount: widget.vouchers.length,
@@ -171,7 +209,7 @@ class _VoucherPrintScreenState extends ConsumerState<VoucherPrintScreen> {
           const Divider(height: 1, color: AppColors.border),
           Expanded(
             child: PdfPreview(
-              key: ValueKey('vouchers_${_previewColumns}_${settings.cacheKey}'),
+              key: ValueKey('vouchers_${effectiveColumns}_${effectiveSettings.cacheKey}'),
               build: _generatePdf,
               canChangePageFormat: false,
               canChangeOrientation: false,
@@ -189,19 +227,24 @@ class _VoucherPrintScreenState extends ConsumerState<VoucherPrintScreen> {
   }
 }
 
-/// One-line label shown instead of the column slider for Strips template.
+/// One-line "N per page" label shown below the strips column slider.
 class _StripsLabel extends StatelessWidget {
   final int stripsPerPage;
-  const _StripsLabel({required this.stripsPerPage});
+  final int stripsColumns;
+  const _StripsLabel({
+    required this.stripsPerPage,
+    required this.stripsColumns,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final perPage = stripsPerPage * stripsColumns;
     return Container(
       color: AppColors.surface,
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg, vertical: AppSpacing.md),
       child: Text(
-        context.tr('vouchers.stripsPerPage', [stripsPerPage.toString()]),
+        context.tr('vouchers.stripsPerPage', [perPage.toString()]),
         style: AppTypography.footnote.copyWith(color: AppColors.textSecondary),
       ),
     );

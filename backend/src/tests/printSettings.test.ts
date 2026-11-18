@@ -315,6 +315,133 @@ describe('GET /api/v1/settings/print — cross-user isolation', () => {
   });
 });
 
+// ─── stripsColumns knob ───────────────────────────────────────────────────────
+
+describe('PUT /api/v1/settings/print — stripsColumns knob', () => {
+  function makeUpsertRow(knobs: Record<string, unknown> = {}) {
+    return { code_length: 8, template_id: 'classic', default_columns: 4, knobs };
+  }
+
+  it('accepts stripsColumns 1 and stores it', async () => {
+    const knobs = { ...DEFAULT_PRINT_SETTINGS.knobs, stripsColumns: 1 };
+    mockQuery.mockResolvedValueOnce({ rows: [makeUpsertRow(knobs)] });
+
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({ ...DEFAULT_PRINT_SETTINGS, knobs });
+
+    expect(res.status).toBe(200);
+    const storedKnobs = (mockQuery.mock.calls[0][1] as unknown[])[4] as Record<string, unknown>;
+    expect(storedKnobs.stripsColumns).toBe(1);
+  });
+
+  it('accepts stripsColumns 2 and stores it', async () => {
+    const knobs = { ...DEFAULT_PRINT_SETTINGS.knobs, stripsColumns: 2 };
+    mockQuery.mockResolvedValueOnce({ rows: [makeUpsertRow(knobs)] });
+
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({ ...DEFAULT_PRINT_SETTINGS, knobs });
+
+    expect(res.status).toBe(200);
+    const storedKnobs = (mockQuery.mock.calls[0][1] as unknown[])[4] as Record<string, unknown>;
+    expect(storedKnobs.stripsColumns).toBe(2);
+  });
+
+  it('accepts stripsColumns 3 and stores it', async () => {
+    const knobs = { ...DEFAULT_PRINT_SETTINGS.knobs, stripsColumns: 3 };
+    mockQuery.mockResolvedValueOnce({ rows: [makeUpsertRow(knobs)] });
+
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({ ...DEFAULT_PRINT_SETTINGS, knobs });
+
+    expect(res.status).toBe(200);
+    const storedKnobs = (mockQuery.mock.calls[0][1] as unknown[])[4] as Record<string, unknown>;
+    expect(storedKnobs.stripsColumns).toBe(3);
+  });
+
+  it('rejects stripsColumns 0 (below minimum) with 400 VALIDATION_ERROR', async () => {
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({
+        ...DEFAULT_PRINT_SETTINGS,
+        knobs: { ...DEFAULT_PRINT_SETTINGS.knobs, stripsColumns: 0 },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('rejects stripsColumns 4 (above maximum) with 400 VALIDATION_ERROR', async () => {
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({
+        ...DEFAULT_PRINT_SETTINGS,
+        knobs: { ...DEFAULT_PRINT_SETTINGS.knobs, stripsColumns: 4 },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('rejects stripsColumns 1.5 (non-integer) with 400 VALIDATION_ERROR', async () => {
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({
+        ...DEFAULT_PRINT_SETTINGS,
+        knobs: { ...DEFAULT_PRINT_SETTINGS.knobs, stripsColumns: 1.5 },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('defaults stripsColumns to 1 when key is absent from body', async () => {
+    // Build a knobs object without stripsColumns
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { stripsColumns: _omit, ...knobsWithout } = DEFAULT_PRINT_SETTINGS.knobs as typeof DEFAULT_PRINT_SETTINGS.knobs & { stripsColumns?: number };
+    mockQuery.mockResolvedValueOnce({ rows: [makeUpsertRow({ ...knobsWithout, stripsColumns: 1 })] });
+
+    const res = await request(app)
+      .put('/api/v1/settings/print')
+      .set(authHeader())
+      .send({ ...DEFAULT_PRINT_SETTINGS, knobs: knobsWithout });
+
+    expect(res.status).toBe(200);
+    const storedKnobs = (mockQuery.mock.calls[0][1] as unknown[])[4] as Record<string, unknown>;
+    expect(storedKnobs.stripsColumns).toBe(1);
+  });
+});
+
+describe('GET /api/v1/settings/print — stripsColumns defaults', () => {
+  it('returns stripsColumns 1 when stored knobs JSON has no stripsColumns', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ code_length: 8, template_id: 'classic', default_columns: 4, knobs: { showPrice: false } }],
+    });
+
+    const res = await request(app)
+      .get('/api/v1/settings/print')
+      .set(authHeader());
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.knobs.stripsColumns).toBe(1);
+  });
+
+  it('DEFAULT_PRINT_SETTINGS.knobs.stripsColumns is 1', () => {
+    expect(DEFAULT_PRINT_SETTINGS.knobs.stripsColumns).toBe(1);
+  });
+});
+
 // ─── Knobs validation — bidi/control characters and newlines ──────────────────
 
 describe('PUT /api/v1/settings/print — bidi and control character rejections', () => {
