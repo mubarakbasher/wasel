@@ -12,15 +12,13 @@ import routes from './routes';
 
 const app = express();
 
-// Trust exactly one proxy hop (the Nginx reverse proxy that fronts this app in
-// every deployed environment — see docs/deploy.md). With this set, Express
-// derives `req.ip` from the rightmost X-Forwarded-For entry added by that single
-// trusted hop, so the per-IP rate limiters (generalLimiter, authLimiter) key on
-// the real client instead of collapsing every request onto Nginx's socket
-// address. The hop count is pinned to `1` — NOT `true` — so a client cannot
-// spoof `req.ip` by injecting its own X-Forwarded-For beyond the one hop Nginx
-// overwrites.
-app.set('trust proxy', 1);
+// Trust X-Forwarded-For only when the socket peer is loopback, i.e. Nginx on the
+// same host (see docs/deploy.md). WireGuard router peers reach the backend
+// directly at 10.10.0.1:3000; they are not loopback, so Express uses their socket
+// IP and ignores any X-Forwarded-For they send. Trusting a hop count of 1 let
+// those direct callers forge req.ip. Behind Nginx, req.ip is the real client, so
+// the per-IP rate limiters (generalLimiter, authLimiter) still key correctly.
+app.set('trust proxy', 'loopback');
 
 // Security headers
 app.use(helmet());
@@ -57,24 +55,6 @@ app.use(requestLogger);
 
 // Rate limiting
 app.use('/api/', generalLimiter);
-
-// Static uploads (receipts, etc.).
-// Uploads are magic-byte-verified images only (see middleware/upload.ts), so image
-// extensions are safe to render inline; everything else stays a forced download.
-// nosniff is always set regardless.
-const INLINE_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp)$/i;
-app.use(
-  '/uploads',
-  express.static(process.env.UPLOAD_DIR || '/app/uploads', {
-    setHeaders: (res, path) => {
-      res.setHeader(
-        'Content-Disposition',
-        INLINE_IMAGE_EXTENSIONS.test(path) ? 'inline' : 'attachment',
-      );
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-    },
-  }),
-);
 
 // API v1 routes
 app.use('/api/v1', routes);

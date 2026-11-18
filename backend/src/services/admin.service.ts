@@ -4,6 +4,7 @@ import { redis } from '../config/redis';
 import { config } from '../config';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
+import { signReceiptUrl } from '../utils/receiptLinks';
 import { notifyPaymentConfirmed, isFcmAvailable, getFcmInitError } from './notification.service';
 import { getActiveSubscription, SubscriptionInfo } from './subscription.service';
 import {
@@ -712,7 +713,9 @@ export async function getPayments(
 
   logger.info('Admin fetched payments', { page, limit, status: status ?? 'all', total });
 
-  return { payments: dataResult.rows, total, page, limit };
+  const payments = dataResult.rows.map((row) => ({ ...row, receipt_url: signReceiptUrl(row.receipt_url) }));
+
+  return { payments, total, page, limit };
 }
 
 /**
@@ -862,7 +865,7 @@ export async function reviewPayment(
 
     logger.info('Admin reviewed payment', { paymentId, adminId, decision });
 
-    return payment;
+    return { ...payment, receipt_url: signReceiptUrl(payment.receipt_url) };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

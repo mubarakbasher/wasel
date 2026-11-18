@@ -37,7 +37,7 @@ const MOCK_PAYMENT_ROW = {
   plan_tier: 'starter',
   currency: 'SDG',
   reference_code: 'REF-001',
-  receipt_url: 'https://cdn.wa-sel.com/receipts/r1.jpg',
+  receipt_url: '/uploads/receipts/550e8400-e29b-41d4-a716-446655440000-1795000000000-abcdef12.jpg',
   rejection_reason: null,
   reviewed_by: null,
   reviewed_at: null,
@@ -106,6 +106,9 @@ describe('GET /api/v1/admin/payments', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(res.body.data[0].receipt_url).toMatch(
+      /^\/api\/v1\/receipts\/550e8400-e29b-41d4-a716-446655440000-1795000000000-abcdef12\.jpg\?exp=\d+&sig=[A-Za-z0-9_-]{43}$/,
+    );
 
     const dataCall = findDataCall(mockQuery.mock.calls);
     expect(dataCall).toBeDefined();
@@ -214,6 +217,7 @@ describe('PUT /api/v1/admin/payments/:id', () => {
       .send({ decision: 'rejected', rejection_reason: 'Receipt unreadable' });
 
     expect(res.status).toBe(200);
+    expect(res.body.data.receipt_url).toMatch(/^\/api\/v1\/receipts\/.+\?exp=\d+&sig=/);
 
     const updateCall = findUpdateCall(mockClientQuery.mock.calls);
     expect(updateCall).toBeDefined();

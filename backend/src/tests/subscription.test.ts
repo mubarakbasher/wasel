@@ -6,18 +6,18 @@ import { TEST_USER, authHeader, ACTIVE_SUBSCRIPTION_ROW } from './helpers';
 // Mock the upload middleware so the receipt route behaves as if a file was
 // successfully uploaded; tests can then focus on service-level logic.
 vi.mock('../middleware/upload', () => ({
-  uploadReceipt: {
-    single: () => (req: Record<string, unknown>, _res: unknown, next: () => void) => {
-      req.file = {
-        filename: 'test-receipt.jpg',
-        path: '/tmp/test-receipt.jpg',
-        mimetype: 'image/jpeg',
-      };
-      next();
-    },
+  uploadReceiptSingle: (req: Record<string, unknown>, _res: unknown, next: () => void) => {
+    req.file = {
+      filename: '550e8400-e29b-41d4-a716-446655440000-1795000000000-abcdef12.jpg',
+      path: '/tmp/550e8400-e29b-41d4-a716-446655440000-1795000000000-abcdef12.jpg',
+      mimetype: 'image/jpeg',
+    };
+    next();
   },
+  cleanupUploadOnError: (_req: unknown, _res: unknown, next: () => void) => next(),
   verifyUploadMagicBytes: (_req: unknown, _res: unknown, next: () => void) => next(),
   RECEIPTS_PUBLIC_PREFIX: '/uploads/receipts',
+  RECEIPTS_DIR: '/tmp',
 }));
 
 const mockQuery = (globalThis as Record<string, unknown>).__mockPoolQuery as ReturnType<typeof import('vitest').vi.fn>;
@@ -355,5 +355,34 @@ describe('POST /api/v1/subscription/receipt', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(res.body.data.receiptUrl).toMatch(/^\/api\/v1\/receipts\//);
+    expect(mockQuery.mock.calls[1][1]).toContain(
+      '/uploads/receipts/550e8400-e29b-41d4-a716-446655440000-1795000000000-abcdef12.jpg',
+    );
+  });
+});
+
+describe('GET /api/v1/subscription/payments receipt links', () => {
+  it('signs a stored standard path and keeps null as null', async () => {
+    const baseRow = {
+      plan_tier: 'starter', plan_name: 'Starter', plan_name_ar: null, amount: '10', currency: 'USD',
+      reference_code: 'R1', status: 'pending', rejection_reason: null, reviewed_at: null,
+      created_at: new Date('2026-11-01T00:00:00Z'),
+    };
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { ...baseRow, id: 'p1', receipt_url: '/uploads/receipts/550e8400-e29b-41d4-a716-446655440000-1795000000000-abcdef12.jpg' },
+        { ...baseRow, id: 'p2', receipt_url: null },
+      ],
+    });
+
+    const res = await request(app).get('/api/v1/subscription/payments').set(authHeader());
+
+    expect(res.status).toBe(200);
+    const [signed, none] = res.body.data;
+    expect(signed.receiptUrl).toMatch(
+      /^\/api\/v1\/receipts\/550e8400-e29b-41d4-a716-446655440000-1795000000000-abcdef12\.jpg\?exp=\d+&sig=[A-Za-z0-9_-]{43}$/,
+    );
+    expect(none.receiptUrl).toBeNull();
   });
 });

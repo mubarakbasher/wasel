@@ -11,6 +11,7 @@ import reportRoutes from './report.routes';
 import notificationRoutes from './notification.routes';
 import supportRoutes from './support.routes';
 import adminRoutes from './admin.routes';
+import receiptRoutes from './receipt.routes';
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
 import logger from '../config/logger';
@@ -106,5 +107,6 @@ router.use('/reports', reportRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/support', supportRoutes);
 router.use('/admin', adminRoutes);
+router.use('/receipts', receiptRoutes);
 
 export default router;

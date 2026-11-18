@@ -4,8 +4,8 @@ import request from 'supertest';
 import app from '../app';
 
 /**
- * GAP-1 regression: the production app must trust exactly one proxy hop (the
- * Nginx reverse proxy). Without it, `req.ip` collapses to Nginx's socket address
+ * GAP-1 regression: the production app must trust only loopback proxies (the
+ * host Nginx reverse proxy). Without it, `req.ip` collapses to Nginx's socket address
  * and both rate limiters share a single global bucket.
  *
  * The behavioural assertions run against a tiny mirror app whose `trust proxy`
@@ -23,10 +23,18 @@ function makeIpEchoApp(trustProxy: unknown) {
 }
 
 describe('Express trust proxy (GAP-1)', () => {
-  it('sets trust proxy to exactly 1 hop on the real app (not true, not unset)', () => {
+  it("sets trust proxy to 'loopback' on the real app (not true, not unset)", () => {
     // `true` would let clients spoof req.ip via their own X-Forwarded-For;
     // unset (false/undefined) collapses every client onto Nginx's socket IP.
-    expect(app.get('trust proxy')).toBe(1);
+    expect(app.get('trust proxy')).toBe('loopback');
+  });
+
+  it('trusts only loopback peers', () => {
+    const trust = app.get('trust proxy fn') as (addr: string, i: number) => boolean;
+    expect(trust('127.0.0.1', 0)).toBe(true);
+    expect(trust('::1', 0)).toBe(true);
+    expect(trust('10.10.0.238', 0)).toBe(false);
+    expect(trust('64.118.148.221', 0)).toBe(false);
   });
 
   it('resolves req.ip from a single X-Forwarded-For entry added by the trusted hop', async () => {
