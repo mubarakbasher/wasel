@@ -5,6 +5,7 @@ import { RECEIPTS_PUBLIC_PREFIX } from '../middleware/upload';
 import * as subscriptionService from '../services/subscription.service';
 import * as settingsService from '../services/settings.service';
 import logger from '../config/logger';
+import { signReceiptUrl } from '../utils/receiptLinks';
 
 export async function getPlans(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -64,8 +65,9 @@ export async function uploadReceipt(req: AuthenticatedRequest, res: Response, ne
     if (!file) {
       throw new AppError(400, 'Receipt image is required', 'RECEIPT_FILE_REQUIRED');
     }
-    const receiptUrl = `${RECEIPTS_PUBLIC_PREFIX}/${file.filename}`;
-    await subscriptionService.uploadReceipt(req.user!.id, paymentId, receiptUrl);
+    const storedPath = `${RECEIPTS_PUBLIC_PREFIX}/${file.filename}`;
+    await subscriptionService.uploadReceipt(req.user!.id, paymentId, storedPath);
+    const receiptUrl = signReceiptUrl(storedPath);
     res.status(200).json({
       success: true,
       data: { message: 'Receipt uploaded successfully', receiptUrl },

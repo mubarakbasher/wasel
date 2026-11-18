@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import multer from 'multer';
 import { Request, Response, NextFunction } from 'express';
@@ -7,9 +8,16 @@ import { AppError } from './errorHandler';
 import logger from '../config/logger';
 
 const UPLOAD_ROOT = process.env.UPLOAD_DIR || '/app/uploads';
-const RECEIPTS_DIR = path.join(UPLOAD_ROOT, 'receipts');
+export const RECEIPTS_DIR = path.join(UPLOAD_ROOT, 'receipts');
 
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+export const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+// Stored extension comes from the magic-byte sniff, never from the client.
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+};
 
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
@@ -29,17 +37,20 @@ const storage = multer.diskStorage({
       );
     }
   },
-  filename: (req, file, cb) => {
+  filename: (req, _file, cb) => {
     const userId = (req as Request & { user?: { id: string } }).user?.id ?? 'anon';
-    const ts = Date.now();
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-    cb(null, `${userId}-${ts}${ext}`);
+    // Temporary suffix; verifyUploadMagicBytes renames to the detected type.
+    // file.originalname is never read.
+    const name = `${userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.upload`;
+    // Remembered so a parse that dies mid-file (truncated body) can be cleaned up.
+    (req as Request & { pendingUploadPath?: string }).pendingUploadPath = path.join(RECEIPTS_DIR, name);
+    cb(null, name);
   },
 });
 
 export const uploadReceipt = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5, fieldSize: 1024, parts: 6 },
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_MIME.has(file.mimetype)) {
       cb(new AppError(400, 'Only JPEG, PNG, or WebP images are allowed', 'INVALID_FILE_TYPE'));
@@ -48,6 +59,81 @@ export const uploadReceipt = multer({
     cb(null, true);
   },
 });
+
+/** Maps a multer/busboy/fs error from the upload parse to the AppError sent to the client. */
+export function mapUploadError(err: unknown): AppError {
+  if (err instanceof AppError) return err;
+  if (err instanceof multer.MulterError) {
+    return err.code === 'LIMIT_FILE_SIZE'
+      ? new AppError(413, 'Receipt image is too large (max 5 MB)', 'VALIDATION_ERROR')
+      : new AppError(400, 'Malformed upload', 'VALIDATION_ERROR');
+  }
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === 'string') {
+    if (code === 'ECONNRESET' || code === 'ECONNABORTED') {
+      return new AppError(400, 'Malformed upload', 'VALIDATION_ERROR');
+    }
+    // errno-style (ENOSPC, EACCES, EIO, EROFS...): our storage failed, not the client.
+    if (/^E[A-Z]+$/.test(code)) {
+      return new AppError(500, 'Receipt storage failed', 'UPLOAD_DIR_UNWRITABLE');
+    }
+  }
+  return new AppError(400, 'Malformed upload', 'VALIDATION_ERROR');
+}
+
+/** Runs the multer single-file parse and maps its errors to AppErrors. */
+export function uploadReceiptSingle(req: Request, res: Response, next: NextFunction): void {
+  uploadReceipt.single('receipt')(req, res, (err?: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    const userId = (req as Request & { user?: { id: string } }).user?.id;
+    const mapped = mapUploadError(err);
+    if (mapped.statusCode >= 500) {
+      const e = err as { code?: unknown; message?: unknown; stack?: unknown } | null;
+      logger.error('Receipt storage failed', {
+        userId,
+        code: e?.code,
+        error: err instanceof Error ? err.message : String(err),
+        stack: e?.stack,
+      });
+    } else {
+      logger.warn('Receipt upload rejected', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    const pending = (req as Request & { pendingUploadPath?: string }).pendingUploadPath;
+    if (pending) {
+      fs.promises.unlink(pending).catch(() => {});
+    }
+    next(mapped);
+  });
+}
+
+/**
+ * Deletes the uploaded file when the response is generated with an error status,
+ * so rejected uploads never linger on disk. Hooks res.end rather than 'finish'
+ * (which never fires if the client hangs up) or 'close' (which can fire before
+ * the handler runs). The path is read at that moment, after verifyUploadMagicBytes
+ * may have renamed the file.
+ */
+export function cleanupUploadOnError(req: Request, res: Response, next: NextFunction): void {
+  const originalEnd = res.end;
+  res.end = function (this: Response, ...args: unknown[]) {
+    const filePath = (req as Request & { file?: Express.Multer.File }).file?.path;
+    if (res.statusCode >= 400 && filePath) {
+      fs.promises.unlink(filePath).catch((err: NodeJS.ErrnoException) => {
+        if (err.code !== 'ENOENT') {
+          logger.warn('Could not remove rejected upload', { path: filePath, error: err.message });
+        }
+      });
+    }
+    return (originalEnd as (...a: unknown[]) => Response).apply(this, args);
+  } as typeof res.end;
+  next();
+}
 
 /**
  * After multer has written the uploaded file to disk, sniff the file's magic
@@ -86,6 +172,13 @@ export async function verifyUploadMagicBytes(
       );
       return;
     }
+
+    // Rename to the extension of the detected type (never the client's).
+    const ext = EXT_BY_MIME[detected.mime];
+    const newPath = path.join(path.dirname(file.path), `${path.parse(file.filename).name}${ext}`);
+    await fs.promises.rename(file.path, newPath);
+    file.path = newPath;
+    file.filename = path.basename(newPath);
 
     next();
   } catch (err) {

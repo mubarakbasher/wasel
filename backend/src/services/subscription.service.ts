@@ -2,6 +2,7 @@ import { pool } from '../config/database';
 import logger from '../config/logger';
 import { AppError } from '../middleware/errorHandler';
 import crypto from 'crypto';
+import { signReceiptUrl } from '../utils/receiptLinks';
 import * as emailService from './email.service';
 
 // ----- Plan definitions -----
@@ -621,7 +622,7 @@ export async function getUserPayments(userId: string): Promise<UserPayment[]> {
     amount: parseFloat(row.amount),
     currency: row.currency,
     referenceCode: row.reference_code,
-    receiptUrl: row.receipt_url,
+    receiptUrl: signReceiptUrl(row.receipt_url),
     status: row.status,
     rejectionReason: row.rejection_reason,
     reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,

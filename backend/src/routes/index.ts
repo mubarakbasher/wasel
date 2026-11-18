@@ -13,6 +13,7 @@ import printSettingsRoutes from './printSettings.routes';
 import cardSpeedRoutes from './cardSpeed.routes';
 import supportRoutes from './support.routes';
 import adminRoutes from './admin.routes';
+import receiptRoutes from './receipt.routes';
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
 import logger from '../config/logger';
@@ -113,5 +114,6 @@ router.use('/settings', printSettingsRoutes);
 router.use('/settings', cardSpeedRoutes);
 router.use('/support', supportRoutes);
 router.use('/admin', adminRoutes);
+router.use('/receipts', receiptRoutes);
 
 export default router;

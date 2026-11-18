@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { type Store } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { redis } from '../config/redis';
 import logger from '../config/logger';
@@ -78,3 +78,27 @@ export const adminEmailLimiter = rateLimit({
     error: { message: 'Too many email requests, please try again later.', code: 'EMAIL_RATE_LIMIT_EXCEEDED' },
   },
 });
+
+/**
+ * Per-user cap on receipt uploads (each can be 5 MB on disk). Factory so tests can
+ * enable it (it is skipped under NODE_ENV=test) and give it an in-memory store.
+ */
+export function makeReceiptUploadLimiter(opts: { skip?: () => boolean; store?: Store } = {}) {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: opts.skip ?? skipInTest,
+    store: opts.store ?? makeStore('rl:receiptUpload:'),
+    // Keyed on the authenticated user; the IP fallback is only a safety net.
+    validate: { keyGeneratorIpFallback: false },
+    keyGenerator: (req) => ((req as unknown as { user?: { id?: string } }).user?.id) ?? req.ip ?? 'unknown',
+    message: {
+      success: false,
+      error: { message: 'Too many receipt uploads, please try again later.', code: 'RATE_LIMIT_EXCEEDED' },
+    },
+  });
+}
+
+export const receiptUploadLimiter = makeReceiptUploadLimiter();
