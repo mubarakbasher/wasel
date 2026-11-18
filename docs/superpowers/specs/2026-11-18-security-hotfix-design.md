@@ -49,6 +49,7 @@ On 2026-11-18 from 18:14 UTC an automated attacker (64.118.148.221, curl + pytho
 - No new env var on prod if avoidable (no compose.env edit). Secrets come from `config`.
 - Never regenerate package-locks on Windows. No new dependency is expected.
 - Owner prefers few, larger commits.
+- Reuse existing error codes only. `mobile/test/i18n/backend_error_codes_test.dart` requires a mobile translation for every entry in `errorCodes.ts`, so a new code would drag a mobile change into this backend-only fix. Use `VALIDATION_ERROR`, `TOKEN_INVALID` and `NOT_FOUND`.
 - Pre-merge gate: `wasel-security` audit of the diff, then the orchestrator's architecture review.
 
 ## Approaches
@@ -149,8 +150,17 @@ All backend. No migration, no admin or mobile change expected.
 
 - **New route `GET /api/v1/receipts/:name`.** No Bearer token, because `<img>` can't send one. Instead:
   - `name` must match `^[0-9a-f-]{36}-\d{13}(-[0-9a-f]{8})?\.(jpg|jpeg|png|webp)$`, otherwise 404. This covers both the old and new naming and makes path traversal impossible.
-  - `exp` must be in the future, and `sig` must be valid under a timing-safe compare; otherwise 403.
-  - The file's magic bytes are sniffed. Only JPEG, PNG or WebP is served, with `Content-Type` taken from the sniff, `Content-Disposition: inline`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'` and `Cache-Control: private, max-age=3600`. Anything else, or a missing file, gets 404.
+  - `exp` must be in the future, and `sig` must be valid under a timing-safe compare; otherwise 403 `TOKEN_INVALID`.
+  - The file's magic bytes are sniffed. Only JPEG, PNG or WebP is served, with:
+    - `Content-Type` taken from the sniff;
+    - `Content-Disposition: inline`;
+    - `X-Content-Type-Options: nosniff`;
+    - `Content-Security-Policy: default-src 'none'`;
+    - `Cross-Origin-Resource-Policy: same-site`;
+    - `Cache-Control: private, max-age=3600`.
+
+    Anything else, or a missing file, gets 404 `NOT_FOUND`.
+  - Why `same-site`: helmet's default `same-origin`, which receipts get today, blocks the admin at `admin.wa-sel.com` from embedding an image from `api.wa-sel.com`. Prod's admin build uses `VITE_API_URL=https://api.wa-sel.com/api/v1`, so today's inline `<img>` preview is likely blocked.
   - It sits under `/api/`, so `generalLimiter` applies.
 
 - **Clients.**
@@ -159,8 +169,8 @@ All backend. No migration, no admin or mobile change expected.
   - Legacy data: all 557 receipt paths created before the attack match the standard shape (checked on prod 2026-11-18). The only 4 odd ones belong to the attacker.
 
 **3e. 4xx for malformed requests** (`backend/src/middleware/errorHandler.ts`)
-- Before the generic 500 branch, an error carrying a numeric `status` / `statusCode` in 400–499 (body-parser `entity.parse.failed` 400, `entity.too.large` 413) returns that status with a generic message and code `BAD_REQUEST`.
-- On the receipt route, wrap the multer call so that any error it raises (MulterError, busboy "Malformed part header" / "Unexpected end of form") becomes 400 `UPLOAD_INVALID`, or 413 for `LIMIT_FILE_SIZE`.
+- Before the generic 500 branch, an error carrying a numeric `status` / `statusCode` in 400–499 (body-parser `entity.parse.failed` 400, `entity.too.large` 413) returns that status with a generic message and code `VALIDATION_ERROR`.
+- On the receipt route, wrap the multer call so that any error it raises (MulterError, busboy "Malformed part header" / "Unexpected end of form") becomes 400 `VALIDATION_ERROR`, or 413 for `LIMIT_FILE_SIZE`.
 - These are logged at warn, not as "Unhandled error".
 
 **Tests** (Vitest/Supertest, in the hotfix):
